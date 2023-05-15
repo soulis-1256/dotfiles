@@ -3,18 +3,16 @@ set nfacs [gtkwave::getNumFacs]
 # Execute the find command
 set command_output [exec find . -type f -name "*tb*vhd*" -print]
 
-# Print the command output
-puts "Matching files:"
+puts "\nTestbench file:"
 puts $command_output
 
 set result [exec cat $command_output]
-puts $result
 
 #Extract the port map section and then extract the testbench signals
 if {[regexp -nocase {port\s+map\s*\(([^)]+)\)} $result -> match]} {
 	set tb_entity [gtkwave::getFacName 0]
 	regexp {([^.]*)} $tb_entity -> tb_entity
-	puts "\nFACNAME: $tb_entity\n"
+	puts "\nFACNAME: $tb_entity"
 
 	set new_match [exec sh -c "echo \"$match\" | grep -oP '\(.*\)' | tr -d '()'"]
 	puts "\nTestbench port map section: $new_match\n"
@@ -39,10 +37,20 @@ if {[regexp -nocase {port\s+map\s*\(([^)]+)\)} $result -> match]} {
     puts "Port map section not found in the testbench file. The signals were not automatically added."
 }
 
-#for {set i $nfacs} {$nfacs - $i < [expr {sqrt($nfacs)}]} {incr i -1} {
-for {set j 0} {$j < $nfacs} {incr j} {
-	#set j [expr {$nfacs - $i}]
-	set facname [ gtkwave::getFacName $j ]
+set j 0
+for {set i 0} {$i < $nfacs} {incr i} {
+	set facname ""
+	foreach signal $signal_names {
+		if {[string match "$signal*" [gtkwave::getFacName $i]]} {
+			set facname [gtkwave::getFacName $i]
+			incr j
+			break;
+		}
+	}
+
+	if {$facname == ""} {
+		continue;
+	}
 
 	#Insert blank each time after the first signal
 	if {$j != 0} {
@@ -54,19 +62,19 @@ for {set j 0} {$j < $nfacs} {incr j} {
 	puts "signal name is: $facname"
 
 	#Change the color of the signal after the first, for better appearance	
-	if {$j == 1} {
+	if {$j == 2} {
 		gtkwave::/Edit/Color_Format/Red
-	} elseif {$j == 2} {
-		gtkwave::/Edit/Color_Format/Orange
 	} elseif {$j == 3} {
-		gtkwave::/Edit/Color_Format/Yellow
+		gtkwave::/Edit/Color_Format/Orange
 	} elseif {$j == 4} {
+		gtkwave::/Edit/Color_Format/Yellow
+	} elseif {$j == 5} {
 		gtkwave::/Edit/Color_Format/Blue
 	}
 	puts "j is $j"
 }
 #General info
-puts "\nNumber of signals added to the viewer: [expr {sqrt($nfacs)}]"
+puts "\nNumber of automatically added signals: $j"
 puts "Total number of signals in the simulation file: $nfacs"
 puts "\n"
 
