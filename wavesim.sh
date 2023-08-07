@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#Compile design files
+#Compile design files.
 function compile_design {
   if [[ $file == *tb* ]]
   then
