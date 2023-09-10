@@ -42,3 +42,8 @@ call plug#end()
 
 
 ---neovim setup
+
+
+export GIT_ACCESS_TOKEN="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";
+
+---bashrc git project-1256
