@@ -12,6 +12,12 @@ if [[ ! -d $path ]]; then
   exit 1
 fi
 
+# Check if fzf is installed
+if ! command -v fzf &>/dev/null; then
+  echo "Error: 'fzf' is not installed. Please install it before using this script."
+  exit 1
+fi
+
 # Use fzf to search for a file inside the path
 selected_file=$(find "$path" -type f 2>/dev/null | fzf)
 
