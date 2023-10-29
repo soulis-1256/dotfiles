@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 path"
+  echo "Missing path argument"
   exit 1
 fi
 
