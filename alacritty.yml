@@ -18,4 +18,4 @@ font:
     style: Regular
 
 import:
-  - ~/.config/alacritty/themes/themes/dracula.yaml
+  - ~/.config/alacritty/themes/themes/tokyonight_night.yml
