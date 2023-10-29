@@ -1,2 +1,2 @@
-# Linux-Scripts
-Some scripts and configurations for Linux
+# dotfiles
+My linux dotfiles (+ some useful scripts)
