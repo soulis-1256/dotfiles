@@ -19,7 +19,7 @@ if ! command -v fzf &>/dev/null; then
 fi
 
 # Use fzf to search for a file inside the path
-selected_file=$(find "$path" -type f 2>/dev/null | fzf)
+selected_file=$(find "$path" -type f 2>/dev/null | fzf --preview "cat {}")
 
 if [[ -z "$selected_file" ]]; then
   echo "No file selected"

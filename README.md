@@ -1,2 +1,2 @@
 # dotfiles
-My linux dotfiles (+ some useful scripts)
+My dotfiles and some useful scripts.

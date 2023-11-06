@@ -1,6 +1,6 @@
 #aliases
-alias uvim='bash uvim.sh'
-alias chdir='source chdir.sh'
+alias sf='bash uvim.sh'
+alias sd='source chdir.sh'
 alias wavesim='bash wavesim.sh'
 
 #oh-my-bash theme
