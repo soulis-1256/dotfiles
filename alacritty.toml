@@ -1,0 +1,18 @@
+import = ["/home/soulis/.config/alacritty/themes/themes/carbonfox.toml"]
+
+[cursor.style]
+shape = "Beam"
+
+[font]
+size = 12
+
+[font.normal]
+family = "JetBrainsMono Nerd Font"
+style = "Regular"
+
+[window]
+opacity = 0.95
+
+[window.dimensions]
+columns = 105
+lines = 25
