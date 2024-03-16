@@ -1,0 +1,131 @@
+{
+	"layer": "top",
+	"modules-left": ["custom/launcher", "hyprland/workspaces", "tray", "mpris"],
+	//"modules-center": ["hyprland/workspaces"],
+	"modules-right": ["custom/clipboard", "custom/brightness", "cpu", "memory", "pulseaudio", "bluetooth", "network", "hyprland/language", "clock", "custom/power"],
+
+	"custom/clipboard": {
+		"format": " ",
+		"on-click": "sleep 0.1 &&  cliphist list | rofi -dmenu | cliphist decode | wl-copy",
+		"on-click-right": "killall rofi",
+		"tooltip": false
+	},
+
+	"custom/brightness": {
+		"exec": "ddcutil -t getvcp 10 2>/dev/null | awk '{print $4}'",
+		"exec-on-event": false,
+		"format": "\uDB80\uDCE0 {}%",
+    		//"format-icons": ["\uDB80\uDCDE", "\uDB80\uDCDF", "\uDB80\uDCE0"],
+		"signal": 10,
+		"on-scroll-up": "/bin/bash /usr/local/bin/brightness.sh + 25",
+		"on-scroll-down": "/bin/bash /usr/local/bin/brightness.sh - 25",
+		"tooltip": false,
+	    },
+
+	"bluetooth": {
+		// "controller": "controller1", // specify the alias of the controller if there are more than 1 on the system
+		"format": " {status}",
+		"format-disabled": "", // an empty format will hide the module
+		"format-connected": " {num_connections} connected",
+		"tooltip-format": "{controller_alias} {controller_address}",
+		"tooltip-format-connected": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
+		"tooltip-format-enumerate-connected": "{device_alias}\t{device_address}"
+	},
+
+	"pulseaudio": {
+		"tooltip": false,
+		"format": "{icon} {volume}% {format_source}",
+		"format-source": "",
+		"format-source-muted": "",
+		"format-muted": "{icon} {volume}%",
+		"on-click":"pactl set-sink-mute @DEFAULT_SINK@ toggle",
+		"format-icons": {
+			"default": ["", "", ""]
+		},
+		"on-click": "pavucontrol",
+	},
+
+	"hyprland/workspaces": {
+	     "on-scroll-up": "/bin/bash /usr/local/bin/hypr_workspace_scroll.sh up",
+	     "on-scroll-down": "/bin/bash /usr/local/bin/hypr_workspace_scroll.sh down"
+
+	},
+
+	"hyprland/language": {
+	    "format": "{short}",
+	},
+
+	"mpris": {
+		"format": "{status_icon} {artist} - {title}  ",
+		"player-icons": {
+			"default": " ",
+			"mpv": "🎵"
+		},
+		"status-icons": {
+			"playing": " ",
+			"paused": " "
+		},
+		"on-click-middle": "playerctl play-pause",
+		"on-click": "playerctl next",
+		"on-click-right": "playerctl previous",
+		"on-scroll-up": "playerctl volume 0.01+",
+	        "on-scroll-down": "playerctl volume 0.01-",
+		"ignored-players": ["firefox"],
+		"max-length": 50
+	},
+
+	"network": {
+		"format-wifi": " {essid} ({signalStrength}%)",
+		"format-ethernet": " {ifname}: {ipaddr}/{cidr}",
+		"tooltip-format": "{ifname} via {gwaddr}",
+		"format-linked": "{ifname} (No IP)",
+		"format-disconnected": "Disconnected ⚠",
+	},
+	
+	"battery": {
+		"states": {
+		    "good": 95,
+		    "warning": 30,
+		    "critical": 20
+		},
+		"format": "{icon}  {capacity}%",
+		"format-charging": " {capacity}%",
+		"format-plugged": " {capacity}%",
+		"format-alt": "{time} {icon}",
+		"format-icons": ["", "", "", "", ""]
+	    },
+	"tray":{
+		"icon-size":18,
+		"spacing": 10
+	},
+	"clock": {
+		"format": "{:%I:%M %p, %d/%m/%Y}"
+	    },
+	    "cpu": {
+		"interval": 15,
+		"format": " {}%",
+		"max-length": 10
+	    },
+	    "memory": {
+		"interval": 30,
+		"format": " {}%",
+		"max-length": 10
+	    },
+	    "custom/launcher":{
+		"format": " ",
+		"on-click": "sleep 0.1 && rofi -show drun -show-icons",
+		"on-click-right": ""
+	    },
+	    "custom/power":{
+		"format": " ",
+		"on-click": "sleep 0.1 && wlogout",
+		"tooltip": false
+	    },
+	    "custom/updates":{
+		"format": "{} Update(s)",
+		"exec": "checkupdates | wc -l",
+		"exec-if": "[[ $(checkupdates | wc -l) != 0 ]]",
+		"interval": 15,
+		"on-click": "alacritty -e paru -Syu && notify-send 'The system has been updated' "
+	    },
+}

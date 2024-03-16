@@ -1,7 +1,4 @@
 #aliases
-alias sf='bash uvim.sh'
-alias sd='source chdir.sh'
+alias sf='bash sf.sh'
+alias sd='source sd.sh'
 alias wavesim='bash wavesim.sh'
-
-#oh-my-bash theme
-#OSH_THEME="powerbash10k"
