@@ -1,4 +1,4 @@
-import = ["/home/soulis/.config/alacritty/themes/themes/carbonfox.toml"]
+import = ["~/.config/alacritty/themes/themes/carbonfox.toml"]
 
 [cursor.style]
 shape = "Beam"

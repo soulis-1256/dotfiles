@@ -46,8 +46,8 @@
 	},
 
 	"hyprland/workspaces": {
-	     "on-scroll-up": "/bin/bash /usr/local/bin/hypr_workspace_scroll.sh up",
-	     "on-scroll-down": "/bin/bash /usr/local/bin/hypr_workspace_scroll.sh down"
+	     "on-scroll-up": "/bin/bash /.local/bin/hypr_workspace_scroll.sh up",
+	     "on-scroll-down": "/bin/bash /.local/bin/hypr_workspace_scroll.sh down"
 
 	},
 

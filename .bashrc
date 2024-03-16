@@ -1,4 +1,4 @@
 #aliases
-alias sf='bash sf.sh'
-alias sd='source sd.sh'
+alias sf='/bin/bash ~/.local/bin/sf.sh'
+alias sd='source ~/.local/bin/sd.sh'
 alias wavesim='bash wavesim.sh'
