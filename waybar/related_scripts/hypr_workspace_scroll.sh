@@ -1,5 +1,22 @@
 #!/bin/bash
 
+LOCK_FILE="/tmp/workspace_switch.lock"
+
+# Check if lock file exists, if it does, exit
+if [ -f "$LOCK_FILE" ]; then
+    exit 0
+fi
+
+# Create lock file
+touch "$LOCK_FILE"
+
+cleanup() {
+    # Remove lock file on exit
+    rm -f "$LOCK_FILE"
+}
+
+trap cleanup EXIT
+
 if [[ $# -ne 1 || ($1 != "up" && $1 != "down") ]]; then
     exit 1
 fi
