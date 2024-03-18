@@ -1,5 +1,6 @@
 # General Tips
 1. Turn off Auto Mute Mode on alsamixer in order to hear speakers when headphones are plugged in front IO.
+2. For Hyprland, use wev to see key names to use in binds.
 
 # Secure boot on Arch Linux
 1. Reset to Setup Mode in BIOS (keep secure boot on).
