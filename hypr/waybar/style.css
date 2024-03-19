@@ -6,6 +6,11 @@
 	min-height: 10px;
 }
 
+button:hover {
+	border-color: #E8A2AF;
+	color: #E8A2AF;
+}
+
 window#waybar {
 	background: transparent;
 }
@@ -96,6 +101,23 @@ window#waybar.hidden {
 	background: #bd93f9;
 }
 
+#wireplumber {
+	margin-top: 6px;
+	margin-left: 8px;
+	padding-left: 10px;
+	padding-right: 10px;
+	margin-bottom: 0px;
+	border-radius: 10px;
+	transition: none;
+	color: #1A1826;
+	background: #FAE3B0;
+}
+
+#wireplumber.muted {
+	color: #1A1826;
+	background: #BF616A;
+}
+
 #pulseaudio {
 	margin-top: 6px;
 	margin-left: 8px;
@@ -106,6 +128,11 @@ window#waybar.hidden {
 	transition: none;
 	color: #1A1826;
 	background: #FAE3B0;
+}
+
+#pulseaudio.source-muted {
+	color: #1A1826;
+	background: #BF616A;
 }
 
 #battery {
@@ -266,6 +293,15 @@ window#waybar.hidden {
 	transition: none;
 	color: #89DCEB;
 	background: #161320;
+}
+
+#custom-power button:hover {
+	transition: none;
+	box-shadow: inherit;
+	text-shadow: inherit;
+	color: #FAE3B0;
+	border-color: #E8A2AF;
+	color: #E8A2AF;
 }
 
 #custom-wallpaper {

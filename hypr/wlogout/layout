@@ -1,0 +1,17 @@
+{
+    "label" : "logout",
+    "action" : "killall -9 Hyprland",
+    "text" : "Logout",
+}
+
+{
+    "label" : "reboot",
+    "action" : "systemctl reboot",
+    "text" : "Reboot",
+}
+
+{
+    "label" : "shutdown",
+    "action" : "systemctl poweroff",
+    "text" : "Shutdown",
+}

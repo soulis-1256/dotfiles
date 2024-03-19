@@ -2,7 +2,17 @@
 	"layer": "top",
 	"modules-left": ["custom/launcher", "hyprland/workspaces", "tray", "mpris"],
 	//"modules-center": ["hyprland/workspaces"],
-	"modules-right": ["custom/clipboard", "custom/brightness", "cpu", "memory", "pulseaudio", "bluetooth", "network", "hyprland/language", "clock", "custom/power"],
+	"modules-right": ["custom/clipboard",
+            "custom/brightness",
+            "cpu",
+            "memory",
+            "wireplumber",
+			"pulseaudio#mic",
+            "bluetooth",
+            "network",
+            "hyprland/language",
+            "clock",
+            "custom/power"],
 
 	"custom/clipboard": {
 		"format": " ",
@@ -32,17 +42,24 @@
 		"tooltip-format-enumerate-connected": "{device_alias}\t{device_address}"
 	},
 
-	"pulseaudio": {
-		"tooltip": false,
-		"format": "{icon} {volume}% {format_source}",
-		"format-source": "",
+	// for source/input
+	"pulseaudio#mic": {
+		"format": "{format_source}",
+		"format-source": "{volume} ",
 		"format-source-muted": "",
-		"format-muted": "{icon} {volume}%",
-		"on-click":"pactl set-sink-mute @DEFAULT_SINK@ toggle",
-		"format-icons": {
-			"default": ["", "", ""]
-		},
-		"on-click": "pavucontrol",
+		"on-click": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle",
+		"on-click-right": "pavucontrol",
+		"on-scroll-up": "wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.01+",
+		"on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.01-",
+	},
+
+	// for output
+	"wireplumber": {
+	    "format": "{volume}% {icon}",
+	    "format-muted": "",
+	    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+	    "on-click-right": "pavucontrol",
+	    "format-icons": ["", "", ""]
 	},
 
 	"hyprland/workspaces": {
@@ -113,7 +130,7 @@
 	    },
 	    "custom/launcher":{
 		"format": " ",
-		"on-click": "sleep 0.1 && rofi -show drun -show-icons",
+		"on-click": "sleep 0.1 && rofi -show window -show-icons",
 		"on-click-right": ""
 	    },
 	    "custom/power":{
