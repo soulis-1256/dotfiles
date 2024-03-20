@@ -7,7 +7,7 @@
             "cpu",
             "memory",
             "wireplumber",
-			"pulseaudio#mic",
+            "pulseaudio#mic",
             "bluetooth",
             "network",
             "hyprland/language",
