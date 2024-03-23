@@ -3,17 +3,25 @@
 	"modules-left": ["custom/launcher", "hyprland/workspaces", "tray", "mpris"],
 	//"modules-center": ["hyprland/workspaces"],
 	"modules-right": ["custom/clipboard",
+		"custom/wl-gammarelay-temperature",
             "custom/brightness",
             "cpu",
             "memory",
             "wireplumber",
-            "pulseaudio#mic",
+	    "pulseaudio#mic",
             "bluetooth",
             "network",
             "hyprland/language",
             "clock",
             "custom/power"],
 
+
+	    "custom/wl-gammarelay-temperature": {
+        "format": "{} ",
+        "exec": "wl-gammarelay-rs watch {t}",
+        "on-scroll-up": "busctl --user -- call rs.wl-gammarelay / rs.wl.gammarelay UpdateTemperature n +100",
+        "on-scroll-down": "busctl --user -- call rs.wl-gammarelay / rs.wl.gammarelay UpdateTemperature n -100"
+    },
 	"custom/clipboard": {
 		"format": " ",
 		"on-click": "sleep 0.1 &&  cliphist list | rofi -dmenu | cliphist decode | wl-copy",
