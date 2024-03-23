@@ -1,3 +1,20 @@
+# General Bugs
+1. Bug in /etc/profile (found in fedora 38) that appears with bash -ls, or tmux new-window/new-session, caused by a \n after every &&, I removed them here, so just copy-paste
+
+```bash
+# Source global bash config, when interactive but not posix or sh mode
+if test "$BASH" &&
+   test -z "$POSIXLY_CORRECT" &&
+   test "${0#-}" != sh &&
+   test -r /etc/bashrc
+then
+   # Bash login shells run only /etc/profile
+   # Bash non-login shells run only /etc/bashrc
+   # Check for double sourcing is done in /etc/bashrc.
+   . /etc/bashrc
+fi
+```
+
 # General Tips
 1. Turn off Auto Mute Mode on alsamixer in order to hear speakers when headphones are plugged in front IO.
 
