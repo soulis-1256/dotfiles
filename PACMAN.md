@@ -1,6 +1,6 @@
 # pacman
 ```bash
-sudo pacman -S alacritty fzf sddm inetutils ripgrep alsa-firmware alsa-utils bluez bluez-utils cliphist nvidia htop pipewire pavucontrol nodejs wlsunset wl-clipboard mako hyprpaper
+sudo pacman -S alacritty fzf sddm inetutils ripgrep alsa-firmware alsa-utils bluez bluez-utils cliphist nvidia htop pipewire pavucontrol nodejs wl-clipboard mako hyprpaper
 ```
 
 # yay
