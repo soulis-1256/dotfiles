@@ -152,6 +152,4 @@
 		"on-click": "sleep 0.1 && wlogout",
 		"tooltip": false
 	    },
-		"on-click": "alacritty -e paru -Syu && notify-send 'The system has been updated' "
-	    },
 }
