@@ -236,6 +236,18 @@ window#waybar.hidden {
 	background: #96CDFB;
 }
 
+#backlight {
+	margin-top: 6px;
+	margin-left: 8px;
+	padding-left: 10px;
+	margin-bottom: 0px;
+	padding-right: 10px;
+	border-radius: 10px;
+	transition: none;
+	color: #161320;
+	background: #96CDFB;
+}
+
 #custom-brightness {
 	margin-top: 6px;
 	margin-left: 8px;
