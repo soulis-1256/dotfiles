@@ -33,6 +33,10 @@
 		"tooltip": false
 	},
 
+	"backlight": {
+		"format": " {}%",
+	},
+
 	"custom/brightness": {
 		"exec": "ddcutil -t getvcp 10 2>/dev/null | awk '{print $4}'",
 		"exec-on-event": false,
