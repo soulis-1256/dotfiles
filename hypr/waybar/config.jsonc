@@ -4,14 +4,16 @@
 	//"modules-center": ["hyprland/workspaces"],
 	"modules-right": [
 		"custom/clipboard",
+		//"backlight",
 		"custom/wl-gammarelay-temperature",
-		"custom/brightness",
+		//"custom/brightness",
 		"cpu",
 		"memory",
 		"pulseaudio",
 		"pulseaudio#mic",
 		"bluetooth",
 		"network",
+		//"battery",
 		"hyprland/language",
 		"clock",
 		"custom/power"],
@@ -150,11 +152,6 @@
 		"on-click": "sleep 0.1 && wlogout",
 		"tooltip": false
 	    },
-	    "custom/updates":{
-		"format": "{} Update(s)",
-		"exec": "checkupdates | wc -l",
-		"exec-if": "[[ $(checkupdates | wc -l) != 0 ]]",
-		"interval": 15,
 		"on-click": "alacritty -e paru -Syu && notify-send 'The system has been updated' "
 	    },
 }
