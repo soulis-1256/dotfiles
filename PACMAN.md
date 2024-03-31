@@ -1,6 +1,6 @@
 # pacman
 ```bash
-sudo pacman -S alacritty fzf sddm inetutils ripgrep alsa-firmware alsa-utils bluez bluez-utils cliphist nvidia htop pipewire pavucontrol nodejs wl-clipboard mako hyprpaper
+sudo pacman -S alacritty fzf sddm inetutils ripgrep alsa-firmware alsa-utils bluez bluez-utils cliphist nvidia htop pipewire pavucontrol nodejs wl-clipboard mako hyprpaper chrony
 ```
 
 # yay
@@ -17,5 +17,5 @@ makepkg -si
 cd .. && rm -rf yay
 ```
 ```bash
-yay -S rofi-lbonn-wayland wlogout
+yay -S rofi-lbonn-wayland wlogout eww hyprshot network-manager-dispatcher-chrony sddm-conf-git
 ```
