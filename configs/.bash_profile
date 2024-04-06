@@ -12,3 +12,5 @@ export PATH=$PATH:/home/soulis/.spicetify
 export EDITOR="nvim";
 
 SYSTEMD_TIMEDATED_NTP_SERVICES=chronyd.service:systemd-timesyncd.service
+
+export PATH="$HOME/eww/target/release/:$PATH"
