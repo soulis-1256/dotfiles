@@ -18,7 +18,8 @@ fi
 # General Tips
 1. Turn off Auto Mute Mode on alsamixer in order to hear speakers when headphones are plugged in front IO.
 2. Use `pkgfile -l` to list the contents of any packages (event not installed).
-3. Disable wifi when ethernet cable is connected, by doing the following
+3. On laptop, you can modify the default zoom level to lower than 100% on Firefox.
+4. Disable wifi when ethernet cable is connected, by doing the following
 ```bash
 cd /etc/NetworkManager/dispatcher.d
 ```
