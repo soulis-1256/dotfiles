@@ -11,6 +11,10 @@
       :halign "end"
        (sidestuff)
        (network)
+       ; laptop
+       ;(_battery :status {EWW_BATTERY.BAT0.status}
+       ;          :capacity {EWW_BATTERY.BAT0.capacity}
+       ;          :charging "" :empty " " :very-low " " :low " " :medium " " :high " ")
        (date)
        (power)
       )
@@ -66,7 +70,14 @@
   )
 )
 
-(defwidget metric [ label value onchange onhover onhoverlost onrightclick reveal]
+(defwidget _battery [capacity status empty very-low low medium high charging]
+  (box :class "battery" :space-evenly false :spacing 8
+    (label :text "${status == 'Charging' ? charging : ""} ${
+      capacity < 20 ? low :
+       capacity < 80 ? medium : high}" :tooltip "Status: ${status}
+Capacity: ${capacity}%")))
+
+(defwidget metric [label value onchange onhover onhoverlost onrightclick reveal]
 (box :orientation "h"
      :class "metric"
      :space-evenly false
