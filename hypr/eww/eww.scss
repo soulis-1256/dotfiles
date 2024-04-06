@@ -1,0 +1,226 @@
+* {
+    all: unset; //Unsets everything so you can style everything from scratch
+    font-family: "JetbrainsMono Nerd Font";
+    //font-size: 14;
+  }
+  
+  tooltip {
+    background-color: #000000;
+  }
+  
+  //Global Styles
+  .bar {
+    all: unset;
+    background-color: transparent;
+    margin-top: 6px;
+  }
+  
+  // Styles on classes (see eww.yuck for more information)
+  
+  .sidestuff {
+    background-color: #161320;
+    color: #89DCEB;
+    margin-top: 6px;
+    margin-right: 12px;
+    border-radius: 5px;
+    padding-left: 5px;
+    padding-right: 5px;
+    border: 1px solid #89DCEB;
+  }
+  
+  .date {
+    background-color: #161320;
+    color: #89DCEB;
+    margin-top: 6px;
+    margin-right: 12px;
+    border-radius: 5px;
+    padding-left: 5px;
+    padding-right: 5px;
+    border: 1px solid #89DCEB;
+  }
+  
+  .network {
+    background-color: #161320;
+    color: #89DCEB;
+    margin-top: 6px;
+    margin-right: 12px;
+    border-radius: 5px;
+    padding-left: 5px;
+    padding-right: 1px;
+    border: 1px solid #89DCEB;
+  }
+  
+  .volume {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  
+  .ram {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  
+  .power button {
+    font-size: 18;
+    margin-top: 6px;
+    margin-right: 12px;
+    background-color: #161320;
+    color: #89DCEB;
+    padding-left: 6px;
+    border-radius: 5px; 
+    border: 1px solid #89DCEB;
+  }
+  
+  .power button:hover {
+    color: #161320;
+    background-color: #89DCEB;
+  }
+  
+  .sidestuff slider {
+    //all: unset;
+    color: #ffd5cd;
+  }
+  
+  .metric scale trough {
+    all: unset;
+    background-color: #4e4e4e;
+    border-radius: 50px;
+    min-height: 3px;
+    min-width: 50px;
+    //margin-left: 10px;
+    //margin-right: 20px;
+    //margin-top: 2px;
+    //margin-bottom: 2px;
+  }
+  
+  .metric scale trough highlight {
+    all: unset;
+    background-color: #D35D6E;
+    color: #000000;
+    border-radius: 10px;
+  }
+  
+  .music-controls {
+    //border: 1px solid #191414;
+  }
+  
+  .music-info {
+    border: 1px solid #1DB954;
+    color: #1DB954;
+    background-color: #191414;
+    padding-left: 10px;
+    padding-right: 15px;
+    /*border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;*/
+    border-radius: 100px;
+  }
+  
+  .music-info-outer {
+    background-color: #1DB954;
+  }
+  
+  .music-eventbox {
+    background: #1DB954;
+    color: #191414;
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+  }
+  
+  .music-eventbox label {
+    padding-left: 5px;
+    padding-right: 4px;
+  }
+  
+  .music-eventbox:hover {
+    background: #191414;
+    color: #1DB954;
+  }
+  
+  .music-control {
+    padding-left: 4px;
+  }
+  
+  .music-next {
+    padding-left: 3px;
+    padding-right: 6px;
+  }
+  
+  .music {
+    margin-top: 6px;
+  }
+  
+  .music button {
+    background: #1DB954;
+    color: #191414;
+  }
+  
+  .music button:hover {
+    background: #191414;
+    color: #1DB954;
+  }
+  
+  .music-back {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    padding-right: 3px;
+    padding-left: 3px;
+  }
+  
+  .label-ram {
+    font-size: large;
+  }
+  
+  .workspaces {
+      margin-top: 6px;
+      margin-left: 12px;
+      font-size: 14px;
+      //margin-bottom: 0px;
+          color: #89DCEB;
+      background: #161320;
+      transition: none;
+      border-radius: 5px;
+  }
+  
+  .workspace-entry {
+    border-radius: 10px;
+  }
+  
+  .workspace-entry.occupied {
+    background: #89DCEB;
+    color: #161320;
+  }
+  
+  .workspace-entry.occupied button:hover {
+    background: #333333;
+  
+    // change the radius from 10px to 8px
+    // because the new background doesn't override the normal one
+    border-radius: 8px;
+  }
+  
+  .workspace-entry.current {
+    background: #161320;
+    color: #89DCEB;
+    border: 2px solid #89DCEB;
+  }
+  
+  .workspace-entry.current button:hover {
+    background: #333333;
+    //border-radius: 0px;
+  }
+  
+  .workspace-entry button {
+    padding: 0px;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-radius: 10px;
+  
+    // add transparent border to keep the same size
+    // when hovering with active border
+    border: 2px solid transparent;
+  }
+  
+  .workspace-entry button:hover {
+    background: #333333;
+    color: #89DCEB;
+  }
