@@ -1,14 +1,16 @@
 (defwidget bar []
-  (box :class "main-container"
-    :spcace-evenly true
+  (centerbox :class "main-container"
     (box :class "left" :space-evenly false :spacing 10
        (workspaces)
-       (music)
      ) 
-     ;(box :class "center")
+     (box :class "center"
+       :space-evenly false
+       (music)
+     )
      (box :class "right"
-      :space-evenly false
       :halign "end"
+      :space-evenly false
+       (audio)
        (sidestuff)
        (network)
        ;(_battery :status {EWW_BATTERY.BAT0.status}
@@ -20,6 +22,15 @@
   )
 )
 
+(defwidget _battery [capacity status empty low medium high very-high charging]
+  (box :class "battery" :space-evenly false :spacing 8
+    (label :text "${status == 'Charging' ? charging : ""} ${
+      capacity < 5 ? empty :
+        capacity < 20 ? low :
+          capacity < 50 ? medium :
+            capacity < 75 ? high : very-high}" :tooltip "Status: ${status}
+Capacity: ${capacity}%")))
+
 (defwidget date []
   (eventbox :onhover "eww update date_reveal=true"
             :onhoverlost "eww update date_reveal=false"
@@ -28,7 +39,7 @@
       (label :text {time})
       (revealer :transition "slideleft"
                 :reveal {date_reveal}
-        (label :text ", ${date}")
+        (label :text "${date}")
       )
     )
   )
@@ -44,9 +55,8 @@
   )
 )
 
-(defwidget sidestuff []
-  (box :class "sidestuff" :orientation "h" :space-evenly false
-    (box :class "volume"
+(defwidget audio []
+(box :class "audio"
       (metric :label " "
               :onhover "eww update volume_scale_reveal=true"
               :onhoverlost "eww update volume_scale_reveal=false"
@@ -56,29 +66,45 @@
               :onchange "amixer -D pulse sset Master {}%"
       )
     )
+  )
+
+(defwidget sidestuff []
+  (box :class "sidestuff" :orientation "h" :space-evenly false
+    ;(box :class "volume"
+      ;(metric :label " "
+      ;        :onhover "eww update volume_scale_reveal=true"
+      ;        :onhoverlost "eww update volume_scale_reveal=false"
+      ;        :onrightclick "pavucontrol &"
+      ;        :reveal {volume_scale_reveal}
+      ;        :value 100
+      ;        :onchange "amixer -D pulse sset Master {}%"
+      ;)
+    ;)
     (box :class "ram"
-      (metric :label " "
-              :onhover "eww update ram_scale_reveal=true"
-              :onhoverlost "eww update ram_scale_reveal=false"
-              :onrightclick ""
-              :reveal {ram_scale_reveal}
-              :value {EWW_RAM.used_mem_perc}
-              :onchange ""
+      :tooltip "RAM: ${round(EWW_RAM.used_mem / 1000000000, 1)} (used) / ${round(EWW_RAM.total_mem / 1000000000, 1)} GB"
+      (circular-progress
+        :value {EWW_RAM.used_mem_perc}
+        :start-at 25
+        :thickness 2
+        :class "ram-progress"
+          (label :text "")
+      )
+    )
+    ;(label :text "|" :class "op")
+     (box :class "cpu"
+      :tooltip "CPU: ${round(EWW_CPU.avg,1)}%"
+      (circular-progress
+        :value {EWW_CPU.avg}
+        :start-at 25
+        :thickness 2
+        :class "cpu-progress"
+          (label :text "󰍛")
       )
     )
   )
 )
 
-(defwidget _battery [capacity status empty low medium high very-high charging]
-  (box :class "battery" :space-evenly false :spacing 8
-    (label :text "${status == 'Charging' ? charging : ""} ${
-      capacity < 5 ? empty :
-        capacity < 20 ? low :
-          capacity < 50 ? medium :
-            capacity < 75 ? high : very-high}" :tooltip "Status: ${status}
-Capacity: ${capacity}%")))
-
-(defwidget metric [label value onchange onhover onhoverlost onrightclick reveal]
+(defwidget metric [ label value onchange onhover onhoverlost onrightclick reveal]
 (box :orientation "h"
      :class "metric"
      :space-evenly false
@@ -154,6 +180,7 @@ Capacity: ${capacity}%")))
     (box :class "music"
     :orientation "h"
     :space-evenly false
+    :halign "center"
     :visible {music_status == "spotify_exit" ? false : true}
      (box :class "music-controls"
         :orientation "h"
@@ -175,14 +202,14 @@ Capacity: ${capacity}%")))
        :onclick "scripts/app_switch.sh Spotify"
        :onscroll "scripts/spotify_volume.sh {}"
        :class "music-eventbox"
-          (label :limit-width 60 :text " ${music_volume}%")
+          (label :text " ${music_volume}%")
         )
       )
   )
 
 (defwindow bar
   :monitor 0
-  :windowtype "dock"
+  :stacking "bg"
   :exclusive true
   :geometry (geometry :x "0%"
                       :y "0%"

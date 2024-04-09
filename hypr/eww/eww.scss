@@ -1,237 +1,302 @@
 * {
-    all: unset; //Unsets everything so you can style everything from scratch
-    font-family: "JetbrainsMono Nerd Font";
-    //font-size: 14;
-  }
-  
-  tooltip {
-    background-color: #000000;
-  }
-  
-  //Global Styles
-  .bar {
-    all: unset;
-    background-color: transparent;
-    margin-top: 6px;
-  }
-  
-  // Styles on classes (see eww.yuck for more information)
-  
-  .sidestuff {
-    background-color: #161320;
-    color: #89DCEB;
-    margin-top: 6px;
-    margin-right: 12px;
-    border-radius: 5px;
-    padding-left: 5px;
-    padding-right: 5px;
-    border: 1px solid #89DCEB;
-  }
-  
-  .date {
-    background-color: #161320;
-    color: #89DCEB;
-    margin-top: 6px;
-    margin-right: 12px;
-    border-radius: 5px;
-    padding-left: 5px;
-    padding-right: 5px;
-    border: 1px solid #89DCEB;
-  }
-  
-  .network {
-    background-color: #161320;
-    color: #89DCEB;
-    margin-top: 6px;
-    margin-right: 12px;
-    border-radius: 5px;
-    padding-left: 5px;
-    padding-right: 1px;
-    border: 1px solid #89DCEB;
-  }
+  all: unset; //Unsets everything so you can style everything from scratch
+  font-family: "JetbrainsMono Nerd Font";
+  //font-size: 14;
+}
 
-  .battery {
-    background-color: #161320;
-    color: #89DCEB;
-    margin-top: 6px;
-    margin-right: 12px;
-    border-radius: 5px;
-    padding-left: 5px;
-    padding-right: 5px;
-    border: 1px solid #89DCEB;
-  }
-  
-  .volume {
-    padding-left: 5px;
-    padding-right: 5px;
-  }
-  
-  .ram {
-    padding-left: 5px;
-    padding-right: 5px;
-  }
-  
-  .power button {
-    font-size: 18;
-    margin-top: 6px;
-    margin-right: 12px;
-    background-color: #161320;
-    color: #89DCEB;
-    padding-left: 6px;
-    border-radius: 5px; 
-    border: 1px solid #89DCEB;
-  }
-  
-  .power button:hover {
-    color: #161320;
-    background-color: #89DCEB;
-  }
-  
-  .sidestuff slider {
-    //all: unset;
-    color: #ffd5cd;
-  }
-  
-  .metric scale trough {
-    all: unset;
-    background-color: #4e4e4e;
-    border-radius: 50px;
-    min-height: 3px;
-    min-width: 50px;
-    //margin-left: 10px;
-    //margin-right: 20px;
-    //margin-top: 2px;
-    //margin-bottom: 2px;
-  }
-  
-  .metric scale trough highlight {
-    all: unset;
-    background-color: #D35D6E;
-    color: #000000;
-    border-radius: 10px;
-  }
-  
-  .music-controls {
-    //border: 1px solid #191414;
-  }
-  
-  .music-info {
-    border: 1px solid #1DB954;
-    color: #1DB954;
-    background-color: #191414;
-    padding-left: 10px;
-    padding-right: 15px;
-    /*border-top-right-radius: 5px;
-    border-bottom-right-radius: 5px;*/
-    border-radius: 100px;
-  }
-  
-  .music-info-outer {
-    background-color: #1DB954;
-  }
-  
-  .music-eventbox {
-    background: #1DB954;
-    color: #191414;
-    border-top-right-radius: 10px;
-    border-bottom-right-radius: 10px;
-  }
-  
-  .music-eventbox label {
-    padding-left: 5px;
-    padding-right: 4px;
-  }
-  
-  .music-eventbox:hover {
-    background: #191414;
-    color: #1DB954;
-  }
-  
-  .music-control {
-    padding-left: 4px;
-  }
-  
-  .music-next {
-    padding-left: 3px;
-    padding-right: 6px;
-  }
-  
-  .music {
-    margin-top: 6px;
-  }
-  
-  .music button {
-    background: #1DB954;
-    color: #191414;
-  }
-  
-  .music button:hover {
-    background: #191414;
-    color: #1DB954;
-  }
-  
-  .music-back {
-    border-top-left-radius: 10px;
-    border-bottom-left-radius: 10px;
-    padding-right: 3px;
-    padding-left: 3px;
-  }
-  
-  .label-ram {
-    font-size: large;
-  }
-  
-  .workspaces {
-      margin-top: 6px;
-      margin-left: 12px;
-      font-size: 14px;
-      //margin-bottom: 0px;
-          color: #89DCEB;
-      background: #161320;
-      transition: none;
-      border-radius: 5px;
-  }
-  
-  .workspace-entry {
-    border-radius: 10px;
-  }
-  
-  .workspace-entry.occupied {
-    background: #89DCEB;
-    color: #161320;
-  }
-  
-  .workspace-entry.occupied button:hover {
-    background: #333333;
-  
-    // change the radius from 10px to 8px
-    // because the new background doesn't override the normal one
-    border-radius: 8px;
-  }
-  
-  .workspace-entry.current {
-    background: #161320;
-    color: #89DCEB;
-    border: 2px solid #89DCEB;
-  }
-  
-  .workspace-entry.current button:hover {
-    background: #333333;
-    //border-radius: 0px;
-  }
-  
-  .workspace-entry button {
-    padding: 0px;
-    padding-left: 4px;
-    padding-right: 4px;
-    border-radius: 10px;
-  
-    // add transparent border to keep the same size
-    // when hovering with active border
-    border: 2px solid transparent;
-  }
-  
-  .workspace-entry button:hover {
-    background: #333333;
-    color: #89DCEB;
-  }
+$lighter-bg: #163450;
+$main-bg: #022036;
+$darker-bg: #021926;
+$accent: #B15F62;
+
+tooltip {
+  background-color: #000000;
+}
+
+//Global Styles
+.bar {
+  all: unset;
+  background-color: transparent;
+  //margin-top: 0px;
+  margin-left: 350px;
+  margin-right: 350px;
+}
+
+.main-container {
+  margin-top: 3px;
+  margin-bottom: 3px;
+  background-color: $main-bg;
+  border-radius: 10px;
+  padding: 3px;
+  box-shadow: 0 0 8 0 #000000;
+}
+
+// Styles on classes (see eww.yuck for more information)
+
+.sidestuff {
+  background-color: $darker-bg;
+  color: $accent;
+  margin-right: 12px;
+  margin-left: 12px;
+  border-radius: 10px;
+  padding-left: 3px;
+  //padding-right: 5px;
+  //border: 1px solid #408EC6;
+}
+
+.date {
+  background-color: $darker-bg;
+  color: $accent;
+  margin-right: 12px;
+  border-radius :10px;
+  //padding-left: 15px;
+  //padding-right: 5px;
+  //border: 1px solid #408EC6;
+}
+
+.date label {
+  //background-color: $darker-bg;
+  //border-radius: 10px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.network {
+  //padding-left: 12px;
+}
+
+.network button {
+  background-color: $darker-bg;
+  color: $accent;
+  margin-right: 12px;
+  border-radius: 10px;
+  padding-left: 6px;
+  padding-right: 1px;
+  //  border: 1px solid #408EC6;
+}
+
+.battery {
+  background-color: $darker-bg;
+  color: $accent;
+  margin-right: 12px;
+  border-radius: 10px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.network button:hover {
+  background-color: $accent;
+  color: $darker-bg;
+}
+
+.audio {
+  background-color: $darker-bg;
+  color: $accent;
+  border-radius: 10px;
+  padding-left: 8px;
+  padding-right: 5px;
+}
+
+.ram {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.ram label {
+  font-size: 11px;
+  margin: 4px;
+  margin-right: 7px;
+  margin-left: 5px;
+}
+
+.ram-progress {
+  background-color: $lighter-bg;
+}
+
+.cpu {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.cpu label {
+  font-size: 18px;
+  margin: 4px;
+  margin-right: 6px;
+}
+
+.cpu-progress {
+  background-color: $lighter-bg;
+}
+
+.power {
+  //background-color: #011026;
+  //padding: 5px;
+  //padding-left: 10px;
+}
+
+.power button {
+  font-size: 16;
+  margin-right: 12px;
+  background-color: $darker-bg;
+  color: $accent;
+  padding-left: 6px;
+  padding-bottom: 2px;
+  border-radius: 10px; 
+  //border: 1px solid #408EC6;
+}
+
+.power button:hover {
+  color: $darker-bg;
+  background-color: $accent;
+}
+
+.sidestuff slider {
+  //all: unset;
+  color: #ffd5cd;
+}
+
+.metric scale trough {
+  all: unset;
+  background-color: #4e4e4e;
+  border-radius: 50px;
+  min-height: 3px;
+  min-width: 50px;
+  //margin-left: 10px;
+  //margin-right: 20px;
+  //margin-top: 2px;
+  //margin-bottom: 2px;
+}
+
+.metric scale trough highlight {
+  all: unset;
+  background-color: #D35D6E;
+  color: #000000;
+  border-radius: 10px;
+}
+
+.music-controls {
+  //border: 1px solid #191414;
+}
+
+.music-info {
+  //border: 1px solid #1DB954;
+  color: #1DB954;
+  background-color: #191414;
+  padding-left: 10px;
+  padding-right: 15px;
+  /*border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;*/
+  border-radius: 10px;
+}
+
+.music-info-outer {
+  background-color: #1DB954;
+  padding: 1px;
+}
+
+.music-eventbox {
+  background: #1DB954;
+  color: #191414;
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.music-eventbox label {
+  padding-left: 5px;
+  padding-right: 4px;
+}
+
+.music-eventbox:hover {
+  background: #191414;
+  color: #1DB954;
+}
+
+.music-control {
+  padding-left: 4px;
+}
+
+.music-next {
+  padding-left: 3px;
+  padding-right: 6px;
+}
+
+.music {
+}
+
+.music button {
+  background: #1DB954;
+  color: #191414;
+}
+
+.music button:hover {
+  background: #191414;
+  color: #1DB954;
+}
+
+.music-back {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+  padding-right: 3px;
+  padding-left: 3px;
+}
+
+.label-ram {
+  font-size: large;
+}
+
+.workspaces {
+	margin-left: 12px;
+	font-size: 14px;
+	//margin-bottom: 0px;
+        color: $accent;
+	background-color: $darker-bg;
+	transition: none;
+	border-radius: 10px;
+}
+
+.workspace-entry {
+  border-radius: 10px;
+  //background-color: #021926;
+}
+
+.workspace-entry.occupied {
+  //background: #408EC6;
+  border: 1px solid $accent;
+  //color: #1E2761;
+}
+
+.workspace-entry.occupied button:hover {
+  background: #333333;
+
+  // change the radius from 10px to 8px
+  // because the new background doesn't override the normal one
+  border-radius: 8px;
+}
+
+.workspace-entry.current {
+  background: $accent;
+  color: $darker-bg;
+  //border: 2px solid #408EC6  ;
+}
+
+.workspace-entry.current button:hover {
+  background: #333333;
+  color: $accent;
+  //border-radius: 0px;
+}
+
+.workspace-entry button {
+  padding: 0px;
+  padding-left: 4px;
+  padding-right: 4px;
+  border-radius: 10px;
+
+  // add transparent border to keep the same size
+  // when hovering with active border
+  border: 2px solid transparent;
+}
+
+.workspace-entry button:hover {
+  background: #333333;
+  //color: #408EC6;
+}
