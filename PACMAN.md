@@ -17,5 +17,5 @@ makepkg -si
 cd .. && rm -rf yay
 ```
 ```bash
-yay -S rofi-lbonn-wayland wlogout eww hyprshot network-manager-dispatcher-chrony sddm-conf-git
+yay -S rofi-lbonn-wayland wlogout eww hyprshot network-manager-dispatcher-chrony sddm-conf-git showmethekey
 ```

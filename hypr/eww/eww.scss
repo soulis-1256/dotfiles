@@ -33,7 +33,7 @@ tooltip {
 
 // Styles on classes (see eww.yuck for more information)
 
-.sidestuff {
+.resources {
   background-color: $darker-bg;
   color: $accent;
   margin-right: 12px;
@@ -72,10 +72,14 @@ tooltip {
   border-radius: 10px;
   padding-left: 6px;
   padding-right: 1px;
-  //  border: 1px solid #408EC6;
 }
 
-.battery {
+.network button:hover {
+  background-color: $accent;
+  color: $darker-bg;
+}
+
+.active_keymap {
   background-color: $darker-bg;
   color: $accent;
   margin-right: 12px;
@@ -84,17 +88,13 @@ tooltip {
   padding-right: 5px;
 }
 
-.network button:hover {
-  background-color: $accent;
-  color: $darker-bg;
-}
-
 .audio {
   background-color: $darker-bg;
   color: $accent;
   border-radius: 10px;
   padding-left: 8px;
-  padding-right: 5px;
+  padding-right: 3px;
+  margin-left: 12px;
 }
 
 .ram {
@@ -150,16 +150,11 @@ tooltip {
   background-color: $accent;
 }
 
-.sidestuff slider {
-  //all: unset;
-  color: #ffd5cd;
-}
-
 .metric scale trough {
   all: unset;
   background-color: #4e4e4e;
   border-radius: 50px;
-  min-height: 3px;
+  min-height: 4px;
   min-width: 50px;
   //margin-left: 10px;
   //margin-right: 20px;
@@ -246,6 +241,7 @@ tooltip {
 
 .workspaces {
 	margin-left: 12px;
+	margin-right: 12px;
 	font-size: 14px;
 	//margin-bottom: 0px;
         color: $accent;
@@ -257,6 +253,7 @@ tooltip {
 .workspace-entry {
   border-radius: 10px;
   //background-color: #021926;
+  border: 1px solid transparent;
 }
 
 .workspace-entry.occupied {

@@ -1,3 +1,38 @@
+(defvar date_reveal false)
+(defvar music_volume 0)
+(defvar music_status "spotify_exit")
+(defvar volume_scale_reveal false)
+
+(defpoll date :interval "1s"
+  "date '+%a %d %b %Y'")
+
+(defpoll time :interval "1s"
+"date '+%H:%M'")
+
+(defpoll network :interval "1s"
+  "scripts/network.sh type")
+
+(defpoll network_info :interval "1s"
+  "scripts/network.sh info")
+
+(deflisten audio_volume
+  "scripts/trace_audio_volume.sh")
+
+(deflisten active_keymap
+  "scripts/trace_active_keymap.sh")
+
+(deflisten active_keymap_full
+  "scripts/trace_active_keymap.sh full")
+
+(deflisten music_info :initial ""
+  "scripts/spotify_info.sh")
+
+(deflisten workspaces :initial "[]"
+  "scripts/get-workspaces.sh")
+
+(deflisten current_workspace :initial "1"
+  "scripts/get-active-workspace.sh")
+
 (defwidget bar []
   (centerbox :class "main-container"
     (box :class "left" :space-evenly false :spacing 10
@@ -11,25 +46,33 @@
       :halign "end"
       :space-evenly false
        (audio)
-       (sidestuff)
+       (resources)
        (network)
+       ; laptop only
        ;(_battery :status {EWW_BATTERY.BAT0.status}
        ;          :capacity {EWW_BATTERY.BAT0.capacity}
        ;          :charging "" :empty " " :low " " :medium " " :high " " :very-high " ")
+       (active_keymap)
        (date)
        (power)
       )
   )
 )
 
-(defwidget _battery [capacity status empty low medium high very-high charging]
-  (box :class "battery" :space-evenly false :spacing 8
-    (label :text "${status == 'Charging' ? charging : ""} ${
-      capacity < 5 ? empty :
-        capacity < 20 ? low :
-          capacity < 50 ? medium :
-            capacity < 75 ? high : very-high}" :tooltip "Status: ${status}
-Capacity: ${capacity}%")))
+(defwidget workspaces []
+  (eventbox :onscroll "scripts/change-active-workspace.sh {} ${current_workspace}" :class "workspaces-widget"
+    (box :class "workspaces"
+         :space-evenly false
+         :spacing 2
+      (label :text "${workspaces}${current_workspace}" :visible false)
+      (for workspace in workspaces
+          (box :class "workspace-entry ${workspace.id == current_workspace ? "current" : ""} ${workspace.windows > 0 ? "occupied" : "empty"}"
+            (button :onclick "hyprctl dispatch workspace ${workspace.id}" "${workspace.id}")
+            )
+        )
+      )
+    )
+  )
 
 (defwidget date []
   (eventbox :onhover "eww update date_reveal=true"
@@ -45,8 +88,6 @@ Capacity: ${capacity}%")))
   )
 )
 
-(defvar date_reveal false)
-
 (defwidget network []
   (box :class "network"
     (button :onclick "alacritty -T \"nmtui\" -e nmtui &"
@@ -55,31 +96,35 @@ Capacity: ${capacity}%")))
   )
 )
 
+(defwidget active_keymap []
+  (box :class "active_keymap"
+    (label :text {active_keymap} :tooltip {active_keymap_full})
+  )
+)
+
 (defwidget audio []
-(box :class "audio"
-      (metric :label " "
-              :onhover "eww update volume_scale_reveal=true"
-              :onhoverlost "eww update volume_scale_reveal=false"
-              :onrightclick "pavucontrol &"
-              :reveal {volume_scale_reveal}
-              :value 100
-              :onchange "amixer -D pulse sset Master {}%"
+  (eventbox
+    :onrightclick "pavucontrol &"
+    :onscroll "scripts/change_audio_volume.sh {}"
+    (box :class "audio"
+      :space-evenly false
+
+      (metric :label "${audio_volume}% ${
+        audio_volume < 25 ? "󰕿 " :
+          audio_volume < 75 ? "󰖀 " : "󰕾 "}"
+          :onhover "eww update volume_scale_reveal=true"
+          :onhoverlost "eww update volume_scale_reveal=false"
+          :reveal {volume_scale_reveal}
+          :value {audio_volume}
+          ;wpctl is for pipewire
+          :onchange "wpctl set-volume @DEFAULT_AUDIO_SINK@ {}%"
       )
     )
   )
+)
 
-(defwidget sidestuff []
-  (box :class "sidestuff" :orientation "h" :space-evenly false
-    ;(box :class "volume"
-      ;(metric :label " "
-      ;        :onhover "eww update volume_scale_reveal=true"
-      ;        :onhoverlost "eww update volume_scale_reveal=false"
-      ;        :onrightclick "pavucontrol &"
-      ;        :reveal {volume_scale_reveal}
-      ;        :value 100
-      ;        :onchange "amixer -D pulse sset Master {}%"
-      ;)
-    ;)
+(defwidget resources []
+  (box :class "resources" :orientation "h" :space-evenly false
     (box :class "ram"
       :tooltip "RAM: ${round(EWW_RAM.used_mem / 1000000000, 1)} (used) / ${round(EWW_RAM.total_mem / 1000000000, 1)} GB"
       (circular-progress
@@ -90,8 +135,7 @@ Capacity: ${capacity}%")))
           (label :text "")
       )
     )
-    ;(label :text "|" :class "op")
-     (box :class "cpu"
+    (box :class "cpu"
       :tooltip "CPU: ${round(EWW_CPU.avg,1)}%"
       (circular-progress
         :value {EWW_CPU.avg}
@@ -104,13 +148,12 @@ Capacity: ${capacity}%")))
   )
 )
 
-(defwidget metric [ label value onchange onhover onhoverlost onrightclick reveal]
-(box :orientation "h"
-     :class "metric"
-     :space-evenly false
-     (eventbox :onhover {onhover}
-	       :onhoverlost {onhoverlost}
-               :onrightclick {onrightclick}
+(defwidget metric [ label value onchange onhover onhoverlost reveal]
+  (box :orientation "h"
+    :class "metric"
+    :space-evenly false
+    (eventbox :onhover {onhover}
+              :onhoverlost {onhoverlost}
       (box :class "label" :space-evenly false label
         (revealer :transition "slideright" 
                   :reveal {reveal}
@@ -119,9 +162,6 @@ Capacity: ${capacity}%")))
                :active {onchange != ""}
                :value value
                :onchange onchange))))))
-
-(defvar volume_scale_reveal false)
-(defvar ram_scale_reveal false)
 
 (defwidget power []
   (box :class "power"
@@ -132,80 +172,42 @@ Capacity: ${capacity}%")))
   )
 )
 
-;(defpoll volume :interval "1s"
-;  "scripts/getvol.sh")
-
-(defpoll date :interval "1s"
-  "date '+%a %d %b %Y'")
-
-(defpoll time :interval "1s"
-"date '+%H:%M'")
-
-(defpoll network :interval "1s"
-  "scripts/network.sh type"
-)
-
-(defpoll network_info :interval "1s"
-  "scripts/network.sh info"
-)
-
-(deflisten workspaces :initial "[]" "bash ~/.config/eww/scripts/get-workspaces.sh")
-(deflisten current_workspace :initial "1" "bash ~/.config/eww/scripts/get-active-workspace.sh")
-(defwidget workspaces []
-  (eventbox :onscroll "bash ~/.config/eww/scripts/change-active-workspace.sh {} ${current_workspace}" :class "workspaces-widget"
-    (box :class "workspaces"
-         :space-evenly false
-         :spacing 2
-      (label :text "${workspaces}${current_workspace}" :visible false)
-      (for workspace in workspaces
-          (box :class "workspace-entry ${workspace.id == current_workspace ? "current" : ""} ${workspace.windows > 0 ? "occupied" : "empty"}"
-            (button :onclick "hyprctl dispatch workspace ${workspace.id}" "${workspace.id}")
-            )
-        )
-      )
-    )
-  )
-
-(defvar music_volume 0)
-
-(defvar music_status "spotify_exit"
-)
-(deflisten music_info :initial ""
-"scripts/spotify_info.sh"
-)
-;(deflisten music_op :initial ""
-;"scripts/spotify_status.sh &"
-;)
 (defwidget music []
-    (box :class "music"
+  (box :class "music"
     :orientation "h"
     :space-evenly false
     :halign "center"
     :visible {music_status == "spotify_exit" ? false : true}
-     (box :class "music-controls"
-        :orientation "h"
-        :space-evenly false
-        (button :class "music-back" :onclick "playerctl --player spotify previous" ""
-        )
-        (button :class "music-control" :onclick "scripts/spotify_control.sh"
-            {music_status == "Paused" ? " " : " "}
-        )
-        (button :class "music-next" :onclick "playerctl next"
-        "")
-      )
-      (box :class "music-info-outer"
-        (box :class "music-info"
-            (label :limit-width 60 :text {music_info != "" ? "${music_info} " : ""})
-        )
-      )
-      (eventbox
-       :onclick "scripts/app_switch.sh Spotify"
-       :onscroll "scripts/spotify_volume.sh {}"
-       :class "music-eventbox"
-          (label :text " ${music_volume}%")
-        )
-      )
+    (box :class "music-controls"
+         :orientation "h"
+         :space-evenly false
+         (button :class "music-back" :onclick "playerctl --player spotify previous" "")
+         (button :class "music-control" :onclick "scripts/spotify_control.sh"
+          {music_status == "Paused" ? " " : " "}
+         )
+         (button :class "music-next" :onclick "playerctl next" ""))
+    (box :class "music-info-outer"
+    (box :class "music-info"
+     (label :limit-width 40 :text {music_info != "" ? "${music_info} " : ""}))
+    )
+    (eventbox
+      :onclick "scripts/app_switch.sh Spotify"
+      :onscroll "scripts/spotify_volume.sh {}"
+      :class "music-eventbox"
+      (label :text " ${music_volume}%")
+    )
   )
+)
+
+; laptop only
+;(defwidget _battery [capacity status empty low medium high very-high charging]
+;  (box :class "battery" :space-evenly false :spacing 8
+;    (label :text "${status == 'Charging' ? charging : ""} ${
+;      capacity < 5 ? empty :
+;        capacity < 20 ? low :
+;          capacity < 50 ? medium :
+;            capacity < 75 ? high : very-high}" :tooltip "Status: ${status}
+;Capacity: ${capacity}%")))
 
 (defwindow bar
   :monitor 0
