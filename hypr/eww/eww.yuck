@@ -1,7 +1,10 @@
 (defvar date_reveal false)
 (defvar music_volume 0)
 (defvar music_status "spotify_exit")
-(defvar volume_scale_reveal false)
+(defvar sink_scale_reveal false)
+(defvar source_scale_reveal false)
+(defvar source_muted false)
+(defvar sink_muted false)
 
 (defpoll date :interval "1s"
   "date '+%a %d %b %Y'")
@@ -15,8 +18,11 @@
 (defpoll network_info :interval "1s"
   "scripts/network.sh info")
 
-(deflisten audio_volume
-  "scripts/trace_audio_volume.sh")
+(deflisten sink_volume
+  "scripts/trace_audio_volume.sh sink")
+
+(deflisten source_volume
+  "scripts/trace_audio_volume.sh source")
 
 (deflisten active_keymap
   "scripts/trace_active_keymap.sh")
@@ -45,7 +51,8 @@
      (box :class "right"
       :halign "end"
       :space-evenly false
-       (audio)
+       (mic)
+       (sink)
        (resources)
        (network)
        ; laptop only
@@ -102,22 +109,45 @@
   )
 )
 
-(defwidget audio []
+(defwidget sink []
   (eventbox
     :onrightclick "pavucontrol &"
-    :onscroll "scripts/change_audio_volume.sh {}"
+    :onmiddleclick "scripts/change_audio_volume.sh sink toggle"
+    :onscroll "scripts/change_audio_volume.sh sink {}"
     (box :class "audio"
       :space-evenly false
 
-      (metric :label "${audio_volume}% ${
-        audio_volume < 25 ? "󰕿 " :
-          audio_volume < 75 ? "󰖀 " : "󰕾 "}"
-          :onhover "eww update volume_scale_reveal=true"
-          :onhoverlost "eww update volume_scale_reveal=false"
-          :reveal {volume_scale_reveal}
-          :value {audio_volume}
+      (metric :label "${sink_volume}% ${
+        sink_muted ? "󰖁 ":
+        sink_volume < 25 ? "󰕿 " :
+          sink_volume < 75 ? "󰖀 " : "󰕾 "}"
+          :onhover "eww update sink_scale_reveal=true"
+          :onhoverlost "eww update sink_scale_reveal=false"
+          :reveal {sink_scale_reveal}
+          :value {sink_volume}
           ;wpctl is for pipewire
           :onchange "wpctl set-volume @DEFAULT_AUDIO_SINK@ {}%"
+      )
+    )
+  )
+)
+
+(defwidget mic []
+  (eventbox
+    :onrightclick "pavucontrol &"
+    :onmiddleclick "scripts/change_audio_volume.sh source toggle"
+    :onscroll "scripts/change_audio_volume.sh source {}"
+    (box :class "audio"
+      :space-evenly false
+
+      (metric :label "${source_volume}% ${
+          source_volume == 0 || source_muted ? "󰍭 " : "󰍬 "}"
+          :onhover "eww update source_scale_reveal=true"
+          :onhoverlost "eww update source_scale_reveal=false"
+          :reveal {source_scale_reveal}
+          :value {source_volume}
+          ;wpctl is for pipewire
+          :onchange "wpctl set-volume @DEFAULT_AUDIO_SOURCE@ {}%"
       )
     )
   )
