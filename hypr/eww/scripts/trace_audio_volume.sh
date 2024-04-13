@@ -19,6 +19,7 @@ case "$1" in
         ;;
     source)
         audio_device="@DEFAULT_AUDIO_SOURCE@"
+        source_status=$(pactl get-source-mute @DEFAULT_SOURCE@)
         if [[ $source_status == "Mute: no" ]]; then
             eww update source_muted=false
         else

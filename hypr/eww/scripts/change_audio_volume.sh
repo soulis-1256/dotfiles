@@ -49,11 +49,14 @@ else
     elif [[ $1 == "source" ]]; then
         source_status=$(pactl get-source-mute @DEFAULT_SOURCE@)
         if [[ $source_status == "Mute: no" ]]; then
+            nohup play ~/Downloads/mute.wav </dev/null >/dev/null 2>&1 &
             eww update source_muted=true
         else
+            nohup play ~/Downloads/unmute.wav </dev/null >/dev/null 2>&1 &
             eww update source_muted=false
         fi
         wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+        exit 0
     else
         echo "Usage: $0 [sink|source] [up|down|toggle]" >&2
         exit 1

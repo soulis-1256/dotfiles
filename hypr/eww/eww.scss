@@ -33,6 +33,24 @@ tooltip {
 
 // Styles on classes (see eww.yuck for more information)
 
+.systray {
+  background-color: $darker-bg;
+  color: $accent;
+  margin-right: 12px;
+  border-radius :10px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.systray menuitem {
+  background-color: $darker-bg;
+}
+
+.systray menuitem:hover {
+  background-color: $accent;
+  color: $darker-bg;
+}
+
 .resources {
   background-color: $darker-bg;
   color: $accent;
@@ -164,7 +182,7 @@ tooltip {
 
 .metric scale trough highlight {
   all: unset;
-  background-color: #D35D6E;
+  background-color: $accent;
   color: #000000;
   border-radius: 10px;
 }
