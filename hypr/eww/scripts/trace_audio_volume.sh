@@ -45,4 +45,7 @@ while true; do
         echo "$current_volume"
         prev_volume="$current_volume"
     fi
+    # this is necessary for now
+    # too much cpu usage without it
+    sleep 1
 done

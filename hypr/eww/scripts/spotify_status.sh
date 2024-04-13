@@ -41,4 +41,7 @@ while true; do
         update_eww "music_status" "status"
         update_eww "music_volume" "volume"
     fi
+    # this is necessary for now
+    # too much cpu usage without it
+    sleep 1
 done
