@@ -12,11 +12,12 @@
 (defpoll time :interval "1s"
 "date '+%H:%M'")
 
-(defpoll network :interval "1s"
-  "scripts/network.sh type")
+; not needed when there is systray+nm-applet running
+;(defpoll network :interval "1s"
+;  "scripts/network.sh type")
 
-(defpoll network_info :interval "1s"
-  "scripts/network.sh info")
+;(defpoll network_info :interval "1s"
+;  "scripts/network.sh info")
 
 (deflisten sink_volume
   "scripts/trace_audio_volume.sh sink")
@@ -97,13 +98,14 @@
   )
 )
 
-(defwidget network []
-  (box :class "network"
-    (button :onclick "alacritty -T \"nmtui\" -e nmtui &"
-      (label :text {network} :tooltip {network_info})
-    )
-  )
-)
+; not needed when there is systray+nm-applet running
+;(defwidget network []
+;  (box :class "network"
+;    (button :onclick "alacritty -T \"nmtui\" -e nmtui &"
+;      (label :text {network} :tooltip {network_info})
+;    )
+;  )
+;)
 
 (defwidget active_keymap []
   (box :class "active_keymap"
