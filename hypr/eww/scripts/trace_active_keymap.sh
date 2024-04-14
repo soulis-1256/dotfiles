@@ -30,6 +30,9 @@ previous_key=""
 echo "$(get_active_keymap $1)"
 
 # Monitor keyboard input
+# If you need to run this as sudo (if you notice changing language doesnt get detected),
+# add the following to /etc/sudoers:
+# <username> ALL=(ALL:ALL) NOPASSWD: /usr/bin/showmethekey-cli
 showmethekey-cli 2>/dev/null | grep --line-buffered -oP '(LEFTMETA|SPACE)' | while read -r key; do
     if [[ $key == "LEFTMETA" ]]; then
         if $meta_pressed; then

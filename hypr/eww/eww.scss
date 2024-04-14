@@ -181,6 +181,7 @@ tooltip {
   background-color: $accent;
 }
 
+/*
 .metric scale trough {
   all: unset;
   background-color: #4e4e4e;
@@ -198,26 +199,7 @@ tooltip {
   background-color: $accent;
   color: #000000;
   border-radius: 10px;
-}
-
-.mic_threshold trough {
-  all: unset;
-  background-color: #4e4e4e;
-  border-radius: 50px;
-  min-height: 5px;
-  min-width: 5px;
-  margin-left: 5px;
-  margin-right: 5px;
-  margin-top: 3px;
-  margin-bottom: 3px;
-}
-
-.mic_threshold trough highlight {
-  all: unset;
-  background-color: $accent;
-  color: #000000;
-  border-radius: 10px;
-}
+}*/
 
 /*
 .music-controls {
