@@ -9,13 +9,12 @@ function clamp {
 
 direction=$1
 current=$2
-if test "$direction" = "up"
-then
+
+if test "$direction" = "up"; then
 	target=$(clamp 1 10 $(($current+1)))
 	echo "jumping to $target"
 	hyprctl dispatch workspace $target
-elif test "$direction" = "down"
-then
+elif test "$direction" = "down"; then
 	target=$(clamp 1 10 $(($current-1)))
 	echo "jumping to $target"
 	hyprctl dispatch workspace $target

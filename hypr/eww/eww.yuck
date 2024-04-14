@@ -20,6 +20,9 @@
 ;(defpoll network_info :interval "1s"
 ;  "scripts/network.sh info")
 
+(deflisten mic_rec_thresh
+  "scripts/trace_mic_level.sh")
+
 (deflisten sink_volume
   "scripts/trace_audio_volume.sh sink")
 
@@ -124,14 +127,10 @@
     (box :class "audio"
       :space-evenly false
 
-      (metric :label "${sink_volume}% ${
+      (label :text "${sink_volume}% ${
         sink_muted ? "󰖁 ":
         sink_volume < 25 ? "󰕿 " :
           sink_volume < 75 ? "󰖀 " : "󰕾 "}"
-          :onhover "eww update sink_scale_reveal=true"
-          :onhoverlost "eww update sink_scale_reveal=false"
-          :reveal {sink_scale_reveal}
-          :value {sink_volume}
       )
     )
   )
@@ -144,13 +143,13 @@
     :onscroll "scripts/change_audio_volume.sh source {}"
     (box :class "audio"
       :space-evenly false
-
-      (metric :label "${source_volume}% ${
-          source_volume == 0 || source_muted ? "󰍭 " : "󰍬 "}"
-          :onhover "eww update source_scale_reveal=true"
-          :onhoverlost "eww update source_scale_reveal=false"
-          :reveal {source_scale_reveal}
-          :value {source_volume}
+      (label :text "${source_volume}% ")
+      (circular-progress
+        :value {mic_rec_thresh}
+        :start-at 25
+        :thickness 2
+        :class "mic_threshold"
+          (label :text "${source_volume == 0 || source_muted ? "󰍭" : "󰍬"}")
       )
     )
   )
@@ -181,19 +180,19 @@
   )
 )
 
-(defwidget metric [ label value onhover onhoverlost reveal]
-  (box :orientation "h"
-    :class "metric"
-    :space-evenly false
-    (eventbox :onhover {onhover}
-              :onhoverlost {onhoverlost}
-      (box :class "label" :space-evenly false label
-        (revealer :transition "slideright" 
-                  :reveal {reveal}
-        (scale :min 0
-               :max 101
-               :active false
-               :value value))))))
+;(defwidget metric [ label value onhover onhoverlost reveal]
+;  (box :orientation "h"
+;    :class "metric"
+;    :space-evenly false
+;    (eventbox :onhover {onhover}
+;              :onhoverlost {onhoverlost}
+;      (box :class "label" :space-evenly false label
+;        (revealer :transition "slideright" 
+;                  :reveal {reveal}
+;        (scale :min 0
+;               :max 101
+;               :active false
+;               :value value))))))
 
 (defwidget power []
   (box :class "power"
