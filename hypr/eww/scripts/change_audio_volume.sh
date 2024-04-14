@@ -16,27 +16,33 @@ if [[ $2 != "toggle" ]]; then
             audio_device="@DEFAULT_AUDIO_SOURCE@"
             ;;
         *)
-            echo "Usage: $0 [sink|source] [up|down|toggle]" >&2
+            echo "Usage: $0 [sink|source] [up|down|toggle|percentage]" >&2
             exit 1
             ;;
     esac
 
-    # Determine the volume adjustment based on the second argument
-    case "$2" in
-        up)
-            adjustment="0.01+"
-            ;;
-        down)
-            adjustment="0.01-"
-            ;;
-        *)
-            echo "Usage: $0 [sink|source] [up|down|toggle]" >&2
-            exit 1
-            ;;
-    esac
+    if [[ $2 =~ ^[0-9]+$ ]]; then
+        # Set volume directly to the specified percentage
+        wpctl set-volume "$audio_device" "$2%" --limit 1.0
+    else
+        # Determine the volume adjustment based on the second argument
+        case "$2" in
+            up)
+                adjustment="0.01+"
+                ;;
+            down)
+                adjustment="0.01-"
+                ;;
+            *)
+                echo "Usage: $0 [sink|source] [up|down|toggle|percentage]" >&2
+                exit 1
+                ;;
+        esac
 
-    # Adjust the volume
-    wpctl set-volume "$audio_device" "$adjustment" --limit 1.0
+        # Adjust the volume
+        wpctl set-volume "$audio_device" "$adjustment" --limit 1.0
+        eww update "$1"_volume=$(wpctl get-volume $audio_device | awk -F':' '{print $2 * 100}')
+    fi
 else
     if [[ $1 == "sink" ]]; then
         sink_status=$(pactl get-sink-mute @DEFAULT_SINK@)

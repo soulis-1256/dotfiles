@@ -129,8 +129,6 @@
           :onhoverlost "eww update sink_scale_reveal=false"
           :reveal {sink_scale_reveal}
           :value {sink_volume}
-          ;wpctl is for pipewire
-          :onchange "wpctl set-volume @DEFAULT_AUDIO_SINK@ {}%"
       )
     )
   )
@@ -150,8 +148,6 @@
           :onhoverlost "eww update source_scale_reveal=false"
           :reveal {source_scale_reveal}
           :value {source_volume}
-          ;wpctl is for pipewire
-          :onchange "wpctl set-volume @DEFAULT_AUDIO_SOURCE@ {}%"
       )
     )
   )
@@ -182,7 +178,7 @@
   )
 )
 
-(defwidget metric [ label value onchange onhover onhoverlost reveal]
+(defwidget metric [ label value onhover onhoverlost reveal]
   (box :orientation "h"
     :class "metric"
     :space-evenly false
@@ -193,9 +189,8 @@
                   :reveal {reveal}
         (scale :min 0
                :max 101
-               :active {onchange != ""}
-               :value value
-               :onchange onchange))))))
+               :active false
+               :value value))))))
 
 (defwidget power []
   (box :class "power"
