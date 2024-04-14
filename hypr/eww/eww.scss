@@ -80,19 +80,9 @@ tooltip {
 }
 
 /*
-.battery {
-  background-color: $darker-bg;
-  color: $accent;
-  margin-right: 12px;
-  border-radius :10px;
-  padding-left: 5px;
-  padding-right: 5px;
-}
-*/
-
 .network {
   //padding-left: 12px;
-}
+}*/
 
 .network button {
   background-color: $darker-bg;
@@ -157,11 +147,12 @@ tooltip {
   background-color: $lighter-bg;
 }
 
+/*
 .power {
   //background-color: #011026;
   //padding: 5px;
   //padding-left: 10px;
-}
+}*/
 
 .power button {
   font-size: 16;
@@ -198,9 +189,10 @@ tooltip {
   border-radius: 10px;
 }
 
+/*
 .music-controls {
   //border: 1px solid #191414;
-}
+}*/
 
 .music-info {
   //border: 1px solid #1DB954;
@@ -244,8 +236,9 @@ tooltip {
   padding-right: 6px;
 }
 
+/*
 .music {
-}
+}*/
 
 .music button {
   background: #1DB954;
@@ -264,10 +257,6 @@ tooltip {
   padding-left: 3px;
 }
 
-.label-ram {
-  font-size: large;
-}
-
 .workspaces {
 	margin-left: 12px;
 	margin-right: 12px;
@@ -275,19 +264,20 @@ tooltip {
 	//margin-bottom: 0px;
         color: $accent;
 	background-color: $darker-bg;
-	transition: none;
 	border-radius: 10px;
 }
 
+
 .workspace-entry {
-  border-radius: 10px;
+  //border-radius: 10px;
   //background-color: #021926;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
 }
 
 .workspace-entry.occupied {
   //background: #408EC6;
-  border: 1px solid $accent;
+  border-radius: 10px;
+  border: 2px solid $accent;
   //color: #1E2761;
 }
 
@@ -296,12 +286,13 @@ tooltip {
 
   // change the radius from 10px to 8px
   // because the new background doesn't override the normal one
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .workspace-entry.current {
   background: $accent;
   color: $darker-bg;
+  border-radius: 10px;
   //border: 2px solid #408EC6  ;
 }
 
@@ -312,14 +303,14 @@ tooltip {
 }
 
 .workspace-entry button {
-  padding: 0px;
-  padding-left: 4px;
-  padding-right: 4px;
+  //padding: 0px;
+  padding-left: 5px;
+  padding-right: 5px;
   border-radius: 10px;
 
   // add transparent border to keep the same size
   // when hovering with active border
-  border: 2px solid transparent;
+  //border: 2px solid transparent;
 }
 
 .workspace-entry button:hover {

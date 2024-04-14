@@ -5,6 +5,7 @@
 (defvar source_scale_reveal false)
 (defvar source_muted false)
 (defvar sink_muted false)
+(defvar max_workspace 1)
 
 (defpoll date :interval "1s"
   "date '+%a %d %b %Y'")
@@ -76,13 +77,15 @@
          :spacing 2
       (label :text "${workspaces}${current_workspace}" :visible false)
       (for workspace in workspaces
-          (box :class "workspace-entry ${workspace.id == current_workspace ? "current" : ""} ${workspace.windows > 0 ? "occupied" : "empty"}"
-            (button :onclick "hyprctl dispatch workspace ${workspace.id}" "${workspace.id}")
+          (box :visible "${workspace.windows > 0 || workspace.id <= current_workspace ? true : false}" :class "workspace-entry ${workspace.id == current_workspace ? "current" : ""} ${workspace.windows > 0 ? "occupied" : "empty"}"
+            (button :onclick "hyprctl dispatch workspace ${workspace.id}" "${workspace.id}"
             )
         )
       )
     )
   )
+)
+
 
 (defwidget date []
   (eventbox :onhover "eww update date_reveal=true"
