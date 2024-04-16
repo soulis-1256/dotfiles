@@ -43,6 +43,25 @@ fi
 ```bash
 chmod +x wlan_auto_toggle.sh
 ```
+### Using ssh instead of https with Git
+```bash
+git config --global url."ssh://git@github.com".insteadOf "https://github.com"
+```
+You can use your ssh key as a signing key (instead of having a separate gpg key):
+```bash
+git config --global gpg.format ssh
+```
+```bash
+git config --global user.signingkey ~/.ssh/YOUR_KEY.pub
+```
+
+### Hyprland plugin development
+1. Fork the plugin you want to modify/improve.
+2. Make your changes and run the makefile to compile and generate the .so library
+3. Use `hyprctl plugin unload /PATHTO/PLUGINLIB.so`
+4. Then `hyprctl plugin load /PATHTO/PLUGINLIB.so`
+5. The above steps can be configured to happen automatically through the Makefile.
+6. When you release a new plugin version, test with `hyprpm add` and `hyprpm enable`.
 
 ### Chrony config (time sync)
 1. Make sure the environment variable ```SYSTEMD_TIMEDATED_NTP_SERVICES=chronyd.service:systemd-timesyncd.service``` is set
