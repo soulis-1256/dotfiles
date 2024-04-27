@@ -18,18 +18,18 @@ button {
 
 button#shutdown {
     margin-left: 20px;
-    padding-right: 45px;
+    padding-right: 30px;
 }
 
 button#reboot {
     margin-left: 20px;
     margin-right: 20px;
-    padding-right: 45px;
+    padding-right: 30px;
 }
 
 button#logout {
     margin-right: 20px;
-    padding-right: 45px;
+    padding-right: 30px;
 }
 
 button:hover {

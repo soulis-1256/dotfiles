@@ -4,13 +4,11 @@
   //font-size: 14;
 }
 
-
 // dark mode
 $lighter-bg: #3c3c3c;
 $main-bg: #000000;
 $darker-bg: #151515;
 $accent: #eeeeee;
-
 
 // light mode
 /*$lighter-bg: #dddddd;
@@ -203,12 +201,13 @@ tooltip {
 }*/
 
 .power button {
-  font-size: 16;
+  font-size: 18;
   margin-right: 12px;
   background-color: $darker-bg;
   color: $accent;
-  padding-left: 6px;
-  padding-bottom: 2px;
+  padding-left: 5px;
+  padding-right: 6px;
+  //padding-bottom: 2px;
   border-radius: 10px; 
   //border: 1px solid #408EC6;
 }
@@ -308,20 +307,21 @@ tooltip {
 }
 
 .workspaces {
-	margin-left: 12px;
-	margin-right: 12px;
-	font-size: 14px;
-	//margin-bottom: 0px;
-        color: $accent;
-	background-color: $darker-bg;
-	border-radius: 10px;
+  margin-left: 12px;
+  margin-right: 12px;
+  font-size: 14px;
+  //margin-bottom: 0px;
+  color: $accent;
+  background-color: $darker-bg;
+  border-radius: 10px;
 }
-
 
 .workspace-entry {
   //border-radius: 10px;
   //background-color: #021926;
   border-bottom: 2px solid transparent;
+  padding-left: 2px;
+  padding-right: 2px;
 }
 
 .workspace-entry.occupied {

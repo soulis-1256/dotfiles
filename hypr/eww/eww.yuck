@@ -202,7 +202,7 @@
     :orientation "h"
     :space-evenly false
     :spacing 10
-    (button :onclick "sleep 0.1 && wlogout &" " ")
+    (button :onclick "sleep 0.1 && wlogout &" "󰐥")
   )
 )
 
