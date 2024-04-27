@@ -57,8 +57,9 @@
      (box :class "right"
       :halign "end"
       :space-evenly false
-       (mic)
+      :spacing 2
        (sink)
+       (mic)
        (resources)
        ; not needed when there is systray+nm-applet running
        ;(network)
@@ -95,11 +96,11 @@
             :onhoverlost "eww update date_reveal=false"
     (box :class "date"
         :space-evenly false
-      (label :text {time})
-      (revealer :transition "slideleft"
-                :reveal {date_reveal}
-        (label :text "${date}")
-      )
+      (label :text "${time} ${date}")
+      ;(revealer :transition "slideleft"
+       ;         :reveal {date_reveal}
+       ; (label :text "${date}")
+      ;)
     )
   )
 )
@@ -121,10 +122,11 @@
 
 (defwidget sink []
   (eventbox
-    :onrightclick "pavucontrol &"
+    :onclick "pavucontrol -t 3 &"
     :onmiddleclick "scripts/change_audio_volume.sh sink toggle"
     :onscroll "scripts/change_audio_volume.sh sink {}"
-    (box :class "audio"
+    :class "audio"
+    (box
       :space-evenly false
 
       (label :text "${sink_volume}% ${
@@ -138,10 +140,11 @@
 
 (defwidget mic []
   (eventbox
-    :onrightclick "pavucontrol &"
+    :onclick "pavucontrol -t 4 &"
     :onmiddleclick "scripts/change_audio_volume.sh source toggle"
     :onscroll "scripts/change_audio_volume.sh source {}"
-    (box :class "audio"
+    :class "audio"
+    (box
       :space-evenly false
       (label :text "${source_volume}% ")
       (circular-progress
@@ -247,6 +250,6 @@
   :geometry (geometry :x "0%"
                       :y "0%"
                       :width "100%"
-                      :height "3%"
+                      :height "0%" ;we dont care about height, css handles it
                       :anchor "top center")
   (bar))

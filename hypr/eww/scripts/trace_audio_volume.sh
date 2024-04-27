@@ -10,21 +10,10 @@ fi
 case "$1" in
     sink)
         audio_device="@DEFAULT_AUDIO_SINK@"
-        sink_status=$(pactl get-sink-mute @DEFAULT_SINK@)
-        if [[ $sink_status == "Mute: no" ]]; then
-            eww update sink_muted=false
-        else
-            eww update sink_muted=true
-        fi
+
         ;;
     source)
         audio_device="@DEFAULT_AUDIO_SOURCE@"
-        source_status=$(pactl get-source-mute @DEFAULT_SOURCE@)
-        if [[ $source_status == "Mute: no" ]]; then
-            eww update source_muted=false
-        else
-            eww update source_muted=true
-        fi
 
         ;;
     *)
@@ -44,6 +33,22 @@ while true; do
     if [ "$current_volume" != "$prev_volume" ]; then
         echo "$current_volume"
         prev_volume="$current_volume"
+    fi
+
+    if [[ $1 == "sink" ]]; then
+        sink_status=$(pactl get-sink-mute @DEFAULT_SINK@)
+        if [[ $sink_status == "Mute: no" ]]; then
+            eww update sink_muted=false
+        else
+            eww update sink_muted=true
+        fi
+    else
+        source_status=$(pactl get-source-mute @DEFAULT_SOURCE@)
+        if [[ $source_status == "Mute: no" ]]; then
+            eww update source_muted=false
+        else
+            eww update source_muted=true
+        fi
     fi
     sleep 1
 done

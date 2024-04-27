@@ -4,10 +4,25 @@
   //font-size: 14;
 }
 
-$lighter-bg: #163450;
+
+// dark mode
+$lighter-bg: #3c3c3c;
+$main-bg: #000000;
+$darker-bg: #151515;
+$accent: #eeeeee;
+
+
+// light mode
+/*$lighter-bg: #dddddd;
+$main-bg: #ffffff;
+$darker-bg: #eeeeee;
+$accent: #000000;*/
+
+// colored mode
+/*$lighter-bg: #163450;
 $main-bg: #022036;
 $darker-bg: #021926;
-$accent: #B15F62;
+$accent: #B15F62;*/
 
 tooltip {
   background-color: #000000;
@@ -18,17 +33,18 @@ tooltip {
   all: unset;
   background-color: transparent;
   //margin-top: 0px;
-  margin-left: 350px;
-  margin-right: 350px;
+  //margin-left: 350px;
+  //margin-right: 350px;
 }
 
 .main-container {
-  margin-top: 3px;
-  margin-bottom: 3px;
+  //margin-top: 3px;
+  //margin-bottom: 3px;
   background-color: $main-bg;
-  border-radius: 10px;
-  padding: 3px;
-  box-shadow: 0 0 8 0 #000000;
+  //border-radius: 10px;
+  border-bottom: 0.2px solid $accent;
+  padding-bottom: 3px;
+  //box-shadow: 0 0 8 0 #000000;
 }
 
 // Styles on classes (see eww.yuck for more information)
@@ -42,8 +58,11 @@ tooltip {
   padding-right: 5px;
 }
 
+
 .systray menuitem {
   background-color: $darker-bg;
+  color: $accent;
+  border: 0.1px solid $accent;
 }
 
 .systray menuitem:hover {
@@ -54,8 +73,8 @@ tooltip {
 .resources {
   background-color: $darker-bg;
   color: $accent;
-  margin-right: 12px;
-  margin-left: 12px;
+  margin-right: 8px;
+  margin-left: 8px;
   border-radius: 10px;
   padding-left: 3px;
   //padding-right: 5px;
@@ -65,8 +84,9 @@ tooltip {
 .date {
   background-color: $darker-bg;
   color: $accent;
-  margin-right: 12px;
+  margin-right: 10px;
   border-radius :10px;
+  padding-top: 1.5px;
   //padding-left: 15px;
   //padding-right: 5px;
   //border: 1px solid #408EC6;
@@ -101,17 +121,34 @@ tooltip {
 .active_keymap {
   background-color: $darker-bg;
   color: $accent;
-  margin-right: 12px;
+  margin-right: 10px;
   border-radius: 10px;
   padding-left: 5px;
   padding-right: 5px;
 }
 
+/*.battery {
+  background-color: $darker-bg;
+  color: $accent;
+  margin-right: 12px;
+  border-radius: 10px;
+  padding-left: 5px;
+  padding-right: 5px;
+}*/
+
 .audio {
   background-color: $darker-bg;
   color: $accent;
   border-radius: 10px;
-  padding-left: 8px;
+}
+
+.audio:hover {
+  background: $lighter-bg;
+  //color: $darker-bg;
+}
+
+.audio box {
+  //padding-left: 8px;
   padding-right: 3px;
   margin-left: 12px;
 }
@@ -139,7 +176,7 @@ tooltip {
 .mic_threshold label {
   font-size: 16px;
   margin: 4px;
-  margin-right: 4px;
+  margin-right: 5px;
   margin-left: 5px;
 }
 
@@ -177,8 +214,9 @@ tooltip {
 }
 
 .power button:hover {
-  color: $darker-bg;
-  background-color: $accent;
+  //color: $darker-bg;
+  //background-color: $accent;
+  background-color: $lighter-bg;
 }
 
 /*
@@ -283,18 +321,19 @@ tooltip {
 .workspace-entry {
   //border-radius: 10px;
   //background-color: #021926;
-  border: 2px solid transparent;
+  border-bottom: 2px solid transparent;
 }
 
 .workspace-entry.occupied {
   //background: #408EC6;
   border-radius: 10px;
-  border: 2px solid $accent;
+  border-bottom: 2px solid $accent;
+  //box-shadow: 2 2 2 0 #ffffff;
   //color: #1E2761;
 }
 
 .workspace-entry.occupied button:hover {
-  background: #333333;
+  background: $lighter-bg;
 
   // change the radius from 10px to 8px
   // because the new background doesn't override the normal one
@@ -309,8 +348,8 @@ tooltip {
 }
 
 .workspace-entry.current button:hover {
-  background: #333333;
-  color: $accent;
+  background: $accent;
+  //color: $accent;
   //border-radius: 0px;
 }
 
@@ -326,6 +365,6 @@ tooltip {
 }
 
 .workspace-entry button:hover {
-  background: #333333;
+  background: $lighter-bg;
   //color: #408EC6;
 }
