@@ -1,9 +1,17 @@
 #!/bin/bash
 
+# add this to debug
+#exec > /tmp/debug_mic.log 2>&1
+
+# add your node from pactl list sources
+node="alsa_input.pci-0000_00_1f.3.analog-stereo"
+# laptop
+#node="alsa_input.pci-0000_00_1b.0.analog-stereo"
+
 # Function to check if target node exists
 check_target_node() {
     # Run pactl command to list sources and grep for the target node
-    pactl list sources | grep -q 'Name: alsa_input.pci-0000_00_1f.3.analog-stereo'
+    pactl list sources | grep -q "Name: $node"
 }
 
 sleep_time=1
@@ -19,7 +27,7 @@ echo "Target node is now available"
 touch /tmp/mic_recording_node_available.flag
 
 # Start pw-record in the background
-pw-record --target alsa_input.pci-0000_00_1f.3.analog-stereo - | {
+pw-record --target $node - | {
 
     # Save pw-record's PID
     pw_record_pid=$!
