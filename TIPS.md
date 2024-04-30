@@ -43,6 +43,10 @@ fi
 ```bash
 chmod +x wlan_auto_toggle.sh
 ```
+5. To debug a startup script that doesn't run properly, add this in the beginning:
+```bash
+exec > /tmp/debug-my-script.log 2>&1
+```
 ### Using ssh instead of https with Git
 ```bash
 git config --global url."ssh://git@github.com".insteadOf "https://github.com"
