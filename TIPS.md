@@ -43,7 +43,7 @@ fi
 ```bash
 chmod +x wlan_auto_toggle.sh
 ```
-5. To debug a startup script that doesn't run properly, add this in the beginning:
+5. To debug a bash startup script that doesn't run properly, add this in the beginning:
 ```bash
 exec > /tmp/debug-my-script.log 2>&1
 ```
