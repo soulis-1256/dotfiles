@@ -4,11 +4,13 @@
   //font-size: 14;
 }
 
+
 // dark mode
 $lighter-bg: #3c3c3c;
 $main-bg: #000000;
 $darker-bg: #151515;
 $accent: #eeeeee;
+
 
 // light mode
 /*$lighter-bg: #dddddd;
@@ -119,10 +121,10 @@ tooltip {
 .active_keymap {
   background-color: $darker-bg;
   color: $accent;
-  margin-right: 10px;
+  //margin-right: 100px;
   border-radius: 10px;
-  padding-left: 5px;
-  padding-right: 5px;
+  //padding-left: 5px;
+  //padding-right: 5px;
 }
 
 /*.battery {
@@ -201,7 +203,7 @@ tooltip {
 }*/
 
 .power button {
-  font-size: 18;
+  font-size: 18px;
   margin-right: 12px;
   background-color: $darker-bg;
   color: $accent;
@@ -315,6 +317,7 @@ tooltip {
   background-color: $darker-bg;
   border-radius: 10px;
 }
+
 
 .workspace-entry {
   //border-radius: 10px;

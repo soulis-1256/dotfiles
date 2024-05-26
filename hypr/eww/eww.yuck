@@ -5,7 +5,6 @@
 (defvar source_scale_reveal false)
 (defvar source_muted false)
 (defvar sink_muted false)
-(defvar max_workspace 1)
 
 (defpoll date :interval "1s"
   "date '+%a %d %b %Y'")
@@ -20,16 +19,16 @@
 ;(defpoll network_info :interval "1s"
 ;  "scripts/network.sh info")
 
-(deflisten mic_rec_thresh
+(deflisten mic_rec_thresh :initial 0
   "scripts/trace_mic_level.sh")
 
-(deflisten sink_volume
+(deflisten sink_volume :initial 0
   "scripts/trace_audio_volume.sh sink")
 
-(deflisten source_volume
+(deflisten source_volume :initial 0
   "scripts/trace_audio_volume.sh source")
 
-(deflisten active_keymap
+(deflisten active_keymap :initial "en"
   "scripts/trace_active_keymap.sh")
 
 (deflisten active_keymap_full
@@ -44,58 +43,62 @@
 (deflisten current_workspace :initial "1"
   "scripts/get-active-workspace.sh")
 
-(defwidget bar []
-  (centerbox :class "main-container"
-    (box :class "left" :space-evenly false
-       (workspaces)
-       (systray :class "systray" :spacing 10 :icon-size 20)
+(defwidget bar [monitor]
+  (centerbox :class "main-container" :orientation {monitor == 1 ? "h" : "v"}
+    (box :class "left" :space-evenly false :orientation {monitor == 1 ? "h" : "v"}
+      (workspaces :monitor {monitor} :orientation {monitor == 1 ? "h" : "v"})
+       (systray :class "systray" :spacing 10 :icon-size 20 :orientation {monitor == 1 ? "h" : "v"})
      ) 
      (box :class "center"
        :space-evenly false
-       (music)
+       :orientation {monitor == 1 ? "h" : "v"}
+       (music :orientation {monitor == 1 ? "h" : "v"})
      )
      (box :class "right"
       :halign "end"
+      :valign "end"
       :space-evenly false
       :spacing 2
-       (sink)
-       (mic)
-       (resources)
+      :orientation {monitor == 1 ? "h" : "v"}
+      (sink :orientation {monitor == 1 ? "h" : "v"})
+      (mic :orientation {monitor == 1 ? "h" : "v"})
+       (resources :orientation {monitor == 1 ? "h" : "v"})
        ; not needed when there is systray+nm-applet running
        ;(network)
        ; laptop only
        ;(_battery :status {EWW_BATTERY.BAT0.status}
        ;          :capacity {EWW_BATTERY.BAT0.capacity}
        ;          :charging "" :empty " " :low " " :medium " " :high " " :very-high " ")
-       (active_keymap)
-       (date)
-       (power)
+       (active_keymap :orientation {monitor == 1 ? "h" : "v"})
+       (date :orientation {monitor == 1 ? "h" : "v"})
+       (power :orientation {monitor == 1 ? "h" : "v"})
       )
   )
 )
 
-(defwidget workspaces []
-  (eventbox :onscroll "scripts/change-active-workspace.sh {} ${current_workspace}" :class "workspaces-widget"
+(defwidget workspaces [orientation monitor]
+  (eventbox :onscroll "scripts/change-active-workspace.sh {} ${current_workspace} ${monitor}" :class "workspaces-widget"
     (box :class "workspaces"
          :space-evenly false
          :spacing 2
+         :orientation {orientation}
       (label :text "${workspaces}${current_workspace}" :visible false)
-      (for workspace in workspaces
-          (box :visible "${workspace.windows > 0 || workspace.id <= current_workspace ? true : false}" :class "workspace-entry ${workspace.id == current_workspace ? "current" : ""} ${workspace.windows > 0 ? "occupied" : "empty"}"
-            (button :onclick "hyprctl dispatch workspace ${workspace.id}" "${workspace.id}"
-            )
+      (for workspace in {workspaces[monitor]}
+        (box :visible "${workspace.windows > 0 || workspace.id <= current_workspace ? true : false}" :class "workspace-entry ${workspace.id == current_workspace ? "current" : ""} ${workspace.windows > 0 ? "occupied" : "empty"}"
+          (button :onclick "hyprctl dispatch workspace ${workspace.id}" "${workspace.id}")
         )
       )
     )
   )
 )
 
-
-(defwidget date []
+(defwidget date [orientation]
   (eventbox :onhover "eww update date_reveal=true"
             :onhoverlost "eww update date_reveal=false"
     (box :class "date"
         :space-evenly false
+      :visible {orientation == "h" ? true : false}
+      :orientation {orientation}
       (label :text "${time} ${date}")
       ;(revealer :transition "slideleft"
        ;         :reveal {date_reveal}
@@ -114,22 +117,23 @@
 ;  )
 ;)
 
-(defwidget active_keymap []
-  (box :class "active_keymap"
+(defwidget active_keymap [orientation]
+  (box :class "active_keymap" :css "* {margin-right: 10px; padding-right: 5px; padding-left: 5px;}"
     (label :text {active_keymap} :tooltip {active_keymap_full})
   )
 )
 
-(defwidget sink []
+(defwidget sink [orientation]
   (eventbox
     :onclick "pavucontrol -t 3 &"
-    :onmiddleclick "scripts/change_audio_volume.sh sink toggle"
+    :onrightclick "scripts/change_audio_volume.sh sink toggle"
     :onscroll "scripts/change_audio_volume.sh sink {}"
     :class "audio"
     (box
       :space-evenly false
-
-      (label :text "${sink_volume}% ${
+      :orientation {orientation}
+      (label :text "${sink_volume}% ")
+      (label :text "${
         sink_muted ? "󰖁 ":
         sink_volume < 25 ? "󰕿 " :
           sink_volume < 75 ? "󰖀 " : "󰕾 "}"
@@ -138,14 +142,15 @@
   )
 )
 
-(defwidget mic []
+(defwidget mic [orientation]
   (eventbox
     :onclick "pavucontrol -t 4 &"
-    :onmiddleclick "scripts/change_audio_volume.sh source toggle"
+    :onrightclick "scripts/change_audio_volume.sh source toggle"
     :onscroll "scripts/change_audio_volume.sh source {}"
     :class "audio"
     (box
       :space-evenly false
+      :orientation {orientation}
       (label :text "${source_volume}% ")
       (circular-progress
         :value {mic_rec_thresh}
@@ -158,8 +163,8 @@
   )
 )
 
-(defwidget resources []
-  (box :class "resources" :orientation "h" :space-evenly false
+(defwidget resources [orientation]
+  (box :class "resources" :orientation {orientation} :space-evenly false
     (box :class "ram"
       :tooltip "RAM: ${round(EWW_RAM.used_mem / 1000000000, 1)} (used) / ${round(EWW_RAM.total_mem / 1000000000, 1)} GB"
       (circular-progress
@@ -197,31 +202,31 @@
 ;               :active false
 ;               :value value))))))
 
-(defwidget power []
+(defwidget power [orientation]
   (box :class "power"
-    :orientation "h"
+    :orientation {orientation}
     :space-evenly false
     :spacing 10
     (button :onclick "sleep 0.1 && wlogout &" "󰐥")
   )
 )
 
-(defwidget music []
+(defwidget music [orientation]
   (box :class "music"
-    :orientation "h"
+    :orientation {orientation}
     :space-evenly false
     :halign "center"
-    :visible {music_status == "spotify_exit" ? false : true}
+    :visible {music_status == "spotify_exit" || orientation == "v" ? false : true}
     (box :class "music-controls"
-         :orientation "h"
+         :orientation {orientation}
          :space-evenly false
          (button :class "music-back" :onclick "playerctl --player spotify previous" "")
          (button :class "music-control" :onclick "scripts/spotify_control.sh"
           {music_status == "Paused" ? " " : " "}
          )
          (button :class "music-next" :onclick "playerctl next" ""))
-    (box :class "music-info-outer"
-    (box :class "music-info"
+    (box :class "music-info-outer" :orientation {orientation}
+    (box :class "music-info" :orientation {orientation}
      (label :limit-width 40 :text {music_info != "" ? "${music_info} " : ""}))
     )
     (eventbox
@@ -243,8 +248,8 @@
 ;            capacity < 75 ? high : very-high}" :tooltip "Status: ${status}
 ;Capacity: ${capacity}%")))
 
-(defwindow bar
-  :monitor 0
+(defwindow bar-monitor1
+  :monitor '["DP-1", "24G2W1G3-"]'
   :stacking "bg"
   :exclusive true
   :geometry (geometry :x "0%"
@@ -252,4 +257,17 @@
                       :width "100%"
                       :height "0%" ;we dont care about height, css handles it
                       :anchor "top center")
-  (bar))
+  (bar :monitor 1))
+
+(defwindow bar-monitor0
+  :monitor '["HDMI-A-1", "DELL S2421HN"]'
+  :stacking "bg"
+  :exclusive true
+  ;:reserve (struts :distance "400px" :side "left")
+  :geometry (geometry :x "0%"
+                      :y "0%"
+                      :width "0%" ;we dont care about width, css handles it
+                      :height "100%"
+                      :anchor "left center"
+  )
+  (bar :monitor 0))

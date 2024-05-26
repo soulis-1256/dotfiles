@@ -21,7 +21,7 @@ while ! check_target_node; do
     sleep $sleep_time
 done
 
-echo "Target node is now available"
+echo "$0: Target node is now available"
 
 # Create a flag file to indicate that the node is available
 touch /tmp/mic_recording_node_available.flag
