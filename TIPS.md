@@ -51,6 +51,10 @@ exec > /tmp/debug-my-script.log 2>&1
 ```bash
 git config --global url."ssh://git@github.com".insteadOf "https://github.com"
 ```
+To unset it:
+```bash
+git config --global --unset url."ssh://git@github.com".insteadOf "https://github.com"
+```
 You can use your ssh key as a signing key (instead of having a separate gpg key):
 ```bash
 git config --global gpg.format ssh
