@@ -117,3 +117,32 @@ yay -S sbctl
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB --modules="tpm" --disable-shim-lock
 ```
 4. Run the [wiki guide](https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface/Secure_Boot#Assisted_process_with_sbctl) for `sbctl` and sign everything before rebooting.
+
+# Floorp/Firefox customization
+The following is tested on Floorp 11.18.1. Keep "Show the "Open a new tab" button inside Vertical Tab Bar" turned off.
+```css
+@charset "UTF-8";
+@-moz-document url(chrome://browser/content/browser.xhtml) {
+   /* Hide the mute/unmute button */
+   .tab-icon-overlay:not([pinned], [sharing], [crashed]):is([soundplaying], [muted]) {
+      display: none !important;
+   }
+   /* Keep site icon visible on hover */
+   .tabbrowser-tab:hover .tab-icon-stack:not([pinned], [sharing], [crashed]):is([soundplaying], [muted]) > :not(.tab-icon-overlay), 
+      /* for site icon with Compact density */
+   :root[uidensity="compact"] .tab-icon-stack:not([pinned], [sharing], [crashed]):is([soundplaying], [muted]) > :not(.tab-icon-overlay) {
+      opacity: 1 !important; /* overrides full transparency with full opacity */
+   }
+
+   /* Move new-tab-button and alltabs-button above the tabs */
+   #verticaltabs-box {
+      display: flex;
+      flex-direction: column;
+   }
+   
+   #new-tab-button,
+   #alltabs-button {
+      order: -1;
+   }
+}
+```
