@@ -1,0 +1,24 @@
+#Requires AutoHotkey v2.0
+
+; Clear all tabs on Arc Browser startup
+; Workaround to missing/bugged setting on Windows version
+
+SetTitleMatchMode(2)  ; Set window title match mode to allow partial matches
+
+arcPreviouslyOpen := false  ; Track if Arc was previously open
+
+Loop {
+    ; Check if any Arc window is open
+    if WinExist("Arc") {
+        if !arcPreviouslyOpen {
+            ; Arc window just opened (from 0 to 1 window), send Ctrl + Shift + K
+            Send("^+k")
+            arcPreviouslyOpen := true  ; Arc is now open
+        }
+        Sleep(2000)  ; While Arc is open, check every 2 seconds
+    } else {
+        ; If no Arc windows are open, reset the tracking variable
+        arcPreviouslyOpen := false
+        Sleep(2000)  ; Check every 2 seconds when no Arc window is open to reduce CPU usage
+    }
+}
