@@ -1,13 +1,18 @@
-import = ["~/.config/alacritty/themes/themes/carbonfox.toml"]
+# Windows
+import = ['C:\Users\Soulis\AppData\Roaming\alacritty\themes\themes\carbonfox.toml']
+
+# Linux
+# import = ["~/.config/alacritty/themes/themes/carbonfox.toml"]
 
 [cursor.style]
 shape = "Beam"
 
 [font]
 size = 12
+offset.x = 1
 
 [font.normal]
-family = "JetBrainsMono Nerd Font"
+family = "Monaspace Argon"
 style = "Regular"
 
 [window]
