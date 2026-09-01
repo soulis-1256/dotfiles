@@ -26,6 +26,7 @@ The repository is modularized into **Stow Packages** so shared utilities remain 
 dotfiles/
 ├── common/                             # SHARED ACROSS ALL MACHINES
 │   ├── .config/
+│   │   ├── hypr/                       # Single source of truth (binds, focus engine, smart borders)
 │   │   ├── quickshell/dms/             # Custom QML desktop shell modules, grabs & focus fixes
 │   │   ├── ghostty/                    # Ghostty terminal styling & keybinds
 │   │   ├── fish/                       # Fish shell configuration & completions
@@ -33,38 +34,47 @@ dotfiles/
 │   │   ├── zed/                        # Zed editor config
 │   │   ├── btop/                       # Btop resource monitor layout
 │   │   ├── pipewire/                   # Mic volume protection (Vesktop / Discord fix)
-│   │   ├── gtk-3.0/                    # GTK3 styling
-│   │   └── gtk-4.0/                    # GTK4 styling
+│   │   ├── gtk-3.0/                    # GTK3 styling & colors
+│   │   └── gtk-4.0/                    # GTK4 styling & colors
 │   ├── .local/bin/
 │   │   └── dms-game-overlay            # Super-tap game focus drop & launcher overlay
 │   └── .bashrc                         # Base interactive bash config
 │
 ├── desktop/                            # STOWED ONLY ON DESKTOP
 │   └── .config/
-│       ├── hypr/                       # Desktop dual-monitor layout (ASUS 1440p + AOC portrait)
+│       ├── hypr/
+│       │   └── desktop.lua             # Desktop overrides (Zen autostart, secondary screen PiP, Vesktop ws10)
 │       ├── DankMaterialShell/          # Desktop settings (Bottom main bar + 2nd portrait bar)
 │       └── matugen/                    # Desktop color palette config
 │
 ├── laptop/                             # STOWED ONLY ON LAPTOP
 │   └── .config/
-│       ├── hypr/                       # ThinkPad TrackPoint (touchpad off) & Lid DPMS blanking
-│       └── DankMaterialShell/          # Laptop settings (Top bar, single bar, laptop theme)
+│       ├── hypr/
+│       │   └── laptop.lua              # Laptop overrides (centered 16:9 PiP)
+│       ├── DankMaterialShell/          # Laptop settings (Top bar, single bar, laptop theme)
+│       └── matugen/                    # Laptop color palette config
 │
 ├── install.sh                          # Light installer with auto-detection & dry-run mode
 ├── .stow-local-ignore                  # Prevents docs/installer from linking to $HOME
-└── .gitignore                          # Ignores backups, state, and secrets
+└── .gitignore                          # Ignores backups, runtime palettes, and secrets
 ```
 
 ---
 
 ## Installation & Deployment
 
-### 1. Install Dependencies
+### 1. Install Required Packages
 
 On Arch Linux / CachyOS:
 
 ```bash
-sudo pacman -S stow git
+# Core window manager, theming & essentials
+sudo pacman -S --needed stow git hyprland hyprlock xdg-desktop-portal-hyprland \
+                        xdg-desktop-portal-gtk adw-gtk-theme breeze-icons \
+                        wl-clipboard cliphist ghostty fish btop dolphin
+
+# Dynamic theming & shell (AUR)
+paru -S --needed matugen-bin dankmaterialshell
 ```
 
 ### 2. Clone the Repository
