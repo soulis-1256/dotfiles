@@ -110,7 +110,9 @@ hl.config({
         ["col.inactive_border"] = "rgba(00000000)"
     }
 })
-require("dms.outputs")
+if not pcall(require, "dms.outputs") then
+	hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
+end
 require("dms.layout")
 require("dms.cursor")
 require("dms.binds")

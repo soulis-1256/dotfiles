@@ -29,4 +29,7 @@ secrets.fish
 *.local
 *.local.*
 *.local.fish
+outputs.lua
+dms/outputs.lua
+
 
