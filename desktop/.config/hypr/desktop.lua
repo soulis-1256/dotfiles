@@ -32,6 +32,7 @@ hl.window_rule({
 	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
 	float = true,
 	pin = true,
+	size = "965 543",
 	move = "66 1247",
 	workspace = "10",
 })
