@@ -68,13 +68,14 @@ dotfiles/
 On Arch Linux / CachyOS:
 
 ```bash
-# Core window manager, theming & essentials
+# Core window manager, desktop shell & essentials
 sudo pacman -S --needed stow git hyprland hyprlock xdg-desktop-portal-hyprland \
                         xdg-desktop-portal-gtk adw-gtk-theme breeze-icons \
-                        wl-clipboard cliphist ghostty fish btop dolphin
+                        wl-clipboard cliphist ghostty fish btop dolphin \
+                        matugen quickshell dms-shell
 
-# Dynamic theming & shell (AUR)
-paru -S --needed matugen-bin dankmaterialshell
+# Or install DankMaterialShell via the official installer:
+# curl -fsSL https://dank.avengemedia.net/install.sh | bash
 ```
 
 ### 2. Clone the Repository
