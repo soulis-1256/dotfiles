@@ -161,7 +161,7 @@ hl.bind("SUPER + SHIFT + minus", hl.dsp.window.resize({ x = 0, y = -100, relativ
 hl.bind("SUPER + SHIFT + equal", hl.dsp.window.resize({ x = 0, y = 100, relative = true }), { repeating = true })
 
 -- === Screenshots ===
-hl.bind("Print", hl.dsp.exec_cmd("dms screenshot"))
+hl.bind("Print", hl.dsp.exec_cmd("dms screenshot --no-confirm"))
 hl.bind("CTRL + Print", hl.dsp.exec_cmd("dms screenshot full"))
 hl.bind("ALT + Print", hl.dsp.exec_cmd("dms screenshot window"))
 

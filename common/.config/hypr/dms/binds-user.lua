@@ -1,7 +1,7 @@
 -- DMS user keybind overrides (edit via Control Center or dms; do not remove this header)
 
 hl.unbind("Print")
-hl.bind("Print", hl.dsp.exec_cmd("dms screenshot -d /tmp"), { description = "dms screenshot" })
+hl.bind("Print", hl.dsp.exec_cmd("dms screenshot --no-confirm -d /tmp"), { description = "dms screenshot" })
 hl.unbind("SUPER + R")
 hl.bind("SUPER + R", hl.dsp.exec_cmd("dms ipc call spotlight toggle"), { description = "Spotlight" })
 hl.unbind("SUPER + 0")
