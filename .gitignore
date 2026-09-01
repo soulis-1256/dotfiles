@@ -26,10 +26,12 @@ __pycache__/
 
 # Secrets & machine-specific overrides
 secrets.fish
-*.local
-*.local.*
 *.local.fish
+*.local.sh
+*.local.lua
 outputs.lua
 dms/outputs.lua
+!common/.local/bin/dms-game-overlay
+
 
 
