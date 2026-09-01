@@ -1,32 +1,59 @@
--- Per-output monitor rules. Deploy writes ~/.config/hypr/dms/outputs.lua
---
--- Physical cabinets sit bottom-aligned:
---   Left  DP-2  AOC 24G2W1G3   1920x1080, transform 1 (portrait)
---   Right DP-1  ASUS XG27ACS   2560x1440, landscape
---
--- Portrait "bottom" is the monitor's landscape-right side (~6 mm side bezel).
--- Landscape bottom is the ASUS chin (~20 mm, ROG logo + G-SYNC badge).
--- So the ASUS panel sits 14 mm higher than the AOC panel.
---
--- AOC portrait: 1920 px / 527.04 mm = 3.643 px/mm
--- 14 mm × 3.643 ≈ 51 px  →  ASUS bottom is 51 px above AOC bottom.
--- AOC at y=0 (bottom 1920); ASUS y = 1920 - 51 - 1440 = 429.
+-- Dynamic Monitor & Host Configuration Loader
+-- Automatically loads host-specific geometry or falls back to chassis detection.
 
-hl.monitor({
-	output = "DP-2",
-	mode = "1920x1080@165.003",
-	position = "0x0",
-	scale = 1,
-	transform = 1,
-	vrr = 0,
-})
-hl.monitor({
-	output = "DP-1",
-	mode = "2560x1440@179.999",
-	position = "1080x429",
-	scale = 1,
-	vrr = 1,
-})
+local function trim(s)
+	return s and s:match("^%s*(.-)%s*$") or ""
+end
 
--- Default fallback
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
+local function get_hostname()
+	local handle = io.popen("uname -n 2>/dev/null")
+	if handle then
+		local result = handle:read("*l")
+		handle:close()
+		return trim(result)
+	end
+	return ""
+end
+
+local function is_laptop()
+	-- Check 1: Chassis type via hostnamectl
+	local handle = io.popen("hostnamectl chassis 2>/dev/null")
+	if handle then
+		local chassis = trim(handle:read("*l"))
+		handle:close()
+		if chassis == "laptop" or chassis == "convertible" or chassis == "handheld" or chassis == "notebook" then
+			return true
+		end
+	end
+	-- Check 2: Check for internal eDP panel
+	if os.execute("test -d /sys/class/drm/*-eDP-1 -o -d /sys/class/drm/*-eDP-2 2>/dev/null") == 0 then
+		return true
+	end
+	-- Check 3: Battery existence
+	if os.execute("test -d /sys/class/power_supply/BAT0 -o -d /sys/class/power_supply/BAT1 2>/dev/null") == 0 then
+		return true
+	end
+	return false
+end
+
+local hostname = get_hostname()
+local loaded = false
+
+-- 1. Try hostname-specific host file (e.g. hosts/soulis-cachyos.lua)
+if hostname ~= "" then
+	loaded = pcall(require, "hosts." .. hostname)
+end
+
+-- 2. Fallback to chassis-based profiles if no exact hostname match
+if not loaded then
+	if is_laptop() then
+		loaded = pcall(require, "hosts.laptop")
+		if not loaded then
+			hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1.0 })
+			hl.config({ gestures = { workspace_swipe = true, workspace_swipe_fingers = 3 } })
+		end
+	else
+		-- Generic multi/single-monitor desktop fallback
+		hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
+	end
+end
