@@ -43,8 +43,7 @@ HyprlandFocusGrab {
         active = true;
     }
 
-    onCleared: {
-        _compositorCleared = true;
-        DismissCatcher.dismiss();
-    }
+    // Nested surfaces (power menu) clear this grab; dismiss is owned by
+    // DismissCatcherWindow so stacked dialogs are not closed with the parent.
+    onCleared: _compositorCleared = true
 }

@@ -2,14 +2,9 @@
 
 Modern, minimal, and keyboard-driven desktop configuration on **CachyOS / Arch Linux**.
 
-![Hyprland](https://img.shields.io/badge/Hyprland-0.56.2-blue?logo=archlinux)
-![Shell](https://img.shields.io/badge/Desktop%20Shell-DankMaterialShell%20(Quickshell)-purple)
-![Terminal](https://img.shields.io/badge/Terminal-Ghostty-black)
-![Color Scheme](https://img.shields.io/badge/Theming-Matugen%20Material%20You-teal)
-
 ---
 
-## 🖥️ System Stack
+## System Stack
 
 - **OS:** CachyOS (Arch Linux based)
 - **Window Manager:** [Hyprland](https://hyprland.org) (Lua configuration format)
@@ -19,10 +14,11 @@ Modern, minimal, and keyboard-driven desktop configuration on **CachyOS / Arch L
 - **Shell:** Fish
 - **Editors:** Neovim / Zed
 - **System Monitor:** Btop
+- **Dotfiles Manager:** GNU Stow
 
 ---
 
-## 📂 Repository Structure
+## Repository Structure
 
 ```text
 dotfiles/
@@ -40,13 +36,17 @@ dotfiles/
 │   └── gtk-4.0/            # GTK4 styling
 ├── .local/
 │   └── bin/
-│       └── dms-game-overlay # Super-tap game focus drop & launcher overlay
+│       ├── dms-game-overlay # Super-tap game focus drop & launcher overlay
+│       ├── env
+│       ├── env.fish
+│       └── hermes
+├── .stow-local-ignore      # Prevents documentation files from linking to $HOME
 └── .gitignore
 ```
 
 ---
 
-## ⚡ Key Highlights & Features
+## Key Highlights & Features
 
 - **Smart Window Borders:** Single windows have `border_size = 0` (clean fullscreen look), while multi-window workspaces show active focused borders.
 - **Smart Game Overlay:** Releasing `Super` opens the App Launcher on desktop, or drops pointer lock and exposes the Control Center over fullscreen games.
@@ -56,14 +56,65 @@ dotfiles/
 
 ---
 
-## 🚀 Quick Setup / Installation
+## Installation & Setup
 
-Clone the repository and symlink configs to your home directory:
+### 1. Install GNU Stow & Dependencies
+
+On Arch Linux / CachyOS:
+
+```bash
+sudo pacman -S stow git
+```
+
+### 2. Clone the Repository
+
+Clone directly into `~/dotfiles`:
 
 ```bash
 git clone https://github.com/soulis-1256/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-
-# Example using GNU Stow:
-# stow -t ~ .
 ```
+
+### 3. Deploy Symlinks with Stow
+
+Symlink all configurations into your `$HOME` directory:
+
+```bash
+stow -t ~ .
+```
+
+> If you already have existing configuration folders in `~/.config` on a fresh install, back them up or remove them before running `stow`, as Stow avoids overwriting existing physical folders by default.
+
+---
+
+## Management & Workflow
+
+Since files in `~/.config/` are symlinks directly pointing to `~/dotfiles/.config/`, any edits you make are immediately reflected in the Git repository:
+
+- **Check status & changes:**
+  ```bash
+  cd ~/dotfiles
+  git status
+  git diff
+  ```
+- **Commit and push updates:**
+  ```bash
+  git add .
+  git commit -m "Update configuration"
+  git push
+  ```
+- **Refresh symlinks (after adding new files/folders):**
+  ```bash
+  stow -R -t ~ .
+  ```
+- **Remove all symlinks cleanly:**
+  ```bash
+  stow -D -t ~ .
+  ```
+
+---
+
+## Secrets & Local Overrides
+
+Private API keys, tokens, or machine-specific configurations should remain uncommitted.
+- For Fish shell overrides, create an uncommitted `~/.config/fish/secrets.fish` or `~/.config/fish/config.local.fish` (ignored by `.gitignore`).

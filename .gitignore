@@ -11,6 +11,9 @@
 *.bak.*
 *~
 .DS_Store
+.dms-backups/
+.changelog-*
+.firstlaunch
 
 # Session state & caches
 fish_variables
@@ -20,3 +23,10 @@ fish_variables
 __pycache__/
 *.log
 *.qslog
+
+# Secrets & machine-specific overrides
+secrets.fish
+*.local
+*.local.*
+*.local.fish
+
