@@ -20,10 +20,7 @@ hl.monitor({
 	vrr = 1,
 })
 
--- Fallback for unconfigured monitors
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
-
--- Workspace Bindings
+-- Dedicated Workspace Bindings
 for i = 1, 9 do
 	hl.workspace_rule({ workspace = tostring(i), monitor = "DP-1" })
 end

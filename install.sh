@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Dotfiles Deployment & Stow Manager
-# Supports automatic chassis detection (desktop vs laptop), dry-run testing, and backups.
+# Supports automatic chassis detection (desktop vs laptop), display detection, dry-run testing, and backups.
 #
 
 set -euo pipefail
@@ -14,6 +14,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
@@ -73,6 +74,19 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Detect connected display ports
+get_connected_monitors() {
+    local ports=()
+    for status_file in /sys/class/drm/card*-*/status; do
+        if [[ -f "$status_file" ]] && grep -q "^connected$" "$status_file" 2>/dev/null; then
+            local port
+            port="$(basename "$(dirname "$status_file")" | sed 's/card[0-9]*-//')"
+            ports+=("$port")
+        fi
+    done
+    echo "${ports[@]}"
+}
 
 # Detect chassis / hardware type if not explicitly set
 detect_profile() {
@@ -158,9 +172,15 @@ main() {
     local detected_profile
     detected_profile="$(detect_profile)"
 
-    echo -e "${BOLD}Target Profile:${NC}  ${GREEN}${detected_profile}${NC}"
-    echo -e "${BOLD}Dotfiles Path:${NC}   ${DOTFILES_DIR}"
-    echo -e "${BOLD}Target Home:${NC}     ${TARGET_DIR}"
+    local connected_displays
+    connected_displays="$(get_connected_monitors)"
+    local display_count
+    display_count="$(echo "$connected_displays" | wc -w)"
+
+    echo -e "${BOLD}Hardware Chassis:${NC}    ${GREEN}${detected_profile}${NC}"
+    echo -e "${BOLD}Connected Displays:${NC}  ${CYAN}${display_count}${NC} (${connected_displays:-none})"
+    echo -e "${BOLD}Dotfiles Path:${NC}       ${DOTFILES_DIR}"
+    echo -e "${BOLD}Target Home:${NC}         ${TARGET_DIR}"
 
     local packages=("common")
     if [[ "$detected_profile" == "desktop" ]]; then
@@ -181,7 +201,7 @@ main() {
         backup_conflicts "${packages[@]}"
     fi
 
-    echo -e "\n${BOLD}Packages to deploy:${NC} ${packages[*]}"
+    echo -e "\n${BOLD}Packages to deploy:${NC}   ${packages[*]}"
 
     local stow_flags=("-v" "-t" "$TARGET_DIR")
     if [[ "$DRY_RUN" == true ]]; then
