@@ -11,12 +11,8 @@ alias grep='grep --color=auto'
 #PS1='[\u@\h \W]\$ '
 alias update='sudo reflector --country Greece,Germany --latest 15 --sort rate --save /etc/pacman.d/mirrorlist && paru -Sy archlinux-keyring cachyos-keyring && paru -Syu'
 
-. "$HOME/.local/share/../bin/env"
-
-
-
-# Added by Antigravity CLI installer
-export PATH="/home/soulis/.local/bin:$PATH"
+# User local bin in PATH
+export PATH="$HOME/.local/bin:$PATH"
 
 # Source machine-specific local overrides & secrets if present (untracked by Git)
 if [ -f "$HOME/.bashrc.local" ]; then

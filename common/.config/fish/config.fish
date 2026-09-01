@@ -1,4 +1,6 @@
-source /usr/share/cachyos-fish-config/cachyos-config.fish
+if test -f /usr/share/cachyos-fish-config/cachyos-config.fish
+    source /usr/share/cachyos-fish-config/cachyos-config.fish
+end
 
 # overwrite greeting
 # potentially disabling fastfetch
@@ -17,8 +19,8 @@ fish_add_path $HOME/.grok/bin
 # <<< grok installer <<<
 
 
-# Added by Antigravity CLI installer
-set -gx PATH "/home/soulis/.local/bin" $PATH
+# User local bin in PATH
+fish_add_path $HOME/.local/bin
 
 # Make run0 the default for sudo invocations
 alias sudo="run0"
