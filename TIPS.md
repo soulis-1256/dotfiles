@@ -1,46 +1,84 @@
-# NVIDIA (Linux)
-### DRM Kernel mode setting (taken from [Hyprland](https://wiki.hyprland.org/Nvidia/#drm-kernel-mode-setting))
-Since NVIDIA does not load kernel mode setting by default, enabling it is required to make Wayland compositors function properly. To enable it, the NVIDIA driver modules need to be added to the initramfs.
+# Tips & Reference
 
-Edit `/etc/mkinitcpio.conf`. In the `MODULES` array, add the following module names:
-```python
-MODULES=(... nvidia nvidia_modeset nvidia_uvm nvidia_drm ...)
-```
-Then, create and edit `/etc/modprobe.d/nvidia.conf`. Add this line to the file:
-```python
-options nvidia_drm modeset=1 fbdev=1
-```
-Lastly, rebuild the initramfs with `sudo mkinitcpio -P`, and reboot.
-# General Bugs
-1. Bug in `/etc/profile` (found in fedora 38) that appears with `bash -ls`, or `tmux new-window/new-session`, caused by a \n after every &&, I removed them here, so just copy-paste
+A curated collection of system configurations, hardware quirks, and workflow reference notes.
 
+---
+
+## 1. Hyprland & Wayland
+
+### Window Rules & Keybind Debugging
+* **Find Window Class / Title:**
+  ```bash
+  hyprctl clients | grep -E '(class|title)'
+  ```
+* **Inspect Key Events & Modifiers:**
+  ```bash
+  wev
+  ```
+
+### Hyprland Plugin Development
+1. Fork and edit the plugin source.
+2. Compile the shared library (`.so`).
+3. Reload live without restarting Hyprland:
+   ```bash
+   hyprctl plugin unload /path/to/plugin.so
+   hyprctl plugin load /path/to/plugin.so
+   ```
+4. For distribution, test using `hyprpm add <repo>` and `hyprpm enable <name>`.
+
+---
+
+## 2. NVIDIA on Wayland (KMS & Framebuffer)
+
+To ensure smooth Wayland performance and avoid flickering on NVIDIA proprietary drivers:
+
+1. Add modules to `/etc/mkinitcpio.conf`:
+   ```bash
+   MODULES=(... nvidia nvidia_modeset nvidia_uvm nvidia_drm ...)
+   ```
+2. Enable modesetting and framebuffer device in `/etc/modprobe.d/nvidia.conf`:
+   ```text
+   options nvidia_drm modeset=1 fbdev=1
+   ```
+3. Regenerate initramfs and reboot:
+   ```bash
+   sudo mkinitcpio -P
+   ```
+
+---
+
+## 3. Git & SSH
+
+### SSH URL Rewrite
+Force Git to use SSH instead of HTTPS for GitHub repositories:
 ```bash
-# Source global bash config, when interactive but not posix or sh mode
-if test "$BASH" &&
-   test -z "$POSIXLY_CORRECT" &&
-   test "${0#-}" != sh &&
-   test -r /etc/bashrc
-then
-   # Bash login shells run only /etc/profile
-   # Bash non-login shells run only /etc/bashrc
-   # Check for double sourcing is done in /etc/bashrc.
-   . /etc/bashrc
-fi
+git config --global url."ssh://git@github.com".insteadOf "https://github.com"
+```
+*To revert:*
+```bash
+git config --global --unset url."ssh://git@github.com".insteadOf "https://github.com"
 ```
 
-# General Tips
-1. Turn off Auto Mute Mode on alsamixer in order to hear speakers when headphones are plugged in front IO.
-2. Use `pkgfile -l` to list the contents of any packages (event not installed).
-3. On laptop, you can modify the default zoom level to lower than 100% on Firefox.
-4. Disable wifi when ethernet cable is connected, by doing the following
+### SSH Commit Signing (No GPG required)
+Use your existing SSH key to sign Git commits:
 ```bash
-cd /etc/NetworkManager/dispatcher.d
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
+git config --global commit.gpgsign true
 ```
-Create and edit `wlan_auto_toggle.sh`, appending the following (you may need to change `enp3s0` to something else):
+
+---
+
+## 4. Network & Hardware Quirks
+
+### Auto-Disable Wi-Fi when Ethernet is Connected
+Create `/etc/NetworkManager/dispatcher.d/wlan_auto_toggle.sh`:
 ```bash
 #!/bin/sh
+# Change enp3s0 to match your ethernet interface name
+INTERFACE="enp3s0"
 
-if [ "$1" = "enp3s0" ]; then
+if [ "$1" = "$INTERFACE" ]; then
     case "$2" in
         up)
             nmcli radio wifi off
@@ -49,100 +87,76 @@ if [ "$1" = "enp3s0" ]; then
             nmcli radio wifi on
             ;;
     esac
-elif [ "$(nmcli -g GENERAL.STATE device show enp3s0)" = "20 (unavailable)" ]; then
+elif [ "$(nmcli -g GENERAL.STATE device show "$INTERFACE")" = "20 (unavailable)" ]; then
     nmcli radio wifi on
 fi
 ```
+Make it executable:
 ```bash
-chmod +x wlan_auto_toggle.sh
+sudo chmod +x /etc/NetworkManager/dispatcher.d/wlan_auto_toggle.sh
 ```
-5. To debug a bash startup script that doesn't run properly, add this in the beginning:
+
+### ALSA Front-Panel Auto-Mute
+If plugging in headphones mutes the speakers and you want both active, open `alsamixer`, select your sound card, and toggle **Auto-Mute Mode** to `Disabled`.
+
+### Debugging Startup Scripts
+To debug a systemd/autostart script that runs silently:
 ```bash
 exec > /tmp/debug-my-script.log 2>&1
 ```
-### Using ssh instead of https with Git
-```bash
-git config --global url."ssh://git@github.com".insteadOf "https://github.com"
-```
-To unset it:
-```bash
-git config --global --unset url."ssh://git@github.com".insteadOf "https://github.com"
-```
-You can use your ssh key as a signing key (instead of having a separate gpg key):
-```bash
-git config --global gpg.format ssh
-```
-```bash
-git config --global user.signingkey ~/.ssh/YOUR_KEY.pub
-```
 
-### Hyprland plugin development
-1. Fork the plugin you want to modify/improve.
-2. Make your changes and run the makefile to compile and generate the .so library
-3. Use `hyprctl plugin unload /PATHTO/PLUGINLIB.so`
-4. Then `hyprctl plugin load /PATHTO/PLUGINLIB.so`
-5. The above steps can be configured to happen automatically through the Makefile.
-6. When you release a new plugin version, test with `hyprpm add` and `hyprpm enable`.
+---
 
-### Chrony config (time sync)
-1. Make sure the environment variable ```SYSTEMD_TIMEDATED_NTP_SERVICES=chronyd.service:systemd-timesyncd.service``` is set
-2. Disable systemd-timesyncd
+## 5. Secure Boot on Arch / CachyOS (`sbctl`)
+
+1. Reset UEFI keys to **Setup Mode** in your BIOS (keep Secure Boot enabled).
+2. Install `sbctl`:
+   ```bash
+   sudo pacman -S sbctl
+   ```
+3. Check status:
+   ```bash
+   sudo sbctl status
+   ```
+4. Create your custom keys and enroll them:
+   ```bash
+   sudo sbctl create-keys
+   sudo sbctl enroll-keys -m
+   ```
+5. Verify and sign your kernel and EFI binaries:
+   ```bash
+   sudo sbctl verify
+   sudo sbctl sign -s /boot/vmlinuz-linux-cachyos
+   ```
+
+---
+
+## 6. Useful Container Runners
+
+### Nous Hermes Agent (Docker)
+To run the Nous Hermes Agent locally against Ollama or local LLM endpoints:
+
 ```bash
-sudo systemctl disable systemd-timesyncd
-```
-3. Enable and start chronyd
-```bash
-sudo systemctl enable chronyd
-```
-```bash
-sudo systemctl start chronyd
-```
+#!/usr/bin/env bash
+set -e
 
-### Hyprland
-1. Use `wev` to see key names to use in binds.
-2. Use `hyprctl clients | grep class` to find app names for window rules.
+# Pass TTY flags only if stdin/stdout are attached to a terminal
+DOCKER_TTY_ARGS=()
+if [ -t 0 ] && [ -t 1 ]; then
+    DOCKER_TTY_ARGS=(-it)
+fi
 
-### Mako notification daemon
-1. Config is in `~/.config/mako/config`.
-2. To reload without reinitializing the compositor, use `mako -c ~/.config/mako/config`.
-
-# Secure boot on Arch Linux
-1. Reset to Setup Mode in BIOS (__keep secure boot on__).
-2. Install `sbctl`
-```bash
-yay -S sbctl
-```
-3. Run the necessary `grub-install` command for secure boot support. Most likely the following (from the [wiki](https://wiki.archlinux.org/title/GRUB#CA_Keys)):
-```bash
-grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB --modules="tpm" --disable-shim-lock
-```
-4. Run the [wiki guide](https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface/Secure_Boot#Assisted_process_with_sbctl) for `sbctl` and sign everything before rebooting.
-
-# Floorp/Firefox customization
-The following is tested on Floorp 11.18.1. Keep "Show the "Open a new tab" button inside Vertical Tab Bar" turned off.
-```css
-@charset "UTF-8";
-@-moz-document url(chrome://browser/content/browser.xhtml) {
-   /* Hide the mute/unmute button */
-   .tab-icon-overlay:not([pinned], [sharing], [crashed]):is([soundplaying], [muted]) {
-      display: none !important;
-   }
-   /* Keep site icon visible on hover */
-   .tabbrowser-tab:hover .tab-icon-stack:not([pinned], [sharing], [crashed]):is([soundplaying], [muted]) > :not(.tab-icon-overlay), 
-      /* for site icon with Compact density */
-   :root[uidensity="compact"] .tab-icon-stack:not([pinned], [sharing], [crashed]):is([soundplaying], [muted]) > :not(.tab-icon-overlay) {
-      opacity: 1 !important; /* overrides full transparency with full opacity */
-   }
-
-   /* Move new-tab-button and alltabs-button above the tabs */
-   #verticaltabs-box {
-      display: flex;
-      flex-direction: column;
-   }
-   
-   #new-tab-button,
-   #alltabs-button {
-      order: -1;
-   }
-}
+exec docker run "${DOCKER_TTY_ARGS[@]}" --rm \
+    --network host \
+    -e HERMES_UID="$(id -u)" \
+    -e HERMES_GID="$(id -g)" \
+    -e HERMES_API_TIMEOUT=900 \
+    -e HERMES_API_CALL_STALE_TIMEOUT=600 \
+    -e HERMES_PROVIDER=custom \
+    -e HERMES_INFERENCE_PROVIDER=custom \
+    -e OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
+    -v "$HOME/.hermes:/opt/data" \
+    -v "$(pwd):/workspace" \
+    -w /workspace \
+    nousresearch/hermes-agent:latest hermes "$@"
 ```

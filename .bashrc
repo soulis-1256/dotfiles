@@ -17,3 +17,9 @@ alias update='sudo reflector --country Greece,Germany --latest 15 --sort rate --
 
 # Added by Antigravity CLI installer
 export PATH="/home/soulis/.local/bin:$PATH"
+
+# Source machine-specific local overrides & secrets if present (untracked by Git)
+if [ -f "$HOME/.bashrc.local" ]; then
+    . "$HOME/.bashrc.local"
+fi
+

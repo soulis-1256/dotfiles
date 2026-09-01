@@ -36,10 +36,7 @@ dotfiles/
 │   └── gtk-4.0/            # GTK4 styling
 ├── .local/
 │   └── bin/
-│       ├── dms-game-overlay # Super-tap game focus drop & launcher overlay
-│       ├── env
-│       ├── env.fish
-│       └── hermes
+│       └── dms-game-overlay # Super-tap game focus drop & launcher overlay
 ├── .stow-local-ignore      # Prevents documentation files from linking to $HOME
 └── .gitignore
 ```

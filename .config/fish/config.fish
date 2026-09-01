@@ -26,3 +26,9 @@ alias sudo="run0"
 # bun
 set --export BUN_INSTALL "$HOME/.bun"
 set --export PATH $BUN_INSTALL/bin $PATH
+
+# Source machine-specific local overrides & secrets if present (untracked by Git)
+if test -f ~/.config/fish/secrets.fish
+    source ~/.config/fish/secrets.fish
+end
+
