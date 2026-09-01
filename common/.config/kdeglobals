@@ -1,0 +1,3 @@
+[General]
+TerminalApplication=ghostty
+TerminalService=com.mitchellh.ghostty.desktop

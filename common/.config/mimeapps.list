@@ -1,0 +1,35 @@
+[Default Applications]
+x-scheme-handler/discord=vesktop.desktop
+x-scheme-handler/http=zen.desktop
+x-scheme-handler/https=zen.desktop
+image/jpeg=swappy.desktop
+image/png=swappy.desktop
+application/pdf=zen.desktop
+x-scheme-handler/terminal=com.mitchellh.ghostty.desktop
+text/plain=dev.zed.Zed.desktop
+text/markdown=dev.zed.Zed.desktop
+text/x-markdown=dev.zed.Zed.desktop
+text/x-python=dev.zed.Zed.desktop
+text/x-c=dev.zed.Zed.desktop
+text/x-c++=dev.zed.Zed.desktop
+text/x-rust=dev.zed.Zed.desktop
+text/x-go=dev.zed.Zed.desktop
+text/x-lua=dev.zed.Zed.desktop
+text/x-shellscript=dev.zed.Zed.desktop
+application/json=dev.zed.Zed.desktop
+text/json=dev.zed.Zed.desktop
+application/x-yaml=dev.zed.Zed.desktop
+text/yaml=dev.zed.Zed.desktop
+application/xml=dev.zed.Zed.desktop
+text/html=dev.zed.Zed.desktop
+text/css=dev.zed.Zed.desktop
+text/javascript=dev.zed.Zed.desktop
+application/javascript=dev.zed.Zed.desktop
+application/x-zerosize=dev.zed.Zed.desktop
+text/x-diff=dev.zed.Zed.desktop
+
+[Added Associations]
+x-scheme-handler/http=zen.desktop;
+image/jpeg=swappy.desktop;
+image/png=swappy.desktop;
+application/pdf=zen.desktop;
