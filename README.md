@@ -72,15 +72,30 @@ git clone https://github.com/soulis-1256/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 ```
 
-### 3. Deploy Symlinks with Stow
+### 3. Backup Existing Configs (Crucial Step)
 
-Symlink all configurations into your `$HOME` directory:
+Before deploying with Stow, safely back up any pre-existing configuration folders or files. GNU Stow avoids overwriting physical files and will abort if conflicts exist:
 
 ```bash
-stow -t ~ .
+mkdir -p ~/.config_backup
+
+# Move existing physical directories to backup
+for dir in btop DankMaterialShell fish ghostty gtk-3.0 gtk-4.0 hypr matugen nvim quickshell zed; do
+  [ -e "$HOME/.config/$dir" ] && [ ! -L "$HOME/.config/$dir" ] && mv "$HOME/.config/$dir" ~/.config_backup/
+done
+
+# Backup existing shell config
+[ -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ] && mv "$HOME/.bashrc" ~/.config_backup/
 ```
 
-> If you already have existing configuration folders in `~/.config` on a fresh install, back them up or remove them before running `stow`, as Stow avoids overwriting existing physical folders by default.
+### 4. Deploy Symlinks with Stow
+
+Deploy all configurations into your `$HOME` directory:
+
+```bash
+cd ~/dotfiles
+stow -t ~ .
+```
 
 ---
 
