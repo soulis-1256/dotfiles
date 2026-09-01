@@ -31,7 +31,14 @@ secrets.fish
 *.local.lua
 outputs.lua
 dms/outputs.lua
-!common/.local/bin/dms-game-overlay
+# Runtime generated Matugen & DMS theme palettes
+dms/colors.lua
+dank-colors.css
+dankcolors
+dank-zed-theme.json
+gtk-3.0/assets
+gtk-3.0/colors.css
+gtk-4.0/colors.css
 
 
 
