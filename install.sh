@@ -256,6 +256,11 @@ main() {
     cd "$DOTFILES_DIR"
     stow "${stow_flags[@]}" "${packages[@]}"
 
+    # Ensure DMS user service is enabled
+    if command -v systemctl &>/dev/null && systemctl --user list-unit-files dms.service &>/dev/null; then
+        systemctl --user enable dms.service >/dev/null 2>&1 || true
+    fi
+
     echo -e "\n${GREEN}[SUCCESS] Dotfiles deployed successfully for profile '${detected_profile}'.${NC}"
     hyprctl_reload
 }
