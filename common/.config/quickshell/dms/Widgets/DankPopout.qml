@@ -26,6 +26,7 @@ Item {
     property bool hoverDismissEnabled: false
     property bool hoverDismissSuspended: false
     property var customKeyboardFocus: null
+    property var backgroundKeyboardFocus: null
     readonly property alias transientSurfaceTracker: _transientSurfaceTracker
     readonly property bool effectiveHoverDismissSuspended: hoverDismissSuspended || (transientSurfaceTracker?.active ?? false)
     property bool backgroundInteractive: true
@@ -308,6 +309,7 @@ Item {
         it.animationExitCurve = Qt.binding(() => root.animationExitCurve);
         it.suspendShadowWhileResizing = Qt.binding(() => root.suspendShadowWhileResizing);
         it.customKeyboardFocus = Qt.binding(() => root.customKeyboardFocus);
+        it.backgroundKeyboardFocus = Qt.binding(() => root.backgroundKeyboardFocus);
         it.backgroundInteractive = Qt.binding(() => root.backgroundInteractive);
         it.contentHandlesKeys = Qt.binding(() => root.contentHandlesKeys);
         it.fullHeightSurface = Qt.binding(() => root.fullHeightSurface);

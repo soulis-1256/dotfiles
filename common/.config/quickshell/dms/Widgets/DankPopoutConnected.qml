@@ -34,6 +34,7 @@ Item {
     property bool suspendShadowWhileResizing: false
     property bool shouldBeVisible: false
     property var customKeyboardFocus: null
+    property var backgroundKeyboardFocus: null
     property bool backgroundInteractive: true
     property bool contentHandlesKeys: false
     property bool fullHeightSurface: false

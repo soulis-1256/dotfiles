@@ -107,6 +107,14 @@ DankPopout {
     backgroundInteractive: !anyModalOpen
     hoverDismissSuspended: editMode || anyModalOpen
 
+    // Fullscreen games keep an active pointer constraint that Hyprland will not
+    // hit-test overlays against. Exclusive keyboard on the overlay surfaces is
+    // the compositor-side attempt to drop that constraint without focus-hopping.
+    readonly property bool stealPointerFromFullscreen: shouldBeVisible && !anyModalOpen && CompositorService.hasFullscreenToplevelOnScreen(triggerScreen ?? screen)
+
+    customKeyboardFocus: anyModalOpen ? WlrKeyboardFocus.None : (stealPointerFromFullscreen ? WlrKeyboardFocus.Exclusive : null)
+    backgroundKeyboardFocus: stealPointerFromFullscreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
     onCredentialsPromptOpenChanged: {
         if (credentialsPromptOpen && shouldBeVisible)
             close();
@@ -116,8 +124,6 @@ DankPopout {
         if (polkitModalOpen && shouldBeVisible)
             close();
     }
-
-    customKeyboardFocus: anyModalOpen ? WlrKeyboardFocus.None : null
 
     onBackgroundClicked: close()
 

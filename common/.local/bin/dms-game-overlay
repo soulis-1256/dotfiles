@@ -31,18 +31,10 @@ fi
 
 # 3. Branch based on fullscreen state:
 if [[ "$is_fullscreen" == "true" ]]; then
-    # Fullscreen mode: Unlock mouse and open Control Center overlay
+    # Fullscreen mode: Track active game window and open Control Center overlay
     cur_addr=$(echo "$active_info" | jq -r '.address // empty')
     if [[ -n "$cur_addr" ]]; then
         echo "$cur_addr" > "$window_tracker"
-    fi
-
-    # Shift focus away to reliably drop game pointer lock
-    other_mon=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == false) | .name' | head -n 1)
-    if [[ -n "$other_mon" ]]; then
-        hyprctl eval "hl.dispatch(hl.dsp.focus({ monitor = '$other_mon' }))" >/dev/null 2>&1
-    else
-        hyprctl eval 'hl.dispatch(hl.dsp.focus({ direction = "d" }))' >/dev/null 2>&1
     fi
 
     # Open Control Center overlay

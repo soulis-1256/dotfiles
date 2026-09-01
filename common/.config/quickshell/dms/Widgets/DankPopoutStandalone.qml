@@ -53,6 +53,7 @@ Item {
     }
 
     property var customKeyboardFocus: null
+    property var backgroundKeyboardFocus: null
     property bool backgroundInteractive: true
     property bool contentHandlesKeys: false
     property bool fullHeightSurface: false
@@ -571,7 +572,7 @@ Item {
         WlrLayershell.namespace: root.layerNamespace + ":background"
         WlrLayershell.layer: root.effectivePopoutLayer
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.backgroundKeyboardFocus ?? WlrKeyboardFocus.None
 
         anchors {
             top: true
