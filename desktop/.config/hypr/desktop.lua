@@ -26,3 +26,13 @@ hl.window_rule({
 	match = { float = false, focus = false },
 	opacity = "0.9 0.9",
 })
+
+-- 4. Picture-in-Picture on Desktop (send to secondary portrait monitor DP-2 on Workspace 10, bottom position)
+hl.window_rule({
+	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
+	float = true,
+	pin = true,
+	move = "66 1247",
+	workspace = "10",
+})
+
