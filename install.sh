@@ -164,6 +164,10 @@ backup_conflicts() {
                 base="$(basename "$dir")"
                 local target_dir="${TARGET_DIR}/.config/${base}"
                 if [[ -e "$target_dir" && ! -L "$target_dir" ]]; then
+                    # If target_dir is a stow-folded directory containing links into dotfiles, skip backup
+                    if find "$target_dir" -maxdepth 2 -type l -exec readlink {} + 2>/dev/null | grep -q "dotfiles"; then
+                        continue
+                    fi
                     conflicts_found=true
                     if [[ "$DRY_RUN" == true ]]; then
                         echo -e "${YELLOW}[Backup Preview]${NC} Physical directory: ${target_dir} -> will be moved to backup"
