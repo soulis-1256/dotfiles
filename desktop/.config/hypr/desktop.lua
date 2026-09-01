@@ -37,3 +37,9 @@ hl.window_rule({
 	workspace = "10",
 })
 
+-- 5. Pin all games to primary monitor DP-1 on Desktop
+hl.window_rule({
+	match = { class = "^(steam_app_.*|.*\\.exe.*)$" },
+	monitor = "DP-1",
+})
+
