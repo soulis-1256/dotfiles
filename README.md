@@ -37,7 +37,7 @@ dotfiles/
 │   │   ├── gtk-3.0/                    # GTK3 styling & colors
 │   │   └── gtk-4.0/                    # GTK4 styling & colors
 │   ├── .local/bin/
-│   │   └── dms-game-overlay            # Super-tap game focus drop & launcher overlay
+│   │   └── dms-game-overlay            # Super: Control Center in games, launcher on desktop
 │   └── .bashrc                         # Base interactive bash config
 │
 ├── desktop/                            # STOWED ONLY ON DESKTOP
