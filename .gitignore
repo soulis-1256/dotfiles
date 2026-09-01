@@ -1,0 +1,22 @@
+# Compiled binaries
+.local/bin/agy
+.local/bin/uv
+.local/bin/uvx
+.local/bin/docker-compose
+.local/bin/argc
+.local/bin/aichat
+
+# Temporary & backup files
+*.bak
+*.bak.*
+*~
+.DS_Store
+
+# Session state & caches
+fish_variables
+.pulse-cookie
+.cache/
+.local/state/
+__pycache__/
+*.log
+*.qslog

@@ -1,0 +1,104 @@
+import QtQuick
+import qs.Common
+import qs.Services
+import qs.Widgets
+
+Column {
+    id: root
+
+    required property string settingKey
+    required property string label
+    property string description: ""
+    property color defaultValue: Theme.primary
+    property color value: defaultValue
+
+    width: parent.width
+    spacing: Theme.spacingS
+
+    property bool isInitialized: false
+
+    function loadValue() {
+        const settings = findSettings();
+        if (settings && settings.pluginService) {
+            const loadedValue = settings.loadValue(settingKey, defaultValue);
+            value = loadedValue;
+            isInitialized = true;
+        }
+    }
+
+    Component.onCompleted: {
+        Qt.callLater(loadValue);
+    }
+
+    onValueChanged: {
+        if (!isInitialized)
+            return;
+        const settings = findSettings();
+        if (settings) {
+            settings.saveValue(settingKey, value);
+        }
+    }
+
+    function findSettings() {
+        let item = parent;
+        while (item) {
+            if (item.saveValue !== undefined && item.loadValue !== undefined) {
+                return item;
+            }
+            item = item.parent;
+        }
+        return null;
+    }
+
+    StyledText {
+        text: root.label
+        font.pixelSize: Theme.fontSizeMedium
+        font.weight: Font.Medium
+        color: Theme.surfaceText
+    }
+
+    StyledText {
+        text: root.description
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.surfaceVariantText
+        width: parent.width
+        wrapMode: Text.WordWrap
+        visible: root.description !== ""
+    }
+
+    Row {
+        width: parent.width
+        spacing: Theme.spacingS
+
+        Rectangle {
+            width: 100
+            height: 36
+            radius: Theme.cornerRadius
+            color: root.value
+            border.color: Theme.outlineStrong
+            border.width: 2
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (PopoutService && PopoutService.colorPickerModal) {
+                        PopoutService.colorPickerModal.selectedColor = root.value;
+                        PopoutService.colorPickerModal.pickerTitle = root.label;
+                        PopoutService.colorPickerModal.onColorSelectedCallback = function (selectedColor) {
+                            root.value = selectedColor;
+                        };
+                        PopoutService.colorPickerModal.show();
+                    }
+                }
+            }
+        }
+
+        StyledText {
+            text: root.value.toString()
+            font.pixelSize: Theme.fontSizeMedium
+            color: Theme.surfaceText
+            anchors.verticalCenter: parent.verticalCenter
+        }
+    }
+}
