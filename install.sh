@@ -131,7 +131,7 @@ check_prerequisites() {
 backup_conflicts() {
     local packages=("$@")
     local backup_dir="${TARGET_DIR}/.config_backup_$(date +%Y%m%d_%H%M%S)"
-    local has_conflicts=false
+    local conflicts_found=false
 
     for pkg in "${packages[@]}"; do
         local pkg_path="${DOTFILES_DIR}/${pkg}"
@@ -139,29 +139,46 @@ backup_conflicts() {
             continue
         fi
 
-        # Find physical non-symlink directories in target that match package files
-        while IFS= read -r -d '' rel_file; do
-            local target_file="${TARGET_DIR}/${rel_file}"
+        # Check top-level dotfiles (e.g. ~/.bashrc)
+        for item in "$pkg_path"/.*; do
+            local base
+            base="$(basename "$item")"
+            [[ "$base" == "." || "$base" == ".." || "$base" == ".config" || "$base" == ".local" ]] && continue
+            local target_file="${TARGET_DIR}/${base}"
             if [[ -e "$target_file" && ! -L "$target_file" ]]; then
+                conflicts_found=true
                 if [[ "$DRY_RUN" == true ]]; then
-                    echo -e "${YELLOW}[DRY-RUN Conflict]${NC} Physical file/dir exists and would be backed up: ${target_file}"
+                    echo -e "${YELLOW}[Backup Preview]${NC} Physical file: ${target_file} -> will be moved to backup"
                 else
-                    if [[ "$has_conflicts" == false ]]; then
-                        mkdir -p "$backup_dir"
-                        has_conflicts=true
-                    fi
-                    local parent_dir
-                    parent_dir="$(dirname "${backup_dir}/${rel_file}")"
-                    mkdir -p "$parent_dir"
-                    mv "$target_file" "${backup_dir}/${rel_file}"
-                    echo -e "${GREEN}[Backup]${NC} Moved existing ${target_file} -> ${backup_dir}/${rel_file}"
+                    mkdir -p "$backup_dir"
+                    mv "$target_file" "$backup_dir/"
+                    echo -e "${GREEN}[Backup]${NC} Moved ${target_file} -> ${backup_dir}/${base}"
                 fi
             fi
-        done < <(cd "$pkg_path" && find . -mindepth 1 -maxdepth 2 ! -path '*/.*' -print0)
+        done
+
+        # Check .config directories
+        if [[ -d "$pkg_path/.config" ]]; then
+            for dir in "$pkg_path/.config"/*; do
+                local base
+                base="$(basename "$dir")"
+                local target_dir="${TARGET_DIR}/.config/${base}"
+                if [[ -e "$target_dir" && ! -L "$target_dir" ]]; then
+                    conflicts_found=true
+                    if [[ "$DRY_RUN" == true ]]; then
+                        echo -e "${YELLOW}[Backup Preview]${NC} Physical directory: ${target_dir} -> will be moved to backup"
+                    else
+                        mkdir -p "$backup_dir/.config"
+                        mv "$target_dir" "$backup_dir/.config/"
+                        echo -e "${GREEN}[Backup]${NC} Moved ${target_dir} -> ${backup_dir}/.config/${base}"
+                    fi
+                fi
+            done
+        fi
     done
 
-    if [[ "$has_conflicts" == true && "$DRY_RUN" == false ]]; then
-        echo -e "${GREEN}Existing physical files backed up safely to: ${BOLD}${backup_dir}${NC}"
+    if [[ "$conflicts_found" == true && "$DRY_RUN" == false ]]; then
+        echo -e "${GREEN}All existing physical files safely backed up to: ${BOLD}${backup_dir}${NC}\n"
     fi
 }
 
@@ -203,23 +220,20 @@ main() {
 
     echo -e "\n${BOLD}Packages to deploy:${NC}   ${packages[*]}"
 
-    local stow_flags=("-v" "-t" "$TARGET_DIR")
     if [[ "$DRY_RUN" == true ]]; then
-        stow_flags+=("-n")
-        echo -e "${YELLOW}>>> RUNNING IN DRY-RUN MODE (No changes will be written) <<<${NC}\n"
+        echo -e "\n${YELLOW}>>> DRY-RUN COMPLETE (No files were modified) <<<${NC}"
+        echo -e "Run ${BOLD}./install.sh${NC} to execute automatic backup and deployment."
+        return
     fi
 
+    local stow_flags=("-v" "-t" "$TARGET_DIR")
     cd "$DOTFILES_DIR"
     stow "${stow_flags[@]}" "${packages[@]}"
 
-    if [[ "$DRY_RUN" == true ]]; then
-        echo -e "\n${GREEN}[DRY-RUN SUCCESS] All symlinks and packages verified with zero collisions.${NC}"
-    else
-        echo -e "\n${GREEN}[SUCCESS] Dotfiles deployed successfully for profile '${detected_profile}'.${NC}"
-        if command -v hyprctl &>/dev/null; then
-            echo -e "${BLUE}Reloading Hyprland configuration...${NC}"
-            hyprctl reload || true
-        fi
+    echo -e "\n${GREEN}[SUCCESS] Dotfiles deployed successfully for profile '${detected_profile}'.${NC}"
+    if command -v hyprctl &>/dev/null; then
+        echo -e "${BLUE}Reloading Hyprland configuration...${NC}"
+        hyprctl reload || true
     fi
 }
 
