@@ -128,6 +128,9 @@ check_prerequisites() {
     fi
 }
 
+# Backup colliding regular files only. Never move a live directory such as
+# ~/.config/hypr — Hyprland watches that path and a mid-session mv/unlink
+# reloads a missing hyprland.lua. --no-folding lets Stow link into existing dirs.
 backup_conflicts() {
     local packages=("$@")
     local backup_dir="${TARGET_DIR}/.config_backup_$(date +%Y%m%d_%H%M%S)"
@@ -139,51 +142,66 @@ backup_conflicts() {
             continue
         fi
 
-        # Check top-level dotfiles (e.g. ~/.bashrc)
-        for item in "$pkg_path"/.*; do
-            local base
-            base="$(basename "$item")"
-            [[ "$base" == "." || "$base" == ".." || "$base" == ".config" || "$base" == ".local" ]] && continue
-            local target_file="${TARGET_DIR}/${base}"
-            if [[ -e "$target_file" && ! -L "$target_file" ]]; then
-                conflicts_found=true
-                if [[ "$DRY_RUN" == true ]]; then
-                    echo -e "${YELLOW}[Backup Preview]${NC} Physical file: ${target_file} -> will be moved to backup"
-                else
-                    mkdir -p "$backup_dir"
-                    mv "$target_file" "$backup_dir/"
-                    echo -e "${GREEN}[Backup]${NC} Moved ${target_file} -> ${backup_dir}/${base}"
-                fi
-            fi
-        done
+        while IFS= read -r -d '' item; do
+            local rel="${item#"${pkg_path}/"}"
+            local target="${TARGET_DIR}/${rel}"
 
-        # Check .config directories
-        if [[ -d "$pkg_path/.config" ]]; then
-            for dir in "$pkg_path/.config"/*; do
-                local base
-                base="$(basename "$dir")"
-                local target_dir="${TARGET_DIR}/.config/${base}"
-                if [[ -e "$target_dir" && ! -L "$target_dir" ]]; then
-                    # If target_dir is a stow-folded directory containing links into dotfiles, skip backup
-                    if find "$target_dir" -maxdepth 2 -type l -exec readlink {} + 2>/dev/null | grep -q "dotfiles"; then
-                        continue
-                    fi
-                    conflicts_found=true
-                    if [[ "$DRY_RUN" == true ]]; then
-                        echo -e "${YELLOW}[Backup Preview]${NC} Physical directory: ${target_dir} -> will be moved to backup"
-                    else
-                        mkdir -p "$backup_dir/.config"
-                        mv "$target_dir" "$backup_dir/.config/"
-                        echo -e "${GREEN}[Backup]${NC} Moved ${target_dir} -> ${backup_dir}/.config/${base}"
-                    fi
-                fi
-            done
-        fi
+            # Directories stay in place so Stow --no-folding can link into them.
+            # Existing symlinks are already Stow-managed (or user-owned links).
+            if [[ -d "$target" || -L "$target" || ! -e "$target" ]]; then
+                continue
+            fi
+            if [[ ! -f "$target" ]]; then
+                continue
+            fi
+
+            # Folded Stow trees (e.g. ~/.config/nvim -> dotfiles/.../nvim) make
+            # inner files look like regular files. Do not "back them up" out of the repo.
+            local target_real item_real
+            target_real="$(realpath "$target" 2>/dev/null || true)"
+            item_real="$(realpath "$item" 2>/dev/null || true)"
+            if [[ -n "$target_real" && ( "$target_real" == "$item_real" || "$target_real" == "$DOTFILES_DIR"/* ) ]]; then
+                continue
+            fi
+
+            conflicts_found=true
+            if [[ "$DRY_RUN" == true ]]; then
+                echo -e "${YELLOW}[Backup Preview]${NC} Physical file: ${target} -> will be moved to backup"
+            else
+                mkdir -p "${backup_dir}/$(dirname "$rel")"
+                mv "$target" "${backup_dir}/${rel}"
+                echo -e "${GREEN}[Backup]${NC} Moved ${target} -> ${backup_dir}/${rel}"
+            fi
+        done < <(find "$pkg_path" -mindepth 1 -print0)
     done
 
     if [[ "$conflicts_found" == true && "$DRY_RUN" == false ]]; then
         echo -e "${GREEN}All existing physical files safely backed up to: ${BOLD}${backup_dir}${NC}\n"
     fi
+}
+
+# hyprctl needs HYPRLAND_INSTANCE_SIGNATURE; it is unset over SSH and on a TTY.
+hyprctl_reload() {
+    if ! command -v hyprctl &>/dev/null; then
+        return 0
+    fi
+
+    local runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    local sig="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+
+    if [[ -z "$sig" && -d "${runtime}/hypr" ]]; then
+        local newest
+        newest="$(ls -1dt "${runtime}"/hypr/*/ 2>/dev/null | head -n1 || true)"
+        [[ -n "$newest" ]] && sig="$(basename "$newest")"
+    fi
+
+    if [[ -z "$sig" ]]; then
+        echo -e "${YELLOW}Hyprland is not running; skipped reload.${NC}"
+        return 0
+    fi
+
+    echo -e "${BLUE}Reloading Hyprland configuration...${NC}"
+    XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl reload >/dev/null || true
 }
 
 main() {
@@ -213,7 +231,7 @@ main() {
     if [[ "$UNSTOW" == true ]]; then
         echo -e "\n${YELLOW}Unstowing packages:${NC} ${packages[*]}"
         cd "$DOTFILES_DIR"
-        stow -D -v -t "$TARGET_DIR" "${packages[@]}"
+        stow --no-folding -D -v -t "$TARGET_DIR" "${packages[@]}"
         echo -e "${GREEN}Unstow complete.${NC}"
         return
     fi
@@ -230,15 +248,16 @@ main() {
         return
     fi
 
-    local stow_flags=("-v" "-t" "$TARGET_DIR")
+    # --no-folding: never replace ~/.config/hypr with a directory symlink.
+    # A later package (laptop.lua / desktop.lua) would unfold that symlink by
+    # deleting the directory, and Hyprland's inotify reload would see a missing
+    # hyprland.lua. Linking files into a real directory avoids that gap.
+    local stow_flags=("--no-folding" "-v" "-t" "$TARGET_DIR")
     cd "$DOTFILES_DIR"
     stow "${stow_flags[@]}" "${packages[@]}"
 
     echo -e "\n${GREEN}[SUCCESS] Dotfiles deployed successfully for profile '${detected_profile}'.${NC}"
-    if command -v hyprctl &>/dev/null; then
-        echo -e "${BLUE}Reloading Hyprland configuration...${NC}"
-        hyprctl reload || true
-    fi
+    hyprctl_reload
 }
 
 main "$@"
