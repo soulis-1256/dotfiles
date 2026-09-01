@@ -63,20 +63,17 @@ dotfiles/
 
 ## Installation & Deployment
 
-### 1. Install Required Packages
+### 1. Prerequisites & Installation
 
-On Arch Linux / CachyOS:
+1. **Install DankMaterialShell**:
+   DankMaterialShell is required. Follow the official installation instructions at **[danklinux.com](https://danklinux.com/)**.
 
-```bash
-# Core window manager, desktop shell & essentials
-sudo pacman -S --needed stow git hyprland hyprlock xdg-desktop-portal-hyprland \
-                        xdg-desktop-portal-gtk adw-gtk-theme breeze-icons \
-                        wl-clipboard cliphist ghostty fish btop dolphin \
-                        matugen quickshell dms-shell
-
-# Or install DankMaterialShell via the official installer:
-# curl -fsSL https://dank.avengemedia.net/install.sh | bash
-```
+2. **Install Core System Packages** (Arch Linux / CachyOS):
+   ```bash
+   sudo pacman -S --needed stow git hyprland hyprlock xdg-desktop-portal-hyprland \
+                           xdg-desktop-portal-gtk adw-gtk-theme breeze-icons \
+                           wl-clipboard cliphist ghostty fish btop dolphin
+   ```
 
 ### 2. Clone the Repository
 
