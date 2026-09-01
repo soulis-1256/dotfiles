@@ -14,48 +14,52 @@ Modern, minimal, and keyboard-driven desktop configuration on **CachyOS / Arch L
 - **Shell:** Fish
 - **Editors:** Neovim / Zed
 - **System Monitor:** Btop
-- **Dotfiles Manager:** GNU Stow
+- **Dotfiles Manager:** GNU Stow (Packages Architecture)
 
 ---
 
-## Repository Structure
+## Multi-Machine Package Architecture
+
+The repository is modularized into **Stow Packages** so shared utilities remain synchronized while machine-specific setups (Desktop vs. Laptop) stay completely independent:
 
 ```text
 dotfiles/
-├── .config/
-│   ├── hypr/               # Hyprland Lua config, hyprlock, and DMS fragments
-│   ├── quickshell/dms/     # Custom QML desktop shell modules, grabs & widgets
-│   ├── DankMaterialShell/  # DMS settings, zen.css, and themes
-│   ├── matugen/            # Dynamic Material 3 color palette generator
-│   ├── ghostty/            # Ghostty terminal styling & keybinds
-│   ├── fish/               # Fish shell configuration & completions
-│   ├── nvim/               # Neovim IDE configuration
-│   ├── zed/                # Zed editor config
-│   ├── btop/               # Btop resource monitor layout
-│   ├── gtk-3.0/            # GTK3 styling
-│   └── gtk-4.0/            # GTK4 styling
-├── .local/
-│   └── bin/
-│       └── dms-game-overlay # Super-tap game focus drop & launcher overlay
-├── .stow-local-ignore      # Prevents documentation files from linking to $HOME
-└── .gitignore
+├── common/                             # SHARED ACROSS ALL MACHINES
+│   ├── .config/
+│   │   ├── quickshell/dms/             # Custom QML desktop shell modules, grabs & focus fixes
+│   │   ├── ghostty/                    # Ghostty terminal styling & keybinds
+│   │   ├── fish/                       # Fish shell configuration & completions
+│   │   ├── nvim/                       # Neovim IDE configuration
+│   │   ├── zed/                        # Zed editor config
+│   │   ├── btop/                       # Btop resource monitor layout
+│   │   ├── pipewire/                   # Mic volume protection (Vesktop / Discord fix)
+│   │   ├── gtk-3.0/                    # GTK3 styling
+│   │   └── gtk-4.0/                    # GTK4 styling
+│   ├── .local/bin/
+│   │   └── dms-game-overlay            # Super-tap game focus drop & launcher overlay
+│   └── .bashrc                         # Base interactive bash config
+│
+├── desktop/                            # STOWED ONLY ON DESKTOP
+│   └── .config/
+│       ├── hypr/                       # Desktop dual-monitor layout (ASUS 1440p + AOC portrait)
+│       ├── DankMaterialShell/          # Desktop settings (Bottom main bar + 2nd portrait bar)
+│       └── matugen/                    # Desktop color palette config
+│
+├── laptop/                             # STOWED ONLY ON LAPTOP
+│   └── .config/
+│       ├── hypr/                       # ThinkPad TrackPoint (touchpad off) & Lid DPMS blanking
+│       └── DankMaterialShell/          # Laptop settings (Top bar, single bar, laptop theme)
+│
+├── install.sh                          # Light installer with auto-detection & dry-run mode
+├── .stow-local-ignore                  # Prevents docs/installer from linking to $HOME
+└── .gitignore                          # Ignores backups, state, and secrets
 ```
 
 ---
 
-## Key Highlights & Features
+## Installation & Deployment
 
-- **Smart Window Borders:** Single windows have `border_size = 0` (clean fullscreen look), while multi-window workspaces show active focused borders.
-- **Smart Game Overlay:** Releasing `Super` opens the App Launcher on desktop, or drops pointer lock and exposes the Control Center over fullscreen games.
-- **Seamless Multi-Monitor Dismissal:** Dedicated input overlays across screens intercept outside clicks and smoothly dismiss popouts/modals without focus desync.
-- **Workspace-Aware Focus Restoral:** Switching workspaces with popouts open never jumps back to the old workspace upon dismissal.
-- **Fast Language Switching:** `Super + Space` seamlessly toggles US/GR layouts with immediate feedback and modifier disarm.
-
----
-
-## Installation & Setup
-
-### 1. Install GNU Stow & Dependencies
+### 1. Install Dependencies
 
 On Arch Linux / CachyOS:
 
@@ -72,36 +76,31 @@ git clone https://github.com/soulis-1256/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 ```
 
-### 3. Backup Existing Configs (Crucial Step)
+### 3. Test with Dry-Run (No Changes Made)
 
-Before deploying with Stow, safely back up any pre-existing configuration folders or files. GNU Stow avoids overwriting physical files and will abort if conflicts exist:
-
-```bash
-mkdir -p ~/.config_backup
-
-# Move existing physical directories to backup
-for dir in btop DankMaterialShell fish ghostty gtk-3.0 gtk-4.0 hypr matugen nvim quickshell zed; do
-  [ -e "$HOME/.config/$dir" ] && [ ! -L "$HOME/.config/$dir" ] && mv "$HOME/.config/$dir" ~/.config_backup/
-done
-
-# Backup existing shell config
-[ -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ] && mv "$HOME/.bashrc" ~/.config_backup/
-```
-
-### 4. Deploy Symlinks with Stow
-
-Deploy all configurations into your `$HOME` directory:
+You can preview the deployment and verify there are zero file collisions before touching anything:
 
 ```bash
-cd ~/dotfiles
-stow -t ~ .
+./install.sh --dry-run
 ```
+
+### 4. Deploy Dotfiles
+
+The installer automatically detects whether the machine is a **Desktop** or **Laptop** (via hardware chassis and display detection) and deploys `common` plus the appropriate machine profile:
+
+```bash
+./install.sh
+```
+
+> **Manual Override:** You can explicitly choose a profile:
+> * `./install.sh --profile desktop`
+> * `./install.sh --profile laptop`
 
 ---
 
 ## Management & Workflow
 
-Since files in `~/.config/` are symlinks directly pointing to `~/dotfiles/.config/`, any edits you make are immediately reflected in the Git repository:
+Since files in `~/.config/` are symlinks directly pointing into `~/dotfiles/`, any edits you make are immediately reflected in Git:
 
 - **Check status & changes:**
   ```bash
@@ -115,13 +114,9 @@ Since files in `~/.config/` are symlinks directly pointing to `~/dotfiles/.confi
   git commit -m "Update configuration"
   git push
   ```
-- **Refresh symlinks (after adding new files/folders):**
+- **Unstow / Remove symlinks cleanly:**
   ```bash
-  stow -R -t ~ .
-  ```
-- **Remove all symlinks cleanly:**
-  ```bash
-  stow -D -t ~ .
+  ./install.sh --unstow
   ```
 
 ---

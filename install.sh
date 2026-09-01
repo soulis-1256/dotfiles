@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+#
+# Dotfiles Deployment & Stow Manager
+# Supports automatic chassis detection (desktop vs laptop), dry-run testing, and backups.
+#
+
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="${HOME}"
+
+# ANSI Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+DRY_RUN=false
+UNSTOW=false
+BACKUP=true
+PROFILE=""
+
+print_header() {
+    echo -e "${BOLD}${BLUE}=== Dotfiles Deployment Manager ===${NC}"
+}
+
+usage() {
+    cat << EOF
+Usage: ./install.sh [OPTIONS]
+
+Options:
+    -n, --dry-run        Simulate deployment and test for conflicts (no changes made)
+    -p, --profile NAME   Force a specific profile: 'desktop', 'laptop', or 'common'
+    -D, --unstow         Remove symlinks created by Stow
+    --no-backup          Skip automatic backup of conflicting physical directories
+    -h, --help           Show this help message
+
+Examples:
+    ./install.sh --dry-run          # Test what would be linked on this machine
+    ./install.sh                    # Auto-detect hardware and deploy symlinks
+    ./install.sh --profile laptop   # Force laptop profile deployment
+EOF
+    exit 0
+}
+
+# Parse CLI flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -p|--profile)
+            PROFILE="$2"
+            shift 2
+            ;;
+        -D|--unstow)
+            UNSTOW=true
+            shift
+            ;;
+        --no-backup)
+            BACKUP=false
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            usage
+            ;;
+    esac
+done
+
+# Detect chassis / hardware type if not explicitly set
+detect_profile() {
+    if [[ -n "$PROFILE" ]]; then
+        echo "$PROFILE"
+        return
+    fi
+
+    # Check 1: hostnamectl chassis
+    if command -v hostnamectl &>/dev/null; then
+        local chassis
+        chassis="$(hostnamectl chassis 2>/dev/null || true)"
+        if [[ "$chassis" == "laptop" || "$chassis" == "notebook" || "$chassis" == "convertible" ]]; then
+            echo "laptop"
+            return
+        fi
+    fi
+
+    # Check 2: internal eDP panel in sysfs
+    if compgen -G "/sys/class/drm/*-eDP-*" > /dev/null; then
+        echo "laptop"
+        return
+    fi
+
+    # Check 3: Battery existence
+    if compgen -G "/sys/class/power_supply/BAT*" > /dev/null; then
+        echo "laptop"
+        return
+    fi
+
+    echo "desktop"
+}
+
+check_prerequisites() {
+    if ! command -v stow &>/dev/null; then
+        echo -e "${RED}Error: GNU Stow is not installed.${NC}"
+        echo -e "Install it using: ${BOLD}sudo pacman -S stow${NC}"
+        exit 1
+    fi
+}
+
+backup_conflicts() {
+    local packages=("$@")
+    local backup_dir="${TARGET_DIR}/.config_backup_$(date +%Y%m%d_%H%M%S)"
+    local has_conflicts=false
+
+    for pkg in "${packages[@]}"; do
+        local pkg_path="${DOTFILES_DIR}/${pkg}"
+        if [[ ! -d "$pkg_path" ]]; then
+            continue
+        fi
+
+        # Find physical non-symlink directories in target that match package files
+        while IFS= read -r -d '' rel_file; do
+            local target_file="${TARGET_DIR}/${rel_file}"
+            if [[ -e "$target_file" && ! -L "$target_file" ]]; then
+                if [[ "$DRY_RUN" == true ]]; then
+                    echo -e "${YELLOW}[DRY-RUN Conflict]${NC} Physical file/dir exists and would be backed up: ${target_file}"
+                else
+                    if [[ "$has_conflicts" == false ]]; then
+                        mkdir -p "$backup_dir"
+                        has_conflicts=true
+                    fi
+                    local parent_dir
+                    parent_dir="$(dirname "${backup_dir}/${rel_file}")"
+                    mkdir -p "$parent_dir"
+                    mv "$target_file" "${backup_dir}/${rel_file}"
+                    echo -e "${GREEN}[Backup]${NC} Moved existing ${target_file} -> ${backup_dir}/${rel_file}"
+                fi
+            fi
+        done < <(cd "$pkg_path" && find . -mindepth 1 -maxdepth 2 ! -path '*/.*' -print0)
+    done
+
+    if [[ "$has_conflicts" == true && "$DRY_RUN" == false ]]; then
+        echo -e "${GREEN}Existing physical files backed up safely to: ${BOLD}${backup_dir}${NC}"
+    fi
+}
+
+main() {
+    print_header
+    check_prerequisites
+
+    local detected_profile
+    detected_profile="$(detect_profile)"
+
+    echo -e "${BOLD}Target Profile:${NC}  ${GREEN}${detected_profile}${NC}"
+    echo -e "${BOLD}Dotfiles Path:${NC}   ${DOTFILES_DIR}"
+    echo -e "${BOLD}Target Home:${NC}     ${TARGET_DIR}"
+
+    local packages=("common")
+    if [[ "$detected_profile" == "desktop" ]]; then
+        packages+=("desktop")
+    elif [[ "$detected_profile" == "laptop" ]]; then
+        packages+=("laptop")
+    fi
+
+    if [[ "$UNSTOW" == true ]]; then
+        echo -e "\n${YELLOW}Unstowing packages:${NC} ${packages[*]}"
+        cd "$DOTFILES_DIR"
+        stow -D -v -t "$TARGET_DIR" "${packages[@]}"
+        echo -e "${GREEN}Unstow complete.${NC}"
+        return
+    fi
+
+    if [[ "$BACKUP" == true ]]; then
+        backup_conflicts "${packages[@]}"
+    fi
+
+    echo -e "\n${BOLD}Packages to deploy:${NC} ${packages[*]}"
+
+    local stow_flags=("-v" "-t" "$TARGET_DIR")
+    if [[ "$DRY_RUN" == true ]]; then
+        stow_flags+=("-n")
+        echo -e "${YELLOW}>>> RUNNING IN DRY-RUN MODE (No changes will be written) <<<${NC}\n"
+    fi
+
+    cd "$DOTFILES_DIR"
+    stow "${stow_flags[@]}" "${packages[@]}"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "\n${GREEN}[DRY-RUN SUCCESS] All symlinks and packages verified with zero collisions.${NC}"
+    else
+        echo -e "\n${GREEN}[SUCCESS] Dotfiles deployed successfully for profile '${detected_profile}'.${NC}"
+        if command -v hyprctl &>/dev/null; then
+            echo -e "${BLUE}Reloading Hyprland configuration...${NC}"
+            hyprctl reload || true
+        fi
+    fi
+}
+
+main "$@"
