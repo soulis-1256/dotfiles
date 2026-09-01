@@ -40,7 +40,7 @@ hl.config({
 	},
 	input = {
 		kb_layout = "us,gr",
-		kb_options = "grp:win_space_toggle",
+		kb_options = "",
 		repeat_delay = 300,
 		numlock_by_default = true,
 		-- Click to activate (Win11). Hovering a float must not yank focus.
