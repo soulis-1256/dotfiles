@@ -193,5 +193,6 @@ hl.bind("switch:off:Lid Switch", function()
 	end, { timeout = 500, type = "oneshot" })
 end, { locked = true, description = "Wake laptop screen on lid open" })
 
--- Machine-specific overrides (loaded if present, e.g. from desktop package)
+-- Machine-specific overrides (loaded if present, e.g. from desktop or laptop packages)
 pcall(require, "desktop")
+pcall(require, "laptop")
