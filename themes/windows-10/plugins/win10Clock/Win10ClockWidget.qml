@@ -9,6 +9,7 @@ PluginComponent {
     id: root
 
     property var popoutService: null
+    readonly property bool hasNotifications: NotificationService.notifications.length > 0
 
     layerNamespacePlugin: "win10-clock"
 
@@ -18,8 +19,12 @@ PluginComponent {
 
     horizontalBarPill: Component {
         Item {
-            implicitWidth: clockCol.implicitWidth + 12
+            implicitWidth: clockRow.implicitWidth + 16
             implicitHeight: root.barThickness
+
+            readonly property int bellSize: Theme.barIconSize(root.barThickness, -4, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+            readonly property int clockFontSize: Theme.barTextSize(root.barThickness, root.barConfig ? root.barConfig.fontScale : 1, root.barConfig ? root.barConfig.maximizeWidgetText : false)
+            readonly property real clockTextWidth: Math.max(timeLabel.implicitWidth, dateLabel.implicitWidth)
 
             SystemClock {
                 id: systemClock
@@ -27,76 +32,72 @@ PluginComponent {
                 precision: SettingsData.showSeconds ? SystemClock.Seconds : SystemClock.Minutes
             }
 
-            Column {
-                id: clockCol
+            Row {
+                id: clockRow
 
-                spacing: 0
-                anchors.centerIn: parent
-
-                StyledText {
-                    text: {
-                        const d = systemClock.date;
-                        if (!d)
-                            return "";
-
-                        if (SettingsData.use24HourClock)
-                            return Qt.formatTime(d, SettingsData.showSeconds ? "HH:mm:ss" : "HH:mm");
-
-                        return Qt.formatTime(d, SettingsData.showSeconds ? "h:mm:ss AP" : "h:mm AP");
-                    }
-                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig ? root.barConfig.fontScale : 1, root.barConfig ? root.barConfig.maximizeWidgetText : false)
-                    color: Theme.widgetTextColor
-                    horizontalAlignment: Text.AlignHCenter
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-
-                StyledText {
-                    text: {
-                        const d = systemClock.date;
-                        if (!d)
-                            return "";
-
-                        if (SettingsData.clockDateFormat && SettingsData.clockDateFormat.length > 0)
-                            return d.toLocaleDateString(Qt.locale(), SettingsData.clockDateFormat);
-
-                        return d.toLocaleDateString(Qt.locale(), "ddd d MMM yyyy");
-                    }
-                    font.pixelSize: Math.max(10, Theme.barTextSize(root.barThickness, root.barConfig ? root.barConfig.fontScale : 1, root.barConfig ? root.barConfig.maximizeWidgetText : false) - 2)
-                    color: Theme.widgetTextColor
-                    horizontalAlignment: Text.AlignHCenter
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-
-            }
-
-            Rectangle {
-                visible: NotificationService.notifications.length > 0
+                spacing: 8
+                anchors.verticalCenter: parent.verticalCenter
                 anchors.right: parent.right
-                anchors.rightMargin: 4
-                anchors.top: parent.top
-                anchors.topMargin: 6
-                width: Math.max(16, badgeLabel.implicitWidth + 8)
-                height: 16
-                color: Theme.primary
+                anchors.rightMargin: 8
 
-                StyledText {
-                    id: badgeLabel
-                    anchors.centerIn: parent
-                    text: NotificationService.notifications.length > 9 ? "9+" : String(NotificationService.notifications.length)
-                    color: Theme.primaryText
-                    font.pixelSize: 10
-                    font.weight: Font.DemiBold
+                Column {
+                    id: clockCol
+
+                    spacing: 0
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    StyledText {
+                        id: timeLabel
+                        width: clockTextWidth
+                        text: {
+                            const d = systemClock.date;
+                            if (!d)
+                                return "";
+
+                            if (SettingsData.use24HourClock)
+                                return Qt.formatTime(d, SettingsData.showSeconds ? "HH:mm:ss" : "HH:mm");
+
+                            return Qt.formatTime(d, SettingsData.showSeconds ? "h:mm:ss AP" : "h:mm AP");
+                        }
+                        font.pixelSize: clockFontSize
+                        color: Theme.widgetTextColor
+                        horizontalAlignment: Text.AlignRight
+                    }
+
+                    StyledText {
+                        id: dateLabel
+                        width: clockTextWidth
+                        text: systemClock.date ? Qt.formatDate(systemClock.date, "dd/MM/yyyy") : ""
+                        font.pixelSize: clockFontSize
+                        color: Theme.widgetTextColor
+                        horizontalAlignment: Text.AlignRight
+                    }
+                }
+
+                Item {
+                    width: bellSize
+                    height: Math.max(bellSize, clockCol.implicitHeight)
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    DankIcon {
+                        anchors.centerIn: parent
+                        name: "notifications"
+                        filled: root.hasNotifications
+                        size: bellSize
+                        color: root.hasNotifications ? Theme.primary : Theme.widgetTextColor
+                    }
                 }
             }
-
         }
-
     }
 
     verticalBarPill: Component {
         Item {
             implicitWidth: root.barThickness
             implicitHeight: vCol.implicitHeight + 16
+
+            readonly property int bellSize: Theme.barIconSize(root.barThickness, -4, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+            readonly property int clockFontSize: Theme.barTextSize(root.barThickness, root.barConfig ? root.barConfig.fontScale : 1, root.barConfig ? root.barConfig.maximizeWidgetText : false)
 
             SystemClock {
                 id: vClock
@@ -107,27 +108,31 @@ PluginComponent {
             Column {
                 id: vCol
 
-                spacing: 0
+                spacing: 2
                 anchors.centerIn: parent
+
+                DankIcon {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    name: "notifications"
+                    filled: root.hasNotifications
+                    size: bellSize
+                    color: root.hasNotifications ? Theme.primary : Theme.widgetTextColor
+                }
 
                 StyledText {
                     text: vClock.date ? Qt.formatTime(vClock.date, SettingsData.use24HourClock ? "HH:mm" : "h:mm") : ""
-                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig ? root.barConfig.fontScale : 1, root.barConfig ? root.barConfig.maximizeWidgetText : false)
+                    font.pixelSize: clockFontSize
                     color: Theme.widgetTextColor
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
 
                 StyledText {
-                    text: vClock.date ? Qt.formatDate(vClock.date, "dd/MM") : ""
-                    font.pixelSize: Math.max(10, Theme.barTextSize(root.barThickness, root.barConfig ? root.barConfig.fontScale : 1, root.barConfig ? root.barConfig.maximizeWidgetText : false) - 2)
+                    text: vClock.date ? Qt.formatDate(vClock.date, "dd/MM/yyyy") : ""
+                    font.pixelSize: clockFontSize
                     color: Theme.widgetTextColor
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
-
             }
-
         }
-
     }
-
 }
