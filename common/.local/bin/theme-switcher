@@ -79,6 +79,7 @@ sync_plugins() {
         python3 - "$theme_path/plugin_settings.json" "${DMS_CONFIG_DIR}/plugin_settings.json" <<'PY'
 import json, sys
 from pathlib import Path
+
 incoming = json.loads(Path(sys.argv[1]).read_text())
 out = Path(sys.argv[2])
 existing = {}
@@ -89,7 +90,22 @@ if out.exists():
         existing = {}
 if not isinstance(existing, dict):
     existing = {}
-existing.update(incoming)
+if not isinstance(incoming, dict):
+    incoming = {}
+
+# Pack files seed first-run defaults. User pin/folder/grid state lives in
+# the live file and must survive reapply / theme switches.
+# `enabled` is theme-owned so plugins turn on/off with the pack.
+THEME_OWNED_KEYS = {"enabled"}
+
+for plugin, pdata in incoming.items():
+    if plugin not in existing or not isinstance(existing.get(plugin), dict) or not isinstance(pdata, dict):
+        existing[plugin] = pdata
+        continue
+    for key, value in pdata.items():
+        if key in THEME_OWNED_KEYS or key not in existing[plugin]:
+            existing[plugin][key] = value
+
 out.write_text(json.dumps(existing, indent=2) + "\n")
 PY
         echo -e "  ${GREEN}✓${NC} Updated plugin settings"
@@ -98,25 +114,26 @@ PY
 
 apply_dms_settings() {
     local theme_settings="$1"
-    local dest="${DMS_CONFIG_DIR}/settings.json"
-    python3 - "$theme_settings" "$dest" "$HOME" <<'PY'
+    local target="$2"
+    local reset_flag="${3:-0}"
+    local current
+    current="$(get_current_theme)"
+    local state_dir="${DMS_CONFIG_DIR}/theme-state"
+    mkdir -p "$state_dir"
+    python3 - "$theme_settings" "${DMS_CONFIG_DIR}/settings.json" "$HOME" "$state_dir" "$current" "$target" "$reset_flag" <<'PY'
 import json, sys
 from pathlib import Path
 
 theme_path = Path(sys.argv[1])
 dest_path = Path(sys.argv[2])
 home = sys.argv[3]
-
-theme = json.loads(theme_path.read_text().replace("/home/soulis", home))
-live = {}
-if dest_path.exists():
-    try:
-        live = json.loads(dest_path.read_text())
-    except json.JSONDecodeError:
-        live = {}
+state_dir = Path(sys.argv[4])
+current = sys.argv[5]
+target = sys.argv[6]
+reset = sys.argv[7] == "1"
 
 # Theme packs control layout/chrome, not the user's DMS color theme
-# or greeter/autologin state.
+# or greeter/autologin state. Those always follow the live config.
 PRESERVE_PREFIXES = ("greeter",)
 PRESERVE_KEYS = {
     "currentThemeName",
@@ -134,17 +151,70 @@ PRESERVE_KEYS = {
     "controlCenterTileColorMode",
     "buttonColorMode",
 }
-if isinstance(live, dict):
+
+
+def load_obj(path):
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text() or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def fill_missing(base, incoming):
+    if not isinstance(base, dict) or not isinstance(incoming, dict):
+        return base
+    for key, value in incoming.items():
+        if key not in base:
+            base[key] = value
+    return base
+
+
+def overlay_preserved(base, live):
+    if not isinstance(live, dict):
+        return base
     for key, value in live.items():
         if key in PRESERVE_KEYS or key.startswith(PRESERVE_PREFIXES):
-            theme[key] = value
+            base[key] = value
+    return base
 
-dest_path.write_text(json.dumps(theme, indent=2) + "\n")
+
+live = load_obj(dest_path)
+pack = json.loads(theme_path.read_text().replace("/home/soulis", home))
+if not isinstance(pack, dict):
+    pack = {}
+
+state_dir.mkdir(parents=True, exist_ok=True)
+current_state = state_dir / f"{current}.json"
+target_state = state_dir / f"{target}.json"
+
+# Snapshot the theme we are leaving so bar/layout tweaks come back later.
+if current != target and live:
+    current_state.write_text(json.dumps(live, indent=2) + "\n")
+
+if reset:
+    base = pack
+    if target_state.exists():
+        target_state.unlink()
+elif current == target and live:
+    # Reapply: keep the live config the user has been editing.
+    base = fill_missing(live, pack)
+elif target_state.exists():
+    # Returning to a theme: restore last snapshot, pick up new pack keys.
+    base = fill_missing(load_obj(target_state), pack)
+else:
+    base = pack
+
+base = overlay_preserved(base, live)
+dest_path.write_text(json.dumps(base, indent=2) + "\n")
 PY
 }
 
 apply_theme() {
     local target="$1"
+    local reset_flag="${2:-0}"
     local theme_path="${THEMES_DIR}/${target}"
 
     if [[ ! -d "$theme_path" ]]; then
@@ -172,8 +242,12 @@ apply_theme() {
     ln -sfn "${theme_path}" "${DMS_CONFIG_DIR}/themes/${target}"
 
     if [[ -f "${theme_path}/dms-settings.json" ]]; then
-        apply_dms_settings "${theme_path}/dms-settings.json"
-        echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings"
+        apply_dms_settings "${theme_path}/dms-settings.json" "$target" "$reset_flag"
+        if [[ "$reset_flag" == "1" ]]; then
+            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings (reset to pack defaults)"
+        else
+            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings"
+        fi
     fi
 
     sync_plugins "$theme_path"
@@ -197,15 +271,33 @@ usage() {
     echo -e "${BOLD}Usage: theme-switcher <command> [theme_name]${NC}"
     echo ""
     echo "Commands:"
-    echo "  list, -l         List available themes"
-    echo "  apply <theme>    Apply a theme (default, windows-10)"
-    echo "  current, status  Show the active theme"
-    echo "  help, -h         Show this message"
+    echo "  list, -l              List available themes"
+    echo "  apply <theme>         Apply a theme (default, windows-10)"
+    echo "  apply <theme> --reset Apply pack defaults, discarding saved bar/layout tweaks"
+    echo "  current, status       Show the active theme"
+    echo "  help, -h              Show this message"
+    echo ""
+    echo "Reapplying the active theme keeps live DankMaterialShell settings (bar"
+    echo "layout, widgets, etc.) and win10 Start pin/folder layout. Switching away"
+    echo "and back restores that theme's last snapshot. Plugin pin state is never"
+    echo "replaced by pack defaults once it exists."
     echo ""
     echo "Examples:"
     echo "  theme-switcher list"
     echo "  theme-switcher apply windows-10"
+    echo "  theme-switcher apply windows-10 --reset"
     echo "  theme-switcher apply default"
+}
+
+parse_reset_flag() {
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" == "--reset" ]]; then
+            echo "1"
+            return
+        fi
+    done
+    echo "0"
 }
 
 case "${1:-}" in
@@ -213,12 +305,12 @@ case "${1:-}" in
         list_themes
         ;;
     apply)
-        if [[ -z "${2:-}" ]]; then
+        if [[ -z "${2:-}" || "${2}" == --* ]]; then
             echo -e "${RED}Error: Missing theme name.${NC}"
             usage
             exit 1
         fi
-        apply_theme "$2"
+        apply_theme "$2" "$(parse_reset_flag "${@:3}")"
         ;;
     current|status)
         echo -e "Active theme: ${BOLD}${GREEN}$(get_current_theme)${NC}"
@@ -231,7 +323,7 @@ case "${1:-}" in
         ;;
     *)
         if [[ -d "${THEMES_DIR}/$1" ]]; then
-            apply_theme "$1"
+            apply_theme "$1" "$(parse_reset_flag "${@:2}")"
         else
             echo -e "${RED}Unknown command or theme: $1${NC}"
             usage
