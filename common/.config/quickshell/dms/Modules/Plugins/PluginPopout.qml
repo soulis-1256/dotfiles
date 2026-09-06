@@ -18,6 +18,7 @@ DankPopout {
     popupHeight: contentHeight
     screen: triggerScreen
     shouldBeVisible: false
+    contentHandlesKeys: true
 
     onBackgroundClicked: close()
 
@@ -31,7 +32,11 @@ DankPopout {
 
             Component.onCompleted: {
                 if (root.shouldBeVisible) {
-                    forceActiveFocus();
+                    if (popoutContentLoader.item) {
+                        popoutContentLoader.item.forceActiveFocus();
+                    } else {
+                        forceActiveFocus();
+                    }
                 }
             }
 
@@ -47,9 +52,20 @@ DankPopout {
                 function onShouldBeVisibleChanged() {
                     if (root.shouldBeVisible) {
                         Qt.callLater(() => {
-                            popoutContainer.forceActiveFocus();
+                            if (popoutContentLoader.item) {
+                                popoutContentLoader.item.forceActiveFocus();
+                            } else {
+                                popoutContainer.forceActiveFocus();
+                            }
                         });
                     }
+                }
+                function onOpened() {
+                    Qt.callLater(() => {
+                        if (popoutContentLoader.item) {
+                            popoutContentLoader.item.forceActiveFocus();
+                        }
+                    });
                 }
             }
 
@@ -76,6 +92,11 @@ DankPopout {
                         }
                         if (item) {
                             root.contentHeight = Qt.binding(() => item.implicitHeight + root.contentPadding * 2);
+                            if (root.shouldBeVisible) {
+                                Qt.callLater(() => {
+                                    item.forceActiveFocus();
+                                });
+                            }
                         }
                     }
                 }

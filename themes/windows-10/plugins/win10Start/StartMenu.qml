@@ -40,16 +40,17 @@ Item {
     property bool alphabetZoomOpen: false
     property bool isSearchMode: false
     property string query: ""
-    property string activeSearchCategory: "all"
+    property string activeSearchCategory: "apps"
+    property int selectedSearchIndex: 0
+    property var hoveredSearchItem: null
     property var flatAppListModel: []
-    property var letterIndices: ({
-    })
-    property var activeLetters: ({
-    })
+    property var letterIndices: ({})
+    property var activeLetters: ({})
     property var group1Tiles: []
     property var group2Tiles: []
     property var searchResults: []
     property var bestMatchApp: null
+    readonly property var currentPreviewItem: hoveredSearchItem || (selectedSearchIndex >= 0 && selectedSearchIndex < searchResults.length ? searchResults[selectedSearchIndex] : bestMatchApp)
     property bool contextMenuVisible: false
     property var contextMenuItem: null
     property string contextMenuType: ""
@@ -63,26 +64,76 @@ Item {
         root.contextMenuVisible = false;
         root.query = "";
         root.isSearchMode = false;
+        root.selectedSearchIndex = 0;
+        root.hoveredSearchItem = null;
         if (root.closePopout)
             root.closePopout();
-
     }
 
     function enterSearchMode(initialChar) {
         root.isSearchMode = true;
         root.query = initialChar || "";
+        root.selectedSearchIndex = 0;
+        root.hoveredSearchItem = null;
         root.updateSearch();
         Qt.callLater(function() {
-            searchField.forceActiveFocus();
-            searchField.cursorPosition = searchField.text.length;
+            if (typeof searchField !== "undefined" && searchField) {
+                searchField.forceActiveFocus();
+                searchField.text = root.query;
+                searchField.cursorPosition = searchField.text.length;
+            }
         });
     }
 
     function exitSearchMode() {
         root.isSearchMode = false;
         root.query = "";
+        root.selectedSearchIndex = 0;
+        root.hoveredSearchItem = null;
+        root.activeSearchCategory = "apps";
         root.updateSearch();
         root.forceActiveFocus();
+    }
+
+    function toggleSearchCategory() {
+        if (root.activeSearchCategory === "apps") {
+            root.activeSearchCategory = "web";
+        } else {
+            root.activeSearchCategory = "apps";
+        }
+        root.selectedSearchIndex = 0;
+        root.hoveredSearchItem = null;
+        root.updateSearch();
+        if (typeof searchField !== "undefined" && searchField) {
+            searchField.forceActiveFocus();
+            searchField.cursorPosition = searchField.text.length;
+        }
+    }
+
+    function navigateDown() {
+        const total = root.searchResults.length;
+        if (total === 0)
+            return;
+        if (root.selectedSearchIndex < total - 1) {
+            root.selectedSearchIndex++;
+            root.hoveredSearchItem = null;
+            if (root.selectedSearchIndex > 0 && typeof searchResultsView !== "undefined" && searchResultsView) {
+                searchResultsView.positionViewAtIndex(root.selectedSearchIndex - 1, ListView.Contain);
+            }
+        }
+    }
+
+    function navigateUp() {
+        const total = root.searchResults.length;
+        if (total === 0)
+            return;
+        if (root.selectedSearchIndex > 0) {
+            root.selectedSearchIndex--;
+            root.hoveredSearchItem = null;
+            if (root.selectedSearchIndex > 0 && typeof searchResultsView !== "undefined" && searchResultsView) {
+                searchResultsView.positionViewAtIndex(root.selectedSearchIndex - 1, ListView.Contain);
+            }
+        }
     }
 
     function lookupEntry(id) {
@@ -403,21 +454,144 @@ Item {
         saveTilesState();
     }
 
+    function isAppPinned(app) {
+        if (!app || !app.id)
+            return false;
+        return root.group1Tiles.some(t => t.id === app.id) || root.group2Tiles.some(t => t.id === app.id);
+    }
+
+    function togglePinApp(app) {
+        if (!app || !app.id)
+            return;
+        if (isAppPinned(app))
+            unpinTile(app);
+        else
+            pinAppToStart(app);
+    }
+
+    function getTopApps() {
+        const ranked = AppUsageHistoryData.getRankedApps() || [];
+        const top = [];
+        const seen = {};
+        for (let i = 0; i < ranked.length && top.length < 5; i++) {
+            const row = toRow(lookupEntry(ranked[i].id));
+            if (!row || !row.name)
+                continue;
+            const k = row.id || row.name;
+            if (seen[k])
+                continue;
+            seen[k] = true;
+            top.push(row);
+        }
+        if (top.length < 5) {
+            const all = getAvailableApps();
+            for (let j = 0; j < all.length && top.length < 5; j++) {
+                const r = toRow(all[j]);
+                if (!r || !r.name)
+                    continue;
+                const k = r.id || r.name;
+                if (seen[k])
+                    continue;
+                seen[k] = true;
+                top.push(r);
+            }
+        }
+        return top;
+    }
+
     function updateSearch() {
         const q = root.query.trim();
+        root.selectedSearchIndex = 0;
+        root.hoveredSearchItem = null;
+
         if (!q) {
             root.searchResults = [];
             root.bestMatchApp = null;
-            return ;
+            return;
         }
+
+        if (root.activeSearchCategory === "web") {
+            const webItems = [
+                {
+                    id: "web:google",
+                    name: "Search Google for \"" + q + "\"",
+                    icon: "public",
+                    comment: "Web search",
+                    url: "https://www.google.com/search?q=" + encodeURIComponent(q),
+                    isWeb: true
+                },
+                {
+                    id: "web:duckduckgo",
+                    name: "Search DuckDuckGo for \"" + q + "\"",
+                    icon: "public",
+                    comment: "Web search",
+                    url: "https://duckduckgo.com/?q=" + encodeURIComponent(q),
+                    isWeb: true
+                },
+                {
+                    id: "web:github",
+                    name: "Search GitHub for \"" + q + "\"",
+                    icon: "public",
+                    comment: "Web search",
+                    url: "https://github.com/search?q=" + encodeURIComponent(q),
+                    isWeb: true
+                },
+                {
+                    id: "web:archwiki",
+                    name: "Search ArchWiki for \"" + q + "\"",
+                    icon: "public",
+                    comment: "Web search",
+                    url: "https://wiki.archlinux.org/index.php?search=" + encodeURIComponent(q),
+                    isWeb: true
+                },
+                {
+                    id: "web:youtube",
+                    name: "Search YouTube for \"" + q + "\"",
+                    icon: "public",
+                    comment: "Web search",
+                    url: "https://www.youtube.com/results?search_query=" + encodeURIComponent(q),
+                    isWeb: true
+                },
+                {
+                    id: "web:bing",
+                    name: "Search Bing for \"" + q + "\"",
+                    icon: "public",
+                    comment: "Web search",
+                    url: "https://www.bing.com/search?q=" + encodeURIComponent(q),
+                    isWeb: true
+                }
+            ];
+            root.searchResults = webItems;
+            root.bestMatchApp = webItems[0];
+            return;
+        }
+
+        // Apps mode (default)
         const hits = AppSearchService.searchApplications(q) || [];
         const out = [];
         for (let i = 0; i < hits.length; i++) {
             const row = toRow(hits[i]);
             if (row && row.name)
                 out.push(row);
-
         }
+
+        const webRow = {
+            id: "web:google",
+            name: "Search the web for \"" + q + "\"",
+            icon: "public",
+            comment: "Press Tab to switch to Web Search",
+            url: "https://www.google.com/search?q=" + encodeURIComponent(q),
+            isWeb: true
+        };
+
+        if (out.length === 0) {
+            root.searchResults = [webRow];
+            root.bestMatchApp = webRow;
+            return;
+        } else {
+            out.push(webRow);
+        }
+
         root.searchResults = out;
         root.bestMatchApp = out.length > 0 ? out[0] : null;
     }
@@ -425,22 +599,45 @@ Item {
     function launchById(id) {
         const entry = lookupEntry(id);
         if (!entry)
-            return ;
+            return;
 
         SessionService.launchDesktopEntry(entry);
         AppUsageHistoryData.addAppUsage(entry);
         root.closeMenu();
     }
 
-    function launchBestMatch() {
-        if (root.bestMatchApp) {
-            launchById(root.bestMatchApp.id);
-            return ;
+    function launchItem(item) {
+        if (!item)
+            return;
+        if (item.isWeb && item.url) {
+            Quickshell.execDetached(["xdg-open", item.url]);
+            root.closeMenu();
+            return;
+        }
+        if (item.id && !item.isWeb) {
+            launchById(item.id);
+            return;
         }
         if (root.query.trim().length > 0) {
             Quickshell.execDetached(["xdg-open", "https://www.google.com/search?q=" + encodeURIComponent(root.query.trim())]);
             root.closeMenu();
         }
+    }
+
+    function launchSelectedItem() {
+        const item = root.currentPreviewItem;
+        if (item) {
+            root.launchItem(item);
+            return;
+        }
+        if (root.query.trim().length > 0) {
+            Quickshell.execDetached(["xdg-open", "https://www.google.com/search?q=" + encodeURIComponent(root.query.trim())]);
+            root.closeMenu();
+        }
+    }
+
+    function launchBestMatch() {
+        root.launchSelectedItem();
     }
 
     function doPower(action) {
@@ -462,19 +659,17 @@ Item {
             SessionService.logout();
     }
 
-    implicitWidth: 48 + 260 + dynamicTileWidth
+    implicitWidth: root.isSearchMode ? Math.max(880, 48 + 260 + dynamicTileWidth) : (48 + 260 + dynamicTileWidth)
     implicitHeight: 620
     width: implicitWidth
     height: implicitHeight
     onImplicitWidthChanged: {
         if (root.parentPopout)
             root.parentPopout.contentWidth = root.implicitWidth;
-
     }
     onParentPopoutChanged: {
         if (root.parentPopout)
             root.parentPopout.contentWidth = root.implicitWidth;
-
     }
     focus: true
     Keys.onPressed: function(event) {
@@ -482,33 +677,48 @@ Item {
             if (root.contextMenuVisible) {
                 root.contextMenuVisible = false;
                 event.accepted = true;
-                return ;
+                return;
             }
             if (root.alphabetZoomOpen) {
                 root.alphabetZoomOpen = false;
                 event.accepted = true;
-                return ;
+                return;
             }
             if (root.powerMenuOpen || root.userMenuOpen) {
                 root.powerMenuOpen = false;
                 root.userMenuOpen = false;
                 event.accepted = true;
-                return ;
+                return;
             }
             if (root.isSearchMode) {
                 root.exitSearchMode();
                 event.accepted = true;
-                return ;
+                return;
             }
             if (root.closePopout) {
                 root.closePopout();
                 event.accepted = true;
-                return ;
+                return;
             }
+        }
+        if (root.isSearchMode && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
+            root.toggleSearchCategory();
+            event.accepted = true;
+            return;
         }
         if (!root.isSearchMode && event.text && event.text.length > 0 && event.text.charCodeAt(0) >= 32) {
             root.enterSearchMode(event.text);
             event.accepted = true;
+            return;
+        }
+        if (root.isSearchMode && (typeof searchField !== "undefined" && searchField && !searchField.activeFocus) && event.text && event.text.length > 0 && event.text.charCodeAt(0) >= 32) {
+            searchField.forceActiveFocus();
+            searchField.text += event.text;
+            searchField.cursorPosition = searchField.text.length;
+            root.query = searchField.text;
+            root.updateSearch();
+            event.accepted = true;
+            return;
         }
     }
     Component.onCompleted: {
@@ -520,12 +730,19 @@ Item {
         function onOpened() {
             root.query = "";
             root.isSearchMode = false;
+            root.activeSearchCategory = "apps";
             root.powerMenuOpen = false;
             root.userMenuOpen = false;
             root.alphabetZoomOpen = false;
             root.contextMenuVisible = false;
             buildAppListModel();
             root.forceActiveFocus();
+        }
+
+        function onShouldBeVisibleChanged() {
+            if (root.parentPopout && root.parentPopout.shouldBeVisible) {
+                root.forceActiveFocus();
+            }
         }
 
         target: root.parentPopout
@@ -969,16 +1186,34 @@ Item {
             anchors.bottom: parent.bottom
             visible: root.isSearchMode
 
-            // Top Search Input bar
+            // Top Search Input bar (Windows 10 authentic top search box)
             Rectangle {
                 id: topSearchBar
 
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                height: 48
+                height: 46
                 color: root.winPanel
-                border.width: 0
+
+                // Bottom subtle border
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: Qt.rgba(255, 255, 255, 0.08)
+                }
+
+                // Active focus underline indicator (Windows 10 style)
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 2
+                    color: root.winAccent
+                    visible: searchField.activeFocus
+                }
 
                 DankIcon {
                     id: searchBarIcon
@@ -987,72 +1222,168 @@ Item {
                     anchors.leftMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
                     name: "search"
-                    size: 20
-                    color: root.winMuted
-                }
-
-                TextField {
-                    id: searchField
-
-                    anchors.left: searchBarIcon.right
-                    anchors.leftMargin: 10
-                    anchors.right: clearSearchBtn.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 36
-                    color: root.winText
-                    font.pixelSize: 15
-                    placeholderText: "Type here to search"
-                    placeholderTextColor: root.winMuted
-                    selectByMouse: true
-                    text: root.query
-                    onTextChanged: {
-                        root.query = text;
-                        root.updateSearch();
-                        if (text.length === 0)
-                            root.exitSearchMode();
-
-                    }
-                    Keys.onReturnPressed: root.launchBestMatch()
-                    Keys.onEnterPressed: root.launchBestMatch()
-                    Keys.onEscapePressed: root.exitSearchMode()
-
-                    background: Item {
-                    }
-
+                    size: 18
+                    color: searchField.activeFocus ? root.winAccent : root.winMuted
                 }
 
                 Item {
-                    id: clearSearchBtn
+                    id: searchInputContainer
 
-                    anchors.right: parent.right
-                    anchors.rightMargin: 12
+                    anchors.left: searchBarIcon.right
+                    anchors.leftMargin: 12
+                    anchors.right: searchControlsRow.left
+                    anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 32
                     height: 32
-                    visible: root.query.length > 0
 
-                    DankIcon {
-                        anchors.centerIn: parent
-                        name: "close"
-                        size: 16
-                        color: clearHover.containsMouse ? root.winText : root.winMuted
+                    // Custom placeholder text (no floating label bugs!)
+                    StyledText {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.activeSearchCategory === "web" ? "Type here to search the web..." : "Type here to search apps..."
+                        color: root.winMuted
+                        font.pixelSize: 14
+                        visible: searchField.text.length === 0
                     }
 
-                    MouseArea {
-                        id: clearHover
+                    TextInput {
+                        id: searchField
 
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.exitSearchMode()
-                    }
+                        verticalAlignment: Text.AlignVCenter
+                        color: root.winText
+                        font.pixelSize: 14
+                        selectByMouse: true
+                        selectionColor: root.winAccent
+                        selectedTextColor: "#ffffff"
+                        clip: true
+                        text: root.query
 
+                        onTextEdited: {
+                            root.query = text;
+                            root.updateSearch();
+                        }
+
+                        Keys.onTabPressed: event => {
+                            root.toggleSearchCategory();
+                            event.accepted = true;
+                        }
+
+                        Keys.onBacktabPressed: event => {
+                            root.toggleSearchCategory();
+                            event.accepted = true;
+                        }
+
+                        Keys.onDownPressed: event => {
+                            root.navigateDown();
+                            event.accepted = true;
+                        }
+
+                        Keys.onUpPressed: event => {
+                            root.navigateUp();
+                            event.accepted = true;
+                        }
+
+                        Keys.onReturnPressed: root.launchSelectedItem()
+                        Keys.onEnterPressed: root.launchSelectedItem()
+
+                        Keys.onEscapePressed: event => {
+                            if (searchField.text.length > 0) {
+                                searchField.text = "";
+                                root.query = "";
+                                root.updateSearch();
+                            } else {
+                                root.exitSearchMode();
+                            }
+                            event.accepted = true;
+                        }
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                                root.toggleSearchCategory();
+                                event.accepted = true;
+                                return;
+                            }
+                            if (event.key === Qt.Key_Backspace && searchField.text.length === 0) {
+                                root.exitSearchMode();
+                                event.accepted = true;
+                                return;
+                            }
+                        }
+                    }
                 }
 
+                Row {
+                    id: searchControlsRow
+
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+
+                    // Clear button
+                    Item {
+                        width: 32
+                        height: 32
+                        visible: searchField.text.length > 0
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 4
+                            color: clearHover.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+                        }
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "close"
+                            size: 16
+                            color: clearHover.containsMouse ? root.winText : root.winMuted
+                        }
+
+                        MouseArea {
+                            id: clearHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                searchField.text = "";
+                                root.query = "";
+                                root.updateSearch();
+                                searchField.forceActiveFocus();
+                            }
+                        }
+                    }
+
+                    // Back to Start button
+                    Item {
+                        width: 32
+                        height: 32
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 4
+                            color: backHover.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+                        }
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "arrow_back"
+                            size: 16
+                            color: backHover.containsMouse ? root.winText : root.winMuted
+                        }
+
+                        MouseArea {
+                            id: backHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.exitSearchMode()
+                        }
+                    }
+                }
             }
 
-            // Category Tabs ("All", "Apps", "Web")
+            // Category Tabs ("Apps" and "Search")
             Row {
                 id: searchCategoryRow
 
@@ -1060,303 +1391,570 @@ Item {
                 anchors.leftMargin: 16
                 anchors.top: topSearchBar.bottom
                 anchors.topMargin: 8
-                spacing: 12
-
-                CategoryTab {
-                    label: "All"
-                    isActive: root.activeSearchCategory === "all"
-                    onClicked: root.activeSearchCategory = "all"
-                }
+                spacing: 16
 
                 CategoryTab {
                     label: "Apps"
                     isActive: root.activeSearchCategory === "apps"
-                    onClicked: root.activeSearchCategory = "apps"
+                    onClicked: {
+                        root.activeSearchCategory = "apps";
+                        root.updateSearch();
+                        searchField.forceActiveFocus();
+                    }
                 }
 
                 CategoryTab {
-                    label: "Web"
+                    label: "Search"
                     isActive: root.activeSearchCategory === "web"
-                    onClicked: root.activeSearchCategory = "web"
+                    onClicked: {
+                        root.activeSearchCategory = "web";
+                        root.updateSearch();
+                        searchField.forceActiveFocus();
+                    }
                 }
-
             }
 
-            // Search Content Row
-            Row {
+            // Search Content Container
+            Item {
+                id: searchContentArea
+
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: searchCategoryRow.bottom
                 anchors.topMargin: 12
                 anchors.bottom: parent.bottom
                 anchors.margins: 16
-                spacing: 20
 
-                // Left: Best Match + Apps list
+                // 1. Windows 10 Search Home View (when query is empty)
                 Item {
-                    width: 420
-                    height: parent.height
+                    id: searchHomeView
+                    anchors.fill: parent
+                    visible: root.query.length === 0
 
-                    Column {
+                    Row {
                         anchors.fill: parent
-                        spacing: 12
+                        spacing: 20
 
-                        // "Best match" section
-                        Item {
-                            width: parent.width
-                            height: bestMatchCol.implicitHeight
-                            visible: root.bestMatchApp !== null
+                        // Left Column: Top apps + Quick searches
+                        Column {
+                            width: 440
+                            height: parent.height
+                            spacing: 20
 
+                            // Top apps section
                             Column {
-                                id: bestMatchCol
-
                                 width: parent.width
-                                spacing: 8
+                                spacing: 10
 
                                 StyledText {
-                                    text: "Best match"
+                                    text: "Top apps"
                                     color: root.winText
                                     font.pixelSize: 13
                                     font.weight: Font.DemiBold
+                                }
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 8
+
+                                    Repeater {
+                                        model: root.getTopApps()
+
+                                        Rectangle {
+                                            required property var modelData
+                                            required property int index
+
+                                            width: 78
+                                            height: 80
+                                            color: topAppHover.containsMouse ? Qt.rgba(255, 255, 255, 0.10) : Qt.rgba(255, 255, 255, 0.04)
+                                            border.width: 0
+
+                                            Column {
+                                                anchors.centerIn: parent
+                                                spacing: 6
+
+                                                AppIconRenderer {
+                                                    anchors.horizontalCenter: parent.horizontalCenter
+                                                    width: 34
+                                                    height: 34
+                                                    iconValue: modelData.icon || ""
+                                                    iconSize: 34
+                                                    fallbackText: (modelData.name || "?").charAt(0)
+                                                }
+
+                                                StyledText {
+                                                    width: 70
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    text: modelData.name || ""
+                                                    color: root.winText
+                                                    font.pixelSize: 11
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: topAppHover
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.launchById(modelData.id)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Quick searches section
+                            Column {
+                                width: parent.width
+                                spacing: 10
+
+                                StyledText {
+                                    text: "Quick searches"
+                                    color: root.winText
+                                    font.pixelSize: 13
+                                    font.weight: Font.DemiBold
+                                }
+
+                                Column {
+                                    width: parent.width
+                                    spacing: 4
+
+                                    QuickSearchRow {
+                                        iconName: "settings"
+                                        title: "Settings"
+                                        subtitle: "Adjust system and desktop preferences"
+                                        onClicked: {
+                                            PopoutService.openSettings();
+                                            root.closeMenu();
+                                        }
+                                    }
+
+                                    QuickSearchRow {
+                                        iconName: "folder"
+                                        title: "File Manager"
+                                        subtitle: "Browse files and folders"
+                                        onClicked: {
+                                            const fm = root.resolveApp("dolphin") || root.resolveApp("nautilus") || root.resolveApp("thunar");
+                                            if (fm) root.launchById(fm.id);
+                                            else Quickshell.execDetached(["xdg-open", "/home/soulis"]);
+                                            root.closeMenu();
+                                        }
+                                    }
+
+                                    QuickSearchRow {
+                                        iconName: "terminal"
+                                        title: "Terminal"
+                                        subtitle: "Launch command line terminal"
+                                        onClicked: {
+                                            const term = root.resolveApp("ghostty") || root.resolveApp("kitty") || root.resolveApp("alacritty") || root.resolveApp("foot");
+                                            if (term) root.launchById(term.id);
+                                            else Quickshell.execDetached(["ghostty"]);
+                                            root.closeMenu();
+                                        }
+                                    }
+
+                                    QuickSearchRow {
+                                        iconName: "public"
+                                        title: "Search the Web"
+                                        subtitle: "Open browser and search online"
+                                        onClicked: {
+                                            Quickshell.execDetached(["xdg-open", "https://www.google.com"]);
+                                            root.closeMenu();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Right Column: Search Windows welcome banner
+                        Rectangle {
+                            width: parent.width - 460
+                            height: parent.height - 16
+                            color: Qt.rgba(0, 0, 0, 0.20)
+                            border.width: 0
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 1
+                                color: Qt.rgba(255, 255, 255, 0.07)
+                            }
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 14
+                                width: parent.width - 48
+
+                                DankIcon {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    name: "search"
+                                    size: 52
+                                    color: root.winAccent
+                                }
+
+                                StyledText {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: "Search Windows"
+                                    color: root.winText
+                                    font.pixelSize: 18
+                                    font.weight: Font.DemiBold
+                                }
+
+                                StyledText {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: "Start typing to find apps, files, and web results."
+                                    color: root.winMuted
+                                    font.pixelSize: 13
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Active Search Results View (when query is not empty)
+                Item {
+                    id: searchResultsContent
+                    anchors.fill: parent
+                    visible: root.query.length > 0
+
+                    Row {
+                        anchors.fill: parent
+                        spacing: 20
+
+                        // Left: Best Match + Results List
+                        Item {
+                            width: 420
+                            height: parent.height
+
+                            Column {
+                                anchors.fill: parent
+                                spacing: 10
+
+                                // Best match section
+                                Item {
+                                    width: parent.width
+                                    height: bestMatchCol.implicitHeight
+                                    visible: root.bestMatchApp !== null
+
+                                    Column {
+                                        id: bestMatchCol
+
+                                        width: parent.width
+                                        spacing: 6
+
+                                        StyledText {
+                                            text: "Best match"
+                                            color: root.winText
+                                            font.pixelSize: 13
+                                            font.weight: Font.DemiBold
+                                        }
+
+                                        Rectangle {
+                                            readonly property bool isSelected: root.selectedSearchIndex === 0 && !root.hoveredSearchItem
+                                            width: parent.width
+                                            height: 68
+                                            color: isSelected ? Qt.rgba(255, 255, 255, 0.09) : (bestMatchHover.containsMouse ? Qt.rgba(255, 255, 255, 0.07) : Qt.rgba(255, 255, 255, 0.04))
+                                            border.width: 0
+
+                                            // Left accent indicator
+                                            Rectangle {
+                                                anchors.left: parent.left
+                                                anchors.top: parent.top
+                                                anchors.bottom: parent.bottom
+                                                width: 3
+                                                color: root.winAccent
+                                                visible: parent.isSelected || bestMatchHover.containsMouse
+                                            }
+
+                                            AppIconRenderer {
+                                                id: bestMatchIcon
+
+                                                anchors.left: parent.left
+                                                anchors.leftMargin: 14
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 36
+                                                height: 36
+                                                iconValue: (root.bestMatchApp && root.bestMatchApp.icon ? root.bestMatchApp.icon : (root.bestMatchApp && root.bestMatchApp.isWeb ? "public" : ""))
+                                                iconSize: 36
+                                                fallbackText: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name.charAt(0) : "?")
+                                            }
+
+                                            Column {
+                                                anchors.left: bestMatchIcon.right
+                                                anchors.leftMargin: 12
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: 12
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 2
+
+                                                StyledText {
+                                                    width: parent.width
+                                                    text: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name : "")
+                                                    color: root.winText
+                                                    font.pixelSize: 15
+                                                    font.weight: Font.DemiBold
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                StyledText {
+                                                    text: (root.bestMatchApp && root.bestMatchApp.isWeb ? "Web search" : (root.bestMatchApp && root.bestMatchApp.comment ? root.bestMatchApp.comment : "App"))
+                                                    color: root.winMuted
+                                                    font.pixelSize: 11
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: bestMatchHover
+
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onEntered: root.hoveredSearchItem = root.bestMatchApp
+                                                onExited: {
+                                                    if (root.hoveredSearchItem === root.bestMatchApp)
+                                                        root.hoveredSearchItem = null;
+                                                }
+                                                onClicked: root.launchItem(root.bestMatchApp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Secondary matches section
+                                Item {
+                                    width: parent.width
+                                    height: parent.height - (root.bestMatchApp ? 96 : 0)
+
+                                    Column {
+                                        anchors.fill: parent
+                                        spacing: 6
+
+                                        StyledText {
+                                            visible: root.searchResults.length > 1
+                                            text: root.activeSearchCategory === "web" ? "Web Search Engines" : "Search results"
+                                            color: root.winText
+                                            font.pixelSize: 13
+                                            font.weight: Font.DemiBold
+                                        }
+
+                                        ListView {
+                                            id: searchResultsView
+                                            width: parent.width
+                                            height: parent.height - 24
+                                            clip: true
+                                            boundsBehavior: Flickable.StopAtBounds
+                                            model: root.searchResults.slice(1, 10)
+                                            spacing: 2
+
+                                            WheelHandler {
+                                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                                onWheel: event => {
+                                                    const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
+                                                    const angleY = event.angleDelta ? event.angleDelta.y : 0;
+                                                    let dy = 0;
+                                                    if (pixelY !== 0)
+                                                        dy = -pixelY * 2.4;
+                                                    else if (angleY !== 0)
+                                                        dy = -(angleY / 120) * 114;
+                                                    if (dy === 0)
+                                                        return;
+                                                    if (searchResultsView.flicking)
+                                                        searchResultsView.cancelFlick();
+                                                    const maxY = Math.max(0, searchResultsView.contentHeight - searchResultsView.height);
+                                                    searchResultsView.contentY = Math.max(0, Math.min(maxY, searchResultsView.contentY + dy));
+                                                    event.accepted = true;
+                                                }
+                                            }
+
+                                            delegate: Item {
+                                                required property var modelData
+                                                required property int index
+
+                                                readonly property bool isSelected: root.selectedSearchIndex === (index + 1) && !root.hoveredSearchItem
+                                                width: parent.width
+                                                height: 38
+
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    color: isSelected ? Qt.rgba(255, 255, 255, 0.09) : (searchRowHover.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent")
+                                                    border.width: 0
+
+                                                    // Left accent indicator
+                                                    Rectangle {
+                                                        anchors.left: parent.left
+                                                        anchors.top: parent.top
+                                                        anchors.bottom: parent.bottom
+                                                        width: 3
+                                                        color: root.winAccent
+                                                        visible: isSelected || searchRowHover.containsMouse
+                                                    }
+                                                }
+
+                                                AppIconRenderer {
+                                                    id: subIcon
+
+                                                    anchors.left: parent.left
+                                                    anchors.leftMargin: 12
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: 22
+                                                    height: 22
+                                                    iconValue: modelData.icon || (modelData.isWeb ? "public" : "")
+                                                    iconSize: 22
+                                                    fallbackText: (modelData.name || "?").charAt(0)
+                                                }
+
+                                                StyledText {
+                                                    anchors.left: subIcon.right
+                                                    anchors.leftMargin: 12
+                                                    anchors.right: typeLabel.left
+                                                    anchors.rightMargin: 8
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: modelData.name || ""
+                                                    color: root.winText
+                                                    font.pixelSize: 13
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                StyledText {
+                                                    id: typeLabel
+                                                    anchors.right: parent.right
+                                                    anchors.rightMargin: 12
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: modelData.isWeb ? "Web" : "App"
+                                                    color: root.winMuted
+                                                    font.pixelSize: 11
+                                                }
+
+                                                MouseArea {
+                                                    id: searchRowHover
+
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onEntered: root.hoveredSearchItem = modelData
+                                                    onExited: {
+                                                        if (root.hoveredSearchItem === modelData)
+                                                            root.hoveredSearchItem = null;
+                                                    }
+                                                    onClicked: root.launchItem(modelData)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Right: Preview & Quick Actions Pane (Windows 10 authentic layout)
+                        Rectangle {
+                            width: parent.width - 440
+                            height: parent.height - 16
+                            color: Qt.rgba(0, 0, 0, 0.22)
+                            border.width: 0
+                            visible: root.currentPreviewItem !== null
+
+                            // Left vertical separator
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 1
+                                color: Qt.rgba(255, 255, 255, 0.07)
+                            }
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 14
+
+                                AppIconRenderer {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 56
+                                    height: 56
+                                    iconValue: (root.currentPreviewItem && root.currentPreviewItem.icon ? root.currentPreviewItem.icon : (root.currentPreviewItem && root.currentPreviewItem.isWeb ? "public" : ""))
+                                    iconSize: 56
+                                    fallbackText: (root.currentPreviewItem && root.currentPreviewItem.name ? root.currentPreviewItem.name.charAt(0) : "?")
+                                }
+
+                                StyledText {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                    width: parent.width - 16
+                                    text: (root.currentPreviewItem && root.currentPreviewItem.name ? root.currentPreviewItem.name : "")
+                                    color: root.winText
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+
+                                StyledText {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                    width: parent.width - 16
+                                    text: (root.currentPreviewItem && root.currentPreviewItem.isWeb ? "Web search" : (root.currentPreviewItem && root.currentPreviewItem.comment ? root.currentPreviewItem.comment : "Desktop app"))
+                                    color: root.winMuted
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
                                 }
 
                                 Rectangle {
                                     width: parent.width
-                                    height: 68
-                                    color: bestMatchHover.containsMouse ? root.winHover : Theme.surfaceContainer
-                                    border.color: bestMatchHover.containsMouse ? root.winAccent : "transparent"
-                                    border.width: 1
-
-                                    AppIconRenderer {
-                                        id: bestMatchIcon
-
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 14
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 36
-                                        height: 36
-                                        iconValue: (root.bestMatchApp && root.bestMatchApp.icon ? root.bestMatchApp.icon : "")
-                                        iconSize: 36
-                                        fallbackText: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name : "?")
-                                    }
-
-                                    Column {
-                                        anchors.left: bestMatchIcon.right
-                                        anchors.leftMargin: 12
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 12
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 2
-
-                                        StyledText {
-                                            width: parent.width
-                                            text: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name : "")
-                                            color: root.winText
-                                            font.pixelSize: 15
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                        }
-
-                                        StyledText {
-                                            text: "App"
-                                            color: root.winMuted
-                                            font.pixelSize: 11
-                                        }
-
-                                    }
-
-                                    MouseArea {
-                                        id: bestMatchHover
-
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.launchBestMatch()
-                                    }
-
+                                    height: 1
+                                    color: Qt.rgba(255, 255, 255, 0.08)
                                 }
 
-                            }
-
-                        }
-
-                        // Secondary matches
-                        Item {
-                            width: parent.width
-                            height: parent.height - (root.bestMatchApp ? 100 : 0)
-
-                            Column {
-                                anchors.fill: parent
-                                spacing: 6
-
-                                StyledText {
-                                    visible: root.searchResults.length > 1
-                                    text: "Apps"
-                                    color: root.winText
-                                    font.pixelSize: 13
-                                    font.weight: Font.DemiBold
-                                }
-
-                                ListView {
-                                    id: searchResultsView
+                                // Clean Action rows (borderless, Windows 10 style)
+                                Column {
                                     width: parent.width
-                                    height: parent.height - 24
-                                    clip: true
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    model: root.searchResults.slice(1, 8)
-                                    spacing: 2
+                                    spacing: 4
 
-                                    WheelHandler {
-                                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                        onWheel: event => {
-                                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                                            let dy = 0;
-                                            if (pixelY !== 0)
-                                                dy = -pixelY * 2.4;
-                                            else if (angleY !== 0)
-                                                dy = -(angleY / 120) * 114;
-                                            if (dy === 0)
-                                                return;
-                                            if (searchResultsView.flicking)
-                                                searchResultsView.cancelFlick();
-                                            const maxY = Math.max(0, searchResultsView.contentHeight - searchResultsView.height);
-                                            searchResultsView.contentY = Math.max(0, Math.min(maxY, searchResultsView.contentY + dy));
-                                            event.accepted = true;
+                                    SearchActionButton {
+                                        iconName: (root.currentPreviewItem && root.currentPreviewItem.isWeb ? "open_in_browser" : "launch")
+                                        label: (root.currentPreviewItem && root.currentPreviewItem.isWeb ? "Open in browser" : "Open")
+                                        onClicked: root.launchItem(root.currentPreviewItem)
+                                    }
+
+                                    SearchActionButton {
+                                        visible: root.currentPreviewItem && !root.currentPreviewItem.isWeb && root.currentPreviewItem.id
+                                        iconName: "push_pin"
+                                        label: root.isAppPinned(root.currentPreviewItem) ? "Unpin from Start" : "Pin to Start"
+                                        onClicked: {
+                                            root.togglePinApp(root.currentPreviewItem);
                                         }
                                     }
 
-                                    delegate: Item {
-                                        required property var modelData
-
-                                        width: parent.width
-                                        height: 38
-
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            color: searchRowHover.containsMouse ? root.winHover : "transparent"
+                                    SearchActionButton {
+                                        visible: root.currentPreviewItem && !root.currentPreviewItem.isWeb
+                                        iconName: "public"
+                                        label: "Search web for '" + root.query + "'"
+                                        onClicked: {
+                                            Quickshell.execDetached(["xdg-open", "https://www.google.com/search?q=" + encodeURIComponent(root.query.trim())]);
+                                            root.closeMenu();
                                         }
-
-                                        AppIconRenderer {
-                                            id: subIcon
-
-                                            anchors.left: parent.left
-                                            anchors.leftMargin: 10
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 22
-                                            height: 22
-                                            iconValue: modelData.icon || ""
-                                            iconSize: 22
-                                            fallbackText: (modelData.name || "?").charAt(0)
-                                        }
-
-                                        StyledText {
-                                            anchors.left: subIcon.right
-                                            anchors.leftMargin: 10
-                                            anchors.right: parent.right
-                                            anchors.rightMargin: 10
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: modelData.name || ""
-                                            color: root.winText
-                                            font.pixelSize: 13
-                                            elide: Text.ElideRight
-                                        }
-
-                                        MouseArea {
-                                            id: searchRowHover
-
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.launchById(modelData.id)
-                                        }
-
                                     }
 
+                                    SearchActionButton {
+                                        visible: root.currentPreviewItem && root.currentPreviewItem.isWeb && root.currentPreviewItem.id !== "web:google"
+                                        iconName: "search"
+                                        label: "Search with Google"
+                                        onClicked: {
+                                            Quickshell.execDetached(["xdg-open", "https://www.google.com/search?q=" + encodeURIComponent(root.query.trim())]);
+                                            root.closeMenu();
+                                        }
+                                    }
                                 }
-
                             }
-
                         }
-
                     }
-
                 }
-
-                // Right: Best Match Preview Pane
-                Rectangle {
-                    width: parent.width - 440
-                    height: parent.height - 16
-                    color: Qt.rgba(1, 1, 1, 0.04)
-                    border.width: 0
-                    visible: root.bestMatchApp !== null
-
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 16
-
-                        AppIconRenderer {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 54
-                            height: 54
-                            iconValue: (root.bestMatchApp && root.bestMatchApp.icon ? root.bestMatchApp.icon : "")
-                            iconSize: 54
-                            fallbackText: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name : "?")
-                        }
-
-                        StyledText {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name : "")
-                            color: root.winText
-                            font.pixelSize: 17
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-
-                        StyledText {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Desktop app"
-                            color: root.winMuted
-                            font.pixelSize: 12
-                        }
-
-                        Rectangle {
-                            width: parent.width
-                            height: 1
-                            color: root.winBorder
-                        }
-
-                        SearchActionButton {
-                            iconName: "launch"
-                            label: "Open"
-                            onClicked: root.launchBestMatch()
-                        }
-
-                        SearchActionButton {
-                            iconName: "push_pin"
-                            label: "Pin to Start"
-                            onClicked: {
-                                root.pinAppToStart(root.bestMatchApp);
-                                root.exitSearchMode();
-                            }
-                        }
-
-                        SearchActionButton {
-                            iconName: "public"
-                            label: "Search web for '" + root.query + "'"
-                            onClicked: {
-                                Quickshell.execDetached(["xdg-open", "https://www.google.com/search?q=" + encodeURIComponent(root.query.trim())]);
-                                root.closeMenu();
-                            }
-                        }
-
-                    }
-
-                }
-
             }
-
         }
 
         // ==========================================
@@ -1372,6 +1970,38 @@ Item {
             color: root.winRail
             border.width: 0
             z: 50
+
+            // Top: START (menu) & Search button
+            Column {
+                anchors.top: parent.top
+                width: parent.width
+                spacing: 0
+
+                RailActionRow {
+                    width: parent.width
+                    iconName: "menu"
+                    labelText: "START"
+                    onClicked: {
+                        if (root.isSearchMode) {
+                            root.exitSearchMode();
+                        }
+                    }
+                }
+
+                RailActionRow {
+                    width: parent.width
+                    iconName: "search"
+                    labelText: "Search"
+                    onClicked: {
+                        if (root.isSearchMode) {
+                            if (typeof searchField !== "undefined" && searchField)
+                                searchField.forceActiveFocus();
+                        } else {
+                            root.enterSearchMode("");
+                        }
+                    }
+                }
+            }
 
             // Bottom: User (Human), Settings, Power
             Column {
@@ -1840,14 +2470,13 @@ Item {
 
         signal clicked()
 
-        width: ctText.implicitWidth + 16
-        height: 28
+        width: ctText.implicitWidth + 20
+        height: 30
 
         Rectangle {
             anchors.fill: parent
-            color: ct.isActive ? root.winHover : (ctHover.containsMouse ? Theme.surfaceContainer : "transparent")
-            border.color: ct.isActive ? root.winAccent : "transparent"
-            border.width: 1
+            color: ctHover.containsMouse && !ct.isActive ? Qt.rgba(255, 255, 255, 0.05) : "transparent"
+            border.width: 0
         }
 
         StyledText {
@@ -1856,8 +2485,18 @@ Item {
             anchors.centerIn: parent
             text: ct.label
             color: ct.isActive ? root.winText : root.winMuted
-            font.pixelSize: 12
+            font.pixelSize: 13
             font.weight: ct.isActive ? Font.DemiBold : Font.Normal
+        }
+
+        // Active accent underline (Windows 10 authentic tab indicator)
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 2
+            color: root.winAccent
+            visible: ct.isActive
         }
 
         MouseArea {
@@ -1880,31 +2519,30 @@ Item {
         signal clicked()
 
         width: parent.width
-        height: 38
+        height: 36
 
         Rectangle {
             anchors.fill: parent
-            color: sabHover.containsMouse ? root.winHover : "transparent"
-            border.color: sabHover.containsMouse ? root.winAccent : root.winBorder
-            border.width: 1
+            color: sabHover.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
+            border.width: 0
         }
 
         DankIcon {
             id: sabIcon
 
             anchors.left: parent.left
-            anchors.leftMargin: 12
+            anchors.leftMargin: 16
             anchors.verticalCenter: parent.verticalCenter
             name: sab.iconName
-            size: 18
+            size: 16
             color: root.winText
         }
 
         StyledText {
             anchors.left: sabIcon.right
-            anchors.leftMargin: 10
+            anchors.leftMargin: 12
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             text: sab.label
             color: root.winText
@@ -1919,6 +2557,72 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: sab.clicked()
+        }
+
+    }
+
+    component QuickSearchRow: Item {
+        id: qsr
+
+        property string iconName: ""
+        property string title: ""
+        property string subtitle: ""
+
+        signal clicked()
+
+        width: parent.width
+        height: 44
+
+        Rectangle {
+            anchors.fill: parent
+            color: qsrHover.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : Qt.rgba(255, 255, 255, 0.03)
+            border.width: 0
+        }
+
+        DankIcon {
+            id: qsrIcon
+
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            name: qsr.iconName
+            size: 18
+            color: root.winAccent
+        }
+
+        Column {
+            anchors.left: qsrIcon.right
+            anchors.leftMargin: 12
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+
+            StyledText {
+                width: parent.width
+                text: qsr.title
+                color: root.winText
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+
+            StyledText {
+                width: parent.width
+                text: qsr.subtitle
+                color: root.winMuted
+                font.pixelSize: 10
+                elide: Text.ElideRight
+            }
+        }
+
+        MouseArea {
+            id: qsrHover
+
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: qsr.clicked()
         }
 
     }
