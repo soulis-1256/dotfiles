@@ -14,13 +14,13 @@ Item {
 
     property var closePopout: null
     property var parentPopout: null
-    readonly property color winBg: Theme.surface
-    readonly property color winPanel: Theme.surface
+    readonly property color winBg: Theme.surfaceContainer
+    readonly property color winPanel: Theme.surfaceContainer
     readonly property color winHover: Theme.surfaceContainerHigh
     readonly property color winAccent: Theme.primary
     readonly property color winText: Theme.surfaceText
     readonly property color winMuted: Theme.surfaceVariantText
-    readonly property color winRail: Theme.surface
+    readonly property color winRail: Theme.surfaceContainer
     readonly property color winBorder: Theme.outline
     readonly property color winTileBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.10)
     readonly property color winTileHoverBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.18)
@@ -38,6 +38,7 @@ Item {
     property bool powerMenuOpen: false
     property bool userMenuOpen: false
     property bool alphabetZoomOpen: false
+    property bool railPinnedOpen: false
     property bool isSearchMode: false
     property string query: ""
     property string activeSearchCategory: "apps"
@@ -62,6 +63,11 @@ Item {
         root.userMenuOpen = false;
         root.alphabetZoomOpen = false;
         root.contextMenuVisible = false;
+        root.railPinnedOpen = false;
+        if (typeof railDrawer !== "undefined" && railDrawer) {
+            railDrawer.railHovered = false;
+            railDrawer.railTemporarilyDismissed = false;
+        }
         root.query = "";
         root.isSearchMode = false;
         root.selectedSearchIndex = 0;
@@ -735,6 +741,11 @@ Item {
             root.userMenuOpen = false;
             root.alphabetZoomOpen = false;
             root.contextMenuVisible = false;
+            root.railPinnedOpen = false;
+            if (typeof railDrawer !== "undefined" && railDrawer) {
+                railDrawer.railHovered = false;
+                railDrawer.railTemporarilyDismissed = false;
+            }
             buildAppListModel();
             root.forceActiveFocus();
         }
@@ -742,6 +753,12 @@ Item {
         function onShouldBeVisibleChanged() {
             if (root.parentPopout && root.parentPopout.shouldBeVisible) {
                 root.forceActiveFocus();
+            } else {
+                root.railPinnedOpen = false;
+                if (typeof railDrawer !== "undefined" && railDrawer) {
+                    railDrawer.railHovered = false;
+                    railDrawer.railTemporarilyDismissed = false;
+                }
             }
         }
 
@@ -1968,30 +1985,84 @@ Item {
         Rectangle {
             id: railDrawer
 
+            property bool railHovered: false
+            property bool railTemporarilyDismissed: false
+
+            readonly property bool isRailExpanded: (railHovered && !railTemporarilyDismissed) || root.railPinnedOpen || root.powerMenuOpen || root.userMenuOpen
+
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: 48
+            width: isRailExpanded ? 220 : 48
             color: root.winRail
             border.width: 0
+            clip: true
             z: 50
 
-            // Top: START (menu) & Search button
+            Behavior on width {
+                NumberAnimation {
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                }
+            }
+
+            Timer {
+                id: railExpandTimer
+                interval: 180
+                repeat: false
+                onTriggered: {
+                    railDrawer.railHovered = true;
+                }
+            }
+
+            Timer {
+                id: railCollapseTimer
+                interval: 120
+                repeat: false
+                onTriggered: {
+                    railDrawer.railHovered = false;
+                }
+            }
+
+            HoverHandler {
+                id: railHoverHandler
+
+                onHoveredChanged: {
+                    if (!hovered) {
+                        railDrawer.railTemporarilyDismissed = false;
+                        railExpandTimer.stop();
+                        railCollapseTimer.restart();
+                    } else {
+                        railCollapseTimer.stop();
+                        if (!railDrawer.railTemporarilyDismissed) {
+                            railExpandTimer.restart();
+                        }
+                    }
+                }
+            }
+
+            // Absorb clicks on empty drawer space so they don't fall through to app list beneath
+            MouseArea {
+                anchors.fill: parent
+                z: -1
+                onClicked: {}
+            }
+
+            // Subtle 1px right divider when expanded
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 1
+                color: Qt.rgba(255, 255, 255, 0.08)
+                visible: railDrawer.width > 48
+            }
+
+            // Top: Search button
             Column {
                 anchors.top: parent.top
                 width: parent.width
                 spacing: 0
-
-                RailActionRow {
-                    width: parent.width
-                    iconName: "menu"
-                    labelText: "START"
-                    onClicked: {
-                        if (root.isSearchMode) {
-                            root.exitSearchMode();
-                        }
-                    }
-                }
 
                 RailActionRow {
                     width: parent.width
@@ -2054,6 +2125,22 @@ Item {
 
         }
 
+        // Drop shadow for expanded left rail
+        Rectangle {
+            anchors.left: railDrawer.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 14
+            z: 49
+            visible: railDrawer.width > 50
+            opacity: Math.min(1.0, Math.max(0.0, (railDrawer.width - 48) / 30))
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.45) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
         // ==========================================
         // POWER FLYOUT
         // ==========================================
@@ -2063,12 +2150,19 @@ Item {
             visible: root.powerMenuOpen
             width: 180
             height: powerCol.implicitHeight + 8
-            x: 52
+            x: railDrawer.width + 4
             y: parent.height - height - 8
             color: Theme.surfaceContainer
             border.color: root.winBorder
             border.width: 1
             z: 60
+
+            Behavior on x {
+                NumberAnimation {
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             Column {
                 id: powerCol
@@ -2116,12 +2210,19 @@ Item {
             visible: root.userMenuOpen
             width: 210
             height: userCol.implicitHeight + 8
-            x: 52
+            x: railDrawer.width + 4
             y: parent.height - (48 * 3) - height - 4
             color: Theme.surfaceContainer
             border.color: root.winBorder
             border.width: 1
             z: 60
+
+            Behavior on x {
+                NumberAnimation {
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             Column {
                 id: userCol
@@ -2235,7 +2336,7 @@ Item {
 
         signal clicked()
 
-        width: 48
+        width: parent.width
         height: 48
 
         Rectangle {
@@ -2243,11 +2344,38 @@ Item {
             color: rarHover.containsMouse ? root.winHover : "transparent"
         }
 
-        DankIcon {
-            anchors.centerIn: parent
-            name: rar.iconName
-            size: 20
+        Item {
+            id: iconSlot
+
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 48
+
+            DankIcon {
+                anchors.centerIn: parent
+                name: rar.iconName
+                size: 20
+                color: root.winText
+            }
+        }
+
+        StyledText {
+            id: rarLabel
+
+            anchors.left: iconSlot.right
+            anchors.leftMargin: 8
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: rar.labelText
             color: root.winText
+            font.pixelSize: 13
+            font.weight: rar.iconName === "menu" ? Font.DemiBold : Font.Normal
+            elide: Text.ElideRight
+            wrapMode: Text.NoWrap
+            opacity: Math.max(0.0, Math.min(1.0, (railDrawer.width - 64) / (220 - 64)))
+            visible: opacity > 0.01
         }
 
         MouseArea {
@@ -2257,31 +2385,6 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: rar.clicked()
-        }
-
-        Rectangle {
-            id: rarTooltip
-
-            visible: rarHover.containsMouse && rar.labelText !== ""
-            anchors.left: parent.right
-            anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: rarTooltipText.implicitWidth + 16
-            height: 28
-            color: root.winHover
-            border.color: root.winBorder
-            border.width: 1
-            z: 100
-
-            StyledText {
-                id: rarTooltipText
-
-                anchors.centerIn: parent
-                text: rar.labelText
-                color: root.winText
-                font.pixelSize: 12
-            }
-
         }
 
     }

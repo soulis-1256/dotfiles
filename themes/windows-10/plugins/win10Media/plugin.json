@@ -1,0 +1,14 @@
+{
+    "id": "win10Media",
+    "name": "Windows 10 Now Playing",
+    "description": "Compact taskbar now-playing control with a Windows 10 media flyout",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win10MediaWidget.qml",
+    "icon": "music_note",
+    "permissions": [
+        "settings_read"
+    ]
+}

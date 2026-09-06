@@ -7,6 +7,9 @@ import qs.Widgets
 BasePill {
     id: root
 
+    property var widgetData: null
+    property bool minimumWidth: (widgetData && widgetData.minimumWidth !== undefined) ? widgetData.minimumWidth : true
+
     function formatNetworkSpeed(bytesPerSec) {
         if (bytesPerSec < 1024) {
             return bytesPerSec.toFixed(0) + " B/s";
@@ -96,22 +99,30 @@ BasePill {
                         color: Theme.info
                     }
 
-                    StyledText {
-                        text: DgopService.networkRxRate > 0 ? root.formatNetworkSpeed(DgopService.networkRxRate) : "0 B/s"
-                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                        color: Theme.widgetTextColor
+                    Item {
+                        id: rxBox
                         anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignLeft
-                        elide: Text.ElideNone
-                        wrapMode: Text.NoWrap
+                        implicitWidth: root.minimumWidth ? Math.max(rxBaseline.width, rxText.paintedWidth) : rxText.paintedWidth
+                        implicitHeight: rxText.implicitHeight
+                        width: implicitWidth
+                        height: implicitHeight
 
                         StyledTextMetrics {
                             id: rxBaseline
                             font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                            text: "88.8 MB/s"
+                            text: "999.9 MB/s"
                         }
 
-                        width: Math.max(rxBaseline.width, paintedWidth)
+                        StyledText {
+                            id: rxText
+                            text: DgopService.networkRxRate > 0 ? root.formatNetworkSpeed(DgopService.networkRxRate) : "0 B/s"
+                            font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                            color: Theme.widgetTextColor
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            elide: Text.ElideNone
+                            wrapMode: Text.NoWrap
+                        }
                     }
                 }
 
@@ -125,22 +136,30 @@ BasePill {
                         color: Theme.error
                     }
 
-                    StyledText {
-                        text: DgopService.networkTxRate > 0 ? root.formatNetworkSpeed(DgopService.networkTxRate) : "0 B/s"
-                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                        color: Theme.widgetTextColor
+                    Item {
+                        id: txBox
                         anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignLeft
-                        elide: Text.ElideNone
-                        wrapMode: Text.NoWrap
+                        implicitWidth: root.minimumWidth ? Math.max(txBaseline.width, txText.paintedWidth) : txText.paintedWidth
+                        implicitHeight: txText.implicitHeight
+                        width: implicitWidth
+                        height: implicitHeight
 
                         StyledTextMetrics {
                             id: txBaseline
                             font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                            text: "88.8 MB/s"
+                            text: "999.9 MB/s"
                         }
 
-                        width: Math.max(txBaseline.width, paintedWidth)
+                        StyledText {
+                            id: txText
+                            text: DgopService.networkTxRate > 0 ? root.formatNetworkSpeed(DgopService.networkTxRate) : "0 B/s"
+                            font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                            color: Theme.widgetTextColor
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            elide: Text.ElideNone
+                            wrapMode: Text.NoWrap
+                        }
                     }
                 }
             }

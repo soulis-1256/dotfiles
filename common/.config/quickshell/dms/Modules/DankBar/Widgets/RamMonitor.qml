@@ -118,14 +118,11 @@ BasePill {
                         id: ramBaseline
                         font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
                         text: {
-                            let baseText = root.showInGb ? "88.8 GB" : "88%";
+                            let baseText = root.showInGb ? "88.8 GB" : "100%";
                             if (!root.showSwap) {
                                 return baseText;
                             }
-                            if (root.swapUsage < 10) {
-                                return baseText + " · 0%";
-                            }
-                            return baseText + " · 88%";
+                            return baseText + " · 100%";
                         }
                     }
 

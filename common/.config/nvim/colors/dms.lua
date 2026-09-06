@@ -86,9 +86,9 @@ end
 
 if not base46.theme_tables[theme_name] or base46.theme_tables[theme_name].type ~= vim.o.background then
 	local builtin = vim.deepcopy(assert(base46.get_builtin_theme(theme_base)))
-	local harmonized = base46.theme_harmonize(builtin, "#1a9fff", harmony)
+	local harmonized = base46.theme_harmonize(builtin, "#b8a8f0", harmony)
 	if settings.matugenTemplateNeovimSetBackground ~= false then
-		harmonized = base46.theme_set_bg(harmonized, "#0e131a")
+		harmonized = base46.theme_set_bg(harmonized, "#09070d")
 	end
 
 	base46.theme_tables[theme_name] = harmonized

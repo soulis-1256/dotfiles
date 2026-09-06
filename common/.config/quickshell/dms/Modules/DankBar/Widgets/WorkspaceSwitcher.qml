@@ -1385,13 +1385,36 @@ Item {
                 readonly property bool focusedBorderEnabledForMonitor: root.useUnfocusedAppearance ? SettingsData.workspaceUnfocusedMonitorBorderEnabled : SettingsData.workspaceFocusedBorderEnabled
                 readonly property int focusedBorderThicknessForMonitor: root.useUnfocusedAppearance ? SettingsData.workspaceUnfocusedMonitorBorderThickness : SettingsData.workspaceFocusedBorderThickness
 
-                function getContrastingIconColor(bgColor) {
-                    const luminance = 0.299 * bgColor.r + 0.587 * bgColor.g + 0.114 * bgColor.b;
-                    return luminance > 0.4 ? Qt.rgba(0.15, 0.15, 0.15, 1) : Qt.rgba(0.8, 0.8, 0.8, 1);
+                function getContrastingIconColor(bgColor, isPillActive) {
+                    let effBg = bgColor;
+                    if (!effBg || effBg === "transparent" || effBg.a === 0 || effBg.a === undefined) {
+                        effBg = Theme.surface;
+                    } else if (effBg.a < 0.9) {
+                        effBg = Qt.rgba(
+                            effBg.r * effBg.a + Theme.surface.r * (1 - effBg.a),
+                            effBg.g * effBg.a + Theme.surface.g * (1 - effBg.a),
+                            effBg.b * effBg.a + Theme.surface.b * (1 - effBg.a),
+                            1.0
+                        );
+                    }
+
+                    const bgLum = 0.2126 * effBg.r + 0.7152 * effBg.g + 0.0722 * effBg.b;
+                    const primLum = 0.2126 * Theme.primary.r + 0.7152 * Theme.primary.g + 0.0722 * Theme.primary.b;
+                    const contrastWithPrimary = Math.abs(bgLum - primLum);
+
+                    if (isPillActive && !root.isFullHeight && contrastWithPrimary < 0.25) {
+                        return bgLum >= 0.45 ? (Theme.onPrimary || "#1a1a1a") : (Theme.surfaceText || "#ffffff");
+                    }
+
+                    if (contrastWithPrimary >= 0.20) {
+                        return Theme.primary;
+                    }
+
+                    return bgLum >= 0.45 ? (Theme.onPrimary || "#1a1a1a") : (Theme.surfaceText || "#ffffff");
                 }
 
-                readonly property color quickshellIconActiveColor: getContrastingIconColor(activeColor)
-                readonly property color quickshellIconInactiveColor: getContrastingIconColor(unfocusedColor)
+                readonly property color quickshellIconActiveColor: getContrastingIconColor(root.isFullHeight ? "#2a2a2a" : activeColor, true)
+                readonly property color quickshellIconInactiveColor: getContrastingIconColor(root.isFullHeight ? "transparent" : (isOccupied ? occupiedColor : unfocusedColor), false)
 
                 readonly property color requestedColor: {
                     if (root.isFullHeight) {
