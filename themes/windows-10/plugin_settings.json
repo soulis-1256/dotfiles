@@ -1,6 +1,138 @@
 {
   "win10Start": {
-    "enabled": true
+    "enabled": true,
+    "group1Title": "Life at a glance",
+    "group1Tiles": [
+      {
+        "id": "zen",
+        "name": "Zen Browser",
+        "icon": "zen-browser",
+        "wide": true,
+        "size": "wide",
+        "isFolder": false,
+        "col": 0,
+        "row": 0
+      },
+      {
+        "id": "org.kde.dolphin",
+        "name": "Dolphin",
+        "icon": "org.kde.dolphin",
+        "wide": false,
+        "size": "medium",
+        "isFolder": false,
+        "col": 4,
+        "row": 0
+      },
+      {
+        "id": "com.mitchellh.ghostty",
+        "name": "Ghostty",
+        "icon": "com.mitchellh.ghostty",
+        "wide": true,
+        "size": "wide",
+        "isFolder": false,
+        "col": 0,
+        "row": 2
+      },
+      {
+        "id": "dev.zed.Zed",
+        "name": "Zed",
+        "icon": "zed",
+        "wide": false,
+        "size": "medium",
+        "isFolder": false,
+        "col": 4,
+        "row": 2
+      },
+      {
+        "id": "brave-browser",
+        "name": "Brave",
+        "icon": "brave-desktop",
+        "wide": false,
+        "size": "medium",
+        "isFolder": false,
+        "col": 0,
+        "row": 4
+      },
+      {
+        "id": "localsend",
+        "name": "LocalSend",
+        "icon": "localsend",
+        "wide": false,
+        "size": "medium",
+        "isFolder": false,
+        "col": 2,
+        "row": 4
+      },
+      {
+        "id": "gparted",
+        "name": "GParted",
+        "icon": "gparted",
+        "size": "small",
+        "wide": false,
+        "isFolder": false,
+        "col": 4,
+        "row": 4
+      }
+    ],
+    "group2Title": "Play & explore",
+    "group2Tiles": [
+      {
+        "id": "steam",
+        "name": "Steam",
+        "icon": "steam",
+        "wide": false,
+        "size": "medium",
+        "isFolder": false,
+        "col": 0,
+        "row": 0
+      },
+      {
+        "id": "spotify-launcher",
+        "name": "Spotify (Launcher)",
+        "icon": "spotify-launcher",
+        "wide": true,
+        "size": "wide",
+        "isFolder": false,
+        "col": 2,
+        "row": 0
+      },
+      {
+        "id": "folder_media_chat",
+        "isFolder": true,
+        "name": "Media & Chat",
+        "size": "medium",
+        "wide": false,
+        "isExpanded": false,
+        "col": 0,
+        "row": 2,
+        "tiles": [
+          {
+            "id": "vesktop",
+            "name": "Vesktop",
+            "icon": "vesktop",
+            "wide": false,
+            "size": "medium",
+            "isFolder": false
+          },
+          {
+            "id": "vlc",
+            "name": "VLC media player",
+            "icon": "vlc",
+            "wide": false,
+            "size": "medium",
+            "isFolder": false
+          },
+          {
+            "id": "net.davidotek.pupgui2",
+            "name": "ProtonUp-Qt",
+            "icon": "net.davidotek.pupgui2",
+            "wide": false,
+            "size": "medium",
+            "isFolder": false
+          }
+        ]
+      }
+    ]
   },
   "win10Clock": {
     "enabled": true

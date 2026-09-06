@@ -24,8 +24,8 @@ Item {
     readonly property color winBorder: Theme.outline
     readonly property color winTileBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.10)
     readonly property color winTileHoverBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.18)
-    readonly property bool hasGroup1: root.group1Tiles && root.group1Tiles.length > 0
-    readonly property bool hasGroup2: root.group2Tiles && root.group2Tiles.length > 0
+    readonly property bool hasGroup1: (root.group1Tiles && root.group1Tiles.length > 0) || root.group1Title !== ""
+    readonly property bool hasGroup2: (root.group2Tiles && root.group2Tiles.length > 0) || root.group2Title !== "" || (root.isDraggingTile && root.dropTargetGroupId === 2)
     readonly property real dynamicTileWidth: {
         if (hasGroup1 && hasGroup2)
             return 640;
@@ -40,6 +40,10 @@ Item {
     property bool alphabetZoomOpen: false
     property bool railPinnedOpen: false
     property bool isSearchMode: false
+    onIsSearchModeChanged: {
+        if (root.isSearchMode)
+            root.closeSidebarAndPopovers();
+    }
     property string query: ""
     property string activeSearchCategory: "apps"
     property int selectedSearchIndex: 0
@@ -47,36 +51,250 @@ Item {
     property var flatAppListModel: []
     property var letterIndices: ({})
     property var activeLetters: ({})
+    property string group1Title: "Life at a glance"
+    property string group2Title: "Play & explore"
     property var group1Tiles: []
     property var group2Tiles: []
+    property string renamingItemId: ""
     property var searchResults: []
     property var bestMatchApp: null
     readonly property var currentPreviewItem: hoveredSearchItem || (selectedSearchIndex >= 0 && selectedSearchIndex < searchResults.length ? searchResults[selectedSearchIndex] : bestMatchApp)
     property bool contextMenuVisible: false
     property var contextMenuItem: null
     property string contextMenuType: ""
+    property int contextMenuGroupId: 1
+    property var contextMenuParentFolder: null
     property real contextMenuX: 0
     property real contextMenuY: 0
 
-    function closeMenu() {
+    // Windows 10 Open Folder Overlay State
+    property string openFolderId: ""
+    property int openFolderGroupId: 0
+    property real openFolderX: 16
+    property real openFolderY: 12
+    property real openFolderWidth: 300
+
+    function openFolder(folderId, groupId, sourceItem) {
         root.powerMenuOpen = false;
         root.userMenuOpen = false;
-        root.alphabetZoomOpen = false;
         root.contextMenuVisible = false;
+        root.contextMenuItem = null;
+        root.contextMenuParentFolder = null;
+        root.renamingItemId = "";
+        root.openFolderId = folderId;
+        root.openFolderGroupId = groupId || 1;
+        root.openFolderWidth = 300;
+
+        if (sourceItem && typeof tileArea !== "undefined" && typeof tileFlickable !== "undefined") {
+            const pt = sourceItem.mapToItem(tileArea, 0, 0);
+            const tgX = (groupId === 2 && tileGroup2.visible ? 320 : 16) - tileFlickable.contentX;
+            root.openFolderX = tgX - 6;
+            const fH = (typeof folderOverlayContainer !== "undefined" && folderOverlayContainer) ? folderOverlayContainer.calculatedHeight : 142;
+            const fY = Math.max(8, Math.min(tileArea.height - fH - 16, pt.y));
+            root.openFolderY = fY;
+        } else {
+            const defaultX = (groupId === 2 && tileGroup2.visible ? 320 : 16) - (typeof tileFlickable !== "undefined" ? tileFlickable.contentX : 0);
+            root.openFolderX = defaultX - 6;
+            root.openFolderY = 12;
+        }
+    }
+
+    function closeActiveFolder() {
+        root.openFolderId = "";
+        root.openFolderGroupId = 0;
+        root.renamingItemId = "";
+    }
+
+    function getOpenFolderData() {
+        if (!root.openFolderId) return null;
+        const findIn = function(list) {
+            for (let i = 0; i < (list || []).length; i++) {
+                if (list[i].id === root.openFolderId && list[i].isFolder) return list[i];
+            }
+            return null;
+        };
+        return findIn(root.group1Tiles) || findIn(root.group2Tiles);
+    }
+
+    // Drag & Drop State
+    property bool isDraggingTile: false
+    property var draggedTileData: null
+    property int draggedFromGroupId: 0
+    property string draggedFromFolderId: ""
+    property int draggedSourceIndex: -1
+    property real dragGhostX: 0
+    property real dragGhostY: 0
+    property real dragOffsetX: 0
+    property real dragOffsetY: 0
+    property real dragTileWidth: 92
+    property real dragTileHeight: 92
+
+    // Drop Target State
+    property string dropTargetType: "none"
+    property int dropTargetGroupId: 0
+    property string dropTargetFolderId: ""
+    property string dropTargetTileId: ""
+    property int dropTargetIndex: -1
+    property int dropTargetCol: 0
+    property int dropTargetRow: 0
+    property string dropActionBadge: ""
+
+    // Fast onto a tile center = folder. Slow movement = live reorder. Recomputed every move.
+    readonly property real dragSlowEnterSpeed: 300
+    readonly property real dragSlowLeaveSpeed: 480
+    readonly property int dragSlowHoldMs: 80
+    readonly property real dragFolderSpeedMin: 360
+    property real dragPointerSpeed: 0
+    property real dragLastMouseX: 0
+    property real dragLastMouseY: 0
+    property real dragLastSampleMs: 0
+    property real dragSlowSinceMs: 0
+    property bool dragReorderLive: false
+    property bool dragCommitting: false
+    property string dragFolderStickyId: ""
+    property int dragFolderStickyGroupId: 0
+
+    function toFolderChild(tile) {
+        if (!tile)
+            return null;
+        return {
+            "id": tile.id,
+            "name": tile.name,
+            "icon": tile.icon || "",
+            "size": "medium",
+            "wide": false,
+            "isFolder": false
+        };
+    }
+
+    function sampleDragMotion(globalX, globalY) {
+        const now = Date.now();
+        const dt = now - root.dragLastSampleMs;
+        if (dt <= 0) {
+            root.dragLastMouseX = globalX;
+            root.dragLastMouseY = globalY;
+            return;
+        }
+        const dist = Math.hypot(globalX - root.dragLastMouseX, globalY - root.dragLastMouseY);
+        const inst = (dist / dt) * 1000;
+        if (dt > 120)
+            root.dragPointerSpeed = inst;
+        else {
+            const alpha = Math.min(1, dt / 40);
+            root.dragPointerSpeed = root.dragPointerSpeed * (1 - alpha) + inst * alpha;
+        }
+        root.dragLastMouseX = globalX;
+        root.dragLastMouseY = globalY;
+        root.dragLastSampleMs = now;
+
+        if (root.dragPointerSpeed <= root.dragSlowEnterSpeed) {
+            if (root.dragSlowSinceMs <= 0)
+                root.dragSlowSinceMs = now;
+            if ((now - root.dragSlowSinceMs) >= root.dragSlowHoldMs)
+                root.dragReorderLive = true;
+        } else {
+            root.dragSlowSinceMs = 0;
+            if (root.dragPointerSpeed >= root.dragSlowLeaveSpeed)
+                root.dragReorderLive = false;
+        }
+    }
+
+    function resetDragMotion() {
+        root.dragPointerSpeed = 0;
+        root.dragLastMouseX = 0;
+        root.dragLastMouseY = 0;
+        root.dragLastSampleMs = 0;
+        root.dragSlowSinceMs = 0;
+        root.dragReorderLive = false;
+        root.dragCommitting = false;
+        root.dragFolderStickyId = "";
+        root.dragFolderStickyGroupId = 0;
+    }
+
+    function resetMenuState() {
+        // 1. Windows 10 Folders
+        root.closeActiveFolder();
+
+        // 2. Sidebar / Left Navigation Rail
         root.railPinnedOpen = false;
         if (typeof railDrawer !== "undefined" && railDrawer) {
             railDrawer.railHovered = false;
             railDrawer.railTemporarilyDismissed = false;
         }
-        root.query = "";
+        if (typeof railExpandTimer !== "undefined" && railExpandTimer)
+            railExpandTimer.stop();
+        if (typeof railCollapseTimer !== "undefined" && railCollapseTimer)
+            railCollapseTimer.stop();
+
+        // 3. Popovers & Menus
+        root.powerMenuOpen = false;
+        root.userMenuOpen = false;
+        root.alphabetZoomOpen = false;
+        root.contextMenuVisible = false;
+        root.contextMenuItem = null;
+        root.contextMenuParentFolder = null;
+        root.renamingItemId = "";
+        if (typeof tileGroup1 !== "undefined" && tileGroup1)
+            tileGroup1.isEditingHeader = false;
+        if (typeof tileGroup2 !== "undefined" && tileGroup2)
+            tileGroup2.isEditingHeader = false;
+
+        // 4. Search State
         root.isSearchMode = false;
+        root.query = "";
         root.selectedSearchIndex = 0;
         root.hoveredSearchItem = null;
+        root.activeSearchCategory = "apps";
+
+        // 5. Drag & Drop State
+        root.cancelDraggingTile();
+
+        // 6. Scroll positions
+        if (typeof appListView !== "undefined" && appListView) {
+            if (appListView.flicking) appListView.cancelFlick();
+            appListView.contentY = 0;
+            appListView.positionViewAtBeginning();
+        }
+        if (typeof searchResultsView !== "undefined" && searchResultsView) {
+            if (searchResultsView.flicking) searchResultsView.cancelFlick();
+            searchResultsView.contentY = 0;
+            searchResultsView.positionViewAtBeginning();
+        }
+        if (typeof tileFlickable !== "undefined" && tileFlickable) {
+            if (tileFlickable.flicking) tileFlickable.cancelFlick();
+            tileFlickable.contentY = 0;
+        }
+    }
+
+    function closeSidebarAndPopovers() {
+        root.powerMenuOpen = false;
+        root.userMenuOpen = false;
+        root.contextMenuVisible = false;
+        root.contextMenuItem = null;
+        root.contextMenuParentFolder = null;
+        root.renamingItemId = "";
+        if (!root.isDraggingTile) {
+            root.closeActiveFolder();
+            root.cancelDraggingTile();
+        }
+        if (typeof railDrawer !== "undefined" && railDrawer) {
+            railDrawer.railHovered = false;
+            railDrawer.railTemporarilyDismissed = true;
+        }
+        if (typeof railExpandTimer !== "undefined" && railExpandTimer)
+            railExpandTimer.stop();
+        if (typeof railCollapseTimer !== "undefined" && railCollapseTimer)
+            railCollapseTimer.stop();
+    }
+
+    function closeMenu() {
+        root.resetMenuState();
         if (root.closePopout)
             root.closePopout();
     }
 
     function enterSearchMode(initialChar) {
+        root.closeSidebarAndPopovers();
         root.isSearchMode = true;
         root.query = initialChar || "";
         root.selectedSearchIndex = 0;
@@ -385,33 +603,171 @@ Item {
         return out;
     }
 
+    function packTilesGrid(list) {
+        if (!list || list.length === 0) return [];
+        var occupied = {};
+        var result = [];
+
+        function canFit(r, c, w, h) {
+            if (c + w > 6) return false;
+            for (var dr = 0; dr < h; dr++) {
+                for (var dc = 0; dc < w; dc++) {
+                    if (occupied[(r + dr) + "," + (c + dc)]) return false;
+                }
+            }
+            return true;
+        }
+
+        function occupy(r, c, w, h) {
+            for (var dr = 0; dr < h; dr++) {
+                for (var dc = 0; dc < w; dc++) {
+                    occupied[(r + dr) + "," + (c + dc)] = true;
+                }
+            }
+        }
+
+        var sorted = list.slice().sort(function(a, b) {
+            var ra = (typeof a.row === "number") ? a.row : 999;
+            var ca = (typeof a.col === "number") ? a.col : 999;
+            var rb = (typeof b.row === "number") ? b.row : 999;
+            var cb = (typeof b.col === "number") ? b.col : 999;
+            return (ra * 6 + ca) - (rb * 6 + cb);
+        });
+
+        for (var i = 0; i < sorted.length; i++) {
+            var it = Object.assign({}, sorted[i]);
+            var size = it.size || (it.wide ? "wide" : "medium");
+            var w = size === "small" ? 1 : ((size === "wide" || size === "large") ? 4 : 2);
+            var h = size === "small" ? 1 : (size === "large" ? 4 : 2);
+            it.wCells = w;
+            it.hCells = h;
+
+            var placed = false;
+            if (typeof it.col === "number" && typeof it.row === "number" && it.col >= 0 && it.col + w <= 6 && it.row >= 0) {
+                if (canFit(it.row, it.col, w, h)) {
+                    occupy(it.row, it.col, w, h);
+                    placed = true;
+                }
+            }
+
+            if (!placed) {
+                var stepC = (w === 1) ? 1 : 2;
+                var stepR = (h === 1) ? 1 : 2;
+                for (var r = 0; r < 200 && !placed; r += stepR) {
+                    for (var c = 0; c <= 6 - w && !placed; c += stepC) {
+                        if (canFit(r, c, w, h)) {
+                            it.col = c;
+                            it.row = r;
+                            occupy(r, c, w, h);
+                            placed = true;
+                        }
+                    }
+                }
+            }
+            result.push(it);
+        }
+
+        result.sort(function(a, b) {
+            var ra = (typeof a.row === "number") ? a.row : 0;
+            var ca = (typeof a.col === "number") ? a.col : 0;
+            var rb = (typeof b.row === "number") ? b.row : 0;
+            var cb = (typeof b.col === "number") ? b.col : 0;
+            return (ra * 6 + ca) - (rb * 6 + cb);
+        });
+
+        return result;
+    }
+
+    function normalizeTiles(tiles) {
+        if (!tiles || !Array.isArray(tiles)) return [];
+        var norm = tiles.map(function(item) {
+            if (!item) return null;
+            const copy = Object.assign({}, item);
+            if (copy.isFolder) {
+                copy.name = copy.name || "Folder";
+                copy.size = copy.size || (copy.wide ? "wide" : "medium");
+                copy.wide = (copy.size === "wide" || copy.size === "large");
+                copy.isExpanded = !!copy.isExpanded;
+                copy.tiles = (copy.tiles || []).map(function(t) {
+                    return root.toFolderChild(t);
+                }).filter(function(t) { return t !== null; });
+                return copy;
+            }
+            copy.name = copy.name || "App";
+            copy.size = copy.size || (copy.wide ? "wide" : "medium");
+            copy.wide = (copy.size === "wide" || copy.size === "large");
+            copy.isFolder = false;
+            return copy;
+        }).filter(function(t) { return t !== null; });
+
+        return packTilesGrid(norm);
+    }
+
     function refreshTiles() {
         const saved = SettingsData.getPluginSettingsForPlugin("win10Start");
+        root.group1Title = (saved && saved.group1Title) || "Life at a glance";
+        root.group2Title = (saved && saved.group2Title) || "Play & explore";
         if (saved && saved.group1Tiles && saved.group1Tiles.length > 0) {
-            root.group1Tiles = saved.group1Tiles;
-            root.group2Tiles = saved.group2Tiles || [];
+            root.group1Tiles = normalizeTiles(saved.group1Tiles);
+            root.group2Tiles = normalizeTiles(saved.group2Tiles || []);
             return ;
         }
-        root.group1Tiles = buildTilesFromQueries(defaultGroup1Queries(), 0);
-        root.group2Tiles = buildTilesFromQueries(defaultGroup2Queries(), 6);
+        root.group1Tiles = normalizeTiles(buildTilesFromQueries(defaultGroup1Queries(), 0));
+        const g2Raw = buildTilesFromQueries(defaultGroup2Queries(), 6);
+        const folderCandidates = [];
+        const remainingG2 = [];
+        for (let i = 0; i < g2Raw.length; i++) {
+            const t = g2Raw[i];
+            const lower = ((t.name || "") + " " + (t.id || "")).toLowerCase();
+            if (lower.indexOf("vesktop") !== -1 || lower.indexOf("discord") !== -1 || lower.indexOf("vlc") !== -1 || lower.indexOf("proton") !== -1) {
+                folderCandidates.push(t);
+            } else {
+                remainingG2.push(t);
+            }
+        }
+        if (folderCandidates.length >= 2) {
+            remainingG2.push({
+                "id": "folder_media_chat",
+                "isFolder": true,
+                "name": "Media & Chat",
+                "size": "medium",
+                "wide": false,
+                "isExpanded": false,
+                "tiles": folderCandidates
+            });
+            root.group2Tiles = normalizeTiles(remainingG2);
+        } else {
+            root.group2Tiles = normalizeTiles(g2Raw);
+        }
     }
 
     function saveTilesState() {
+        SettingsData.setPluginSetting("win10Start", "group1Title", root.group1Title);
+        SettingsData.setPluginSetting("win10Start", "group2Title", root.group2Title);
         SettingsData.setPluginSetting("win10Start", "group1Tiles", root.group1Tiles);
         SettingsData.setPluginSetting("win10Start", "group2Tiles", root.group2Tiles);
+    }
+
+    function isAppPinned(app) {
+        if (!app || !app.id)
+            return false;
+        const checkList = function(list) {
+            return (list || []).some(function(item) {
+                if (item.id === app.id) return true;
+                if (item.isFolder && item.tiles) {
+                    return item.tiles.some(function(t) { return t.id === app.id; });
+                }
+                return false;
+            });
+        };
+        return checkList(root.group1Tiles) || checkList(root.group2Tiles);
     }
 
     function pinAppToStart(app) {
         if (!app || !app.id)
             return ;
 
-        const exists1 = root.group1Tiles.some((t) => {
-            return t.id === app.id;
-        });
-        const exists2 = root.group2Tiles.some((t) => {
-            return t.id === app.id;
-        });
-        if (exists1 || exists2)
+        if (isAppPinned(app))
             return ;
 
         const newTiles = root.group1Tiles.slice();
@@ -419,9 +775,11 @@ Item {
             "id": app.id,
             "name": app.name,
             "icon": app.icon || "",
-            "wide": false
+            "size": "medium",
+            "wide": false,
+            "isFolder": false
         });
-        root.group1Tiles = newTiles;
+        root.group1Tiles = packTilesGrid(newTiles);
         saveTilesState();
     }
 
@@ -429,41 +787,605 @@ Item {
         if (!tile || !tile.id)
             return ;
 
-        root.group1Tiles = root.group1Tiles.filter((t) => {
-            return t.id !== tile.id;
-        });
-        root.group2Tiles = root.group2Tiles.filter((t) => {
-            return t.id !== tile.id;
-        });
+        const filterList = function(list) {
+            const out = [];
+            for (let i = 0; i < (list || []).length; i++) {
+                const item = list[i];
+                if (item.id === tile.id)
+                    continue;
+                if (item.isFolder && item.tiles) {
+                    const sub = item.tiles.filter(function(t) { return t.id !== tile.id; });
+                    if (sub.length > 0) {
+                        out.push(Object.assign({}, item, { tiles: sub }));
+                    }
+                } else {
+                    out.push(item);
+                }
+            }
+            return out;
+        };
+        root.group1Tiles = packTilesGrid(filterList(root.group1Tiles));
+        root.group2Tiles = packTilesGrid(filterList(root.group2Tiles));
+        saveTilesState();
+    }
+
+    function setTileSize(tile, newSize) {
+        if (!tile || !tile.id)
+            return ;
+
+        const updateList = function(list) {
+            return (list || []).map(function(item) {
+                if (item.id === tile.id) {
+                    const c = Object.assign({}, item);
+                    c.size = newSize;
+                    c.wide = (newSize === "wide" || newSize === "large");
+                    if (newSize !== "small") {
+                        c.col = Math.min(newSize === "wide" || newSize === "large" ? 2 : 4, Math.floor((c.col || 0) / 2) * 2);
+                        c.row = Math.floor((c.row || 0) / 2) * 2;
+                    }
+                    return c;
+                }
+                return item;
+            });
+        };
+        root.group1Tiles = packTilesGrid(updateList(root.group1Tiles));
+        root.group2Tiles = packTilesGrid(updateList(root.group2Tiles));
         saveTilesState();
     }
 
     function toggleTileSize(tile) {
-        if (!tile || !tile.id)
+        if (!tile)
             return ;
 
-        const update = (list) => {
-            return list.map((t) => {
-                if (t.id === tile.id)
-                    return {
-                        "id": t.id,
-                        "name": t.name,
-                        "icon": t.icon,
-                        "wide": !t.wide
-                    };
+        const current = tile.size || (tile.wide ? "wide" : "medium");
+        const next = current === "wide" ? "medium" : "wide";
+        setTileSize(tile, next);
+    }
 
-                return t;
+    function renameTileOrFolder(id, newName) {
+        if (!id || !newName || !newName.trim())
+            return ;
+
+        const clean = newName.trim();
+        const updateList = function(list) {
+            return (list || []).map(function(item) {
+                if (item.id === id) {
+                    return Object.assign({}, item, { name: clean });
+                }
+                if (item.isFolder && item.tiles) {
+                    const sub = item.tiles.map(function(t) {
+                        if (t.id === id) {
+                            return Object.assign({}, t, { name: clean });
+                        }
+                        return t;
+                    });
+                    return Object.assign({}, item, { tiles: sub });
+                }
+                return item;
             });
         };
-        root.group1Tiles = update(root.group1Tiles);
-        root.group2Tiles = update(root.group2Tiles);
+        root.group1Tiles = updateList(root.group1Tiles);
+        root.group2Tiles = updateList(root.group2Tiles);
         saveTilesState();
     }
 
-    function isAppPinned(app) {
-        if (!app || !app.id)
-            return false;
-        return root.group1Tiles.some(t => t.id === app.id) || root.group2Tiles.some(t => t.id === app.id);
+    function toggleFolderExpanded(folderId) {
+        if (!folderId) return;
+        if (root.openFolderId === folderId) {
+            root.closeActiveFolder();
+        } else {
+            let gId = 1;
+            if ((root.group2Tiles || []).some(function(it) { return it.id === folderId; }))
+                gId = 2;
+            root.openFolder(folderId, gId);
+        }
+    }
+
+    function createFolderWithTile(tile, folderName) {
+        if (!tile || !tile.id)
+            return ;
+
+        const fName = (folderName && folderName.trim()) ? folderName.trim() : "New folder";
+        const newFolder = {
+            "id": "folder_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
+            "isFolder": true,
+            "name": fName,
+            "size": "medium",
+            "wide": false,
+            "isExpanded": true,
+            "tiles": [root.toFolderChild(tile)]
+        };
+        const replaceIn = function(list) {
+            const idx = list.findIndex(function(t) { return t.id === tile.id; });
+            if (idx !== -1) {
+                const c = list.slice();
+                c[idx] = newFolder;
+                return c;
+            }
+            return list;
+        };
+        root.group1Tiles = replaceIn(root.group1Tiles);
+        root.group2Tiles = replaceIn(root.group2Tiles);
+        saveTilesState();
+    }
+
+    function addTileToFolder(tile, folderId) {
+        if (!tile || !tile.id || !folderId)
+            return ;
+
+        const remove = function(list) {
+            return (list || []).filter(function(t) { return t.id !== tile.id; });
+        };
+        const g1 = remove(root.group1Tiles);
+        const g2 = remove(root.group2Tiles);
+
+        const addIn = function(list) {
+            return (list || []).map(function(item) {
+                if (item.id === folderId && item.isFolder) {
+                    const sub = (item.tiles || []).slice();
+                    if (!sub.some(function(t) { return t.id === tile.id; })) {
+                        sub.push(root.toFolderChild(tile));
+                    }
+                    return Object.assign({}, item, { tiles: sub, isExpanded: true });
+                }
+                return item;
+            });
+        };
+        root.group1Tiles = addIn(g1);
+        root.group2Tiles = addIn(g2);
+        saveTilesState();
+    }
+
+    function removeTileFromFolder(tile, folderId) {
+        if (!tile || !tile.id)
+            return ;
+
+        let targetGroup = 1;
+        const extract = function(list, gNum) {
+            return (list || []).map(function(item) {
+                if (item.id === folderId && item.isFolder && item.tiles) {
+                    targetGroup = gNum;
+                    const sub = item.tiles.filter(function(t) { return t.id !== tile.id; });
+                    return Object.assign({}, item, { tiles: sub });
+                }
+                return item;
+            });
+        };
+        root.group1Tiles = extract(root.group1Tiles, 1);
+        root.group2Tiles = extract(root.group2Tiles, 2);
+
+        const extractedTile = Object.assign({}, root.toFolderChild(tile), {
+            "size": tile.size || "medium",
+            "wide": !!tile.wide
+        });
+        if (targetGroup === 1) {
+            const c = root.group1Tiles.slice();
+            c.push(extractedTile);
+            root.group1Tiles = c;
+        } else {
+            const c = root.group2Tiles.slice();
+            c.push(extractedTile);
+            root.group2Tiles = c;
+        }
+        saveTilesState();
+    }
+
+    function ungroupFolder(folder) {
+        if (!folder || !folder.id)
+            return ;
+
+        const unpack = function(list) {
+            const out = [];
+            for (let i = 0; i < (list || []).length; i++) {
+                const item = list[i];
+                if (item.id === folder.id && item.isFolder) {
+                    const children = item.tiles || [];
+                    for (let c = 0; c < children.length; c++) {
+                        out.push(children[c]);
+                    }
+                } else {
+                    out.push(item);
+                }
+            }
+            return out;
+        };
+        root.group1Tiles = unpack(root.group1Tiles);
+        root.group2Tiles = unpack(root.group2Tiles);
+        saveTilesState();
+    }
+
+    function moveTileBetweenGroups(tile) {
+        if (!tile || !tile.id)
+            return ;
+
+        const inG1 = root.group1Tiles.some(function(t) { return t.id === tile.id; });
+        if (inG1) {
+            root.group1Tiles = root.group1Tiles.filter(function(t) { return t.id !== tile.id; });
+            const c = root.group2Tiles.slice();
+            c.push(tile);
+            root.group2Tiles = c;
+        } else {
+            root.group2Tiles = root.group2Tiles.filter(function(t) { return t.id !== tile.id; });
+            const c = root.group1Tiles.slice();
+            c.push(tile);
+            root.group1Tiles = c;
+        }
+        saveTilesState();
+    }
+
+    function moveTileOrder(groupId, fromIdx, toIdx) {
+        const list = (groupId === 1 ? root.group1Tiles : root.group2Tiles).slice();
+        if (fromIdx < 0 || fromIdx >= list.length || toIdx < 0 || toIdx >= list.length)
+            return ;
+
+        const item = list.splice(fromIdx, 1)[0];
+        list.splice(toIdx, 0, item);
+        if (groupId === 1)
+            root.group1Tiles = list;
+        else
+            root.group2Tiles = list;
+        saveTilesState();
+    }
+
+    function getFoldersInGroup(groupId) {
+        const list = groupId === 1 ? root.group1Tiles : root.group2Tiles;
+        return (list || []).filter(function(item) { return item.isFolder; });
+    }
+
+    function startDraggingTile(tile, fromGroupId, fromFolderId, sourceIdx, w, h, localX, localY, globalX, globalY) {
+        if (!tile || !tile.id)
+            return;
+        root.draggedTileData = tile;
+        root.draggedFromGroupId = fromGroupId;
+        root.draggedFromFolderId = fromFolderId || "";
+        root.draggedSourceIndex = sourceIdx;
+        root.dragTileWidth = w;
+        root.dragTileHeight = h;
+        root.dragOffsetX = localX;
+        root.dragOffsetY = localY;
+        root.dragGhostX = globalX - localX;
+        root.dragGhostY = globalY - localY;
+        root.contextMenuVisible = false;
+        root.renamingItemId = "";
+        root.dropTargetType = fromFolderId ? "reorder-folder" : "reorder";
+        root.dropTargetGroupId = fromGroupId;
+        root.dropTargetFolderId = fromFolderId || "";
+        root.dropTargetTileId = "";
+        root.dropTargetIndex = sourceIdx;
+        root.dropTargetCol = (tile && typeof tile.col === "number") ? tile.col : 0;
+        root.dropTargetRow = (tile && typeof tile.row === "number") ? tile.row : 0;
+        root.dragLastMouseX = globalX;
+        root.dragLastMouseY = globalY;
+        root.dragLastSampleMs = Date.now();
+        root.dragPointerSpeed = 0;
+        root.dragSlowSinceMs = 0;
+        root.dragReorderLive = !!fromFolderId;
+        root.dragCommitting = false;
+        root.dragFolderStickyId = "";
+        root.dragFolderStickyGroupId = 0;
+        root.isDraggingTile = true;
+        updateDragPosition(globalX, globalY);
+    }
+
+    function updateDragPosition(globalX, globalY) {
+        if (!root.isDraggingTile || !root.draggedTileData)
+            return;
+        root.dragGhostX = globalX - root.dragOffsetX;
+        root.dragGhostY = globalY - root.dragOffsetY;
+        root.sampleDragMotion(globalX, globalY);
+
+        if (typeof tileGroup1 === "undefined" || !tileGroup1 || typeof tileGroup2 === "undefined" || !tileGroup2)
+            return;
+
+        // Inside an open folder: always live-reorder. Leaving the overlay is the only "mode" change.
+        if (root.openFolderId !== "" && typeof folderOverlayContainer !== "undefined" && folderOverlayContainer.visible) {
+            const foPt = folderOverlayContainer.mapFromItem(menuBackground, globalX, globalY);
+            const padX = 40;
+            const padY = 48;
+            if (foPt.x >= -padX && foPt.x <= folderOverlayContainer.width + padX && foPt.y >= -padY && foPt.y <= folderOverlayContainer.height + padY) {
+                root.dragReorderLive = true;
+                root.dragFolderStickyId = "";
+                root.dragFolderStickyGroupId = 0;
+                root.dropTargetType = "reorder-folder";
+                root.dropTargetGroupId = root.openFolderGroupId;
+                root.dropTargetFolderId = root.openFolderId;
+                root.dropTargetTileId = "";
+                root.dropTargetIndex = (typeof folderOverlayContainer.calculateFolderSlot === "function") ? folderOverlayContainer.calculateFolderSlot(foPt.x, foPt.y) : 0;
+                root.dropActionBadge = "Reorder in folder";
+                return;
+            }
+        }
+
+        let targetTg = tileGroup1;
+        let targetGId = 1;
+
+        if (root.hasGroup2 && tileGroup2.visible) {
+            const p2 = tileGroup2.mapFromItem(menuBackground, globalX, globalY);
+            const p2Tile = tileGroup2.mapFromItem(menuBackground, root.dragGhostX + root.dragTileWidth / 2, root.dragGhostY + root.dragTileHeight / 2);
+            if (p2.x >= -16 || p2Tile.x >= 0) {
+                targetTg = tileGroup2;
+                targetGId = 2;
+            } else {
+                targetTg = tileGroup1;
+                targetGId = 1;
+            }
+        } else {
+            targetTg = tileGroup1;
+            targetGId = 1;
+        }
+
+        const lp = targetTg.mapFromItem(menuBackground, globalX, globalY);
+
+        root.dropTargetType = "reorder";
+        root.dropTargetGroupId = targetGId;
+        root.dropTargetFolderId = "";
+        root.dropTargetTileId = "";
+        if (typeof targetTg.calculateTargetCell === "function") {
+            const cell = targetTg.calculateTargetCell(globalX, globalY);
+            root.dropTargetCol = cell.x;
+            root.dropTargetRow = cell.y;
+        } else {
+            root.dropTargetCol = 0;
+            root.dropTargetRow = 0;
+        }
+        root.dropActionBadge = root.draggedFromFolderId ? "Move out of folder" : "";
+
+        // Keep folder-mode while still on the same tile. Speed/slow-reorder must not cancel it.
+        let centerHit = null;
+        let hitGId = targetGId;
+        if (root.dragFolderStickyId) {
+            const stickyGId = root.dragFolderStickyGroupId || targetGId;
+            const stickyTg = (stickyGId === 2 && tileGroup2.visible) ? tileGroup2 : tileGroup1;
+            if (stickyTg && typeof stickyTg.checkStickyDropTarget === "function") {
+                const stickyLp = stickyTg.mapFromItem(menuBackground, globalX, globalY);
+                centerHit = stickyTg.checkStickyDropTarget(stickyLp.x, stickyLp.y);
+                if (centerHit)
+                    hitGId = stickyGId;
+            }
+        }
+
+        if (!centerHit && !root.dragReorderLive) {
+            if (typeof targetTg.checkCenterDropTarget === "function")
+                centerHit = targetTg.checkCenterDropTarget(lp.x, lp.y);
+            if (centerHit)
+                hitGId = targetGId;
+            if (!centerHit && root.hasGroup2 && tileGroup2.visible) {
+                const otherTg = (targetGId === 1) ? tileGroup2 : tileGroup1;
+                const otherGId = (targetGId === 1) ? 2 : 1;
+                if (typeof otherTg.checkCenterDropTarget === "function") {
+                    const otherLp = otherTg.mapFromItem(menuBackground, globalX, globalY);
+                    const hit = otherTg.checkCenterDropTarget(otherLp.x, otherLp.y);
+                    if (hit) {
+                        centerHit = hit;
+                        hitGId = otherGId;
+                    }
+                }
+            }
+        }
+
+        const holdingSticky = !!(centerHit && root.dragFolderStickyId && centerHit.tileId === root.dragFolderStickyId);
+        const fastEnough = root.dragPointerSpeed >= root.dragFolderSpeedMin || holdingSticky;
+        if (centerHit && fastEnough) {
+            root.dragFolderStickyId = centerHit.tileId;
+            root.dragFolderStickyGroupId = hitGId;
+            root.dropTargetGroupId = hitGId;
+            if (centerHit.type === "folder") {
+                root.dropTargetType = "add-to-folder";
+                root.dropTargetFolderId = centerHit.folderId;
+                root.dropTargetTileId = centerHit.folderId;
+                root.dropTargetIndex = centerHit.tileIndex;
+                root.dropActionBadge = "Add to folder";
+            } else {
+                root.dropTargetType = "create-folder";
+                root.dropTargetFolderId = "";
+                root.dropTargetTileId = centerHit.tileId;
+                root.dropTargetIndex = centerHit.tileIndex;
+                root.dropActionBadge = "Drop to create folder";
+            }
+        } else {
+            root.dragFolderStickyId = "";
+            root.dragFolderStickyGroupId = 0;
+        }
+    }
+
+    function cancelDraggingTile() {
+        root.isDraggingTile = false;
+        root.resetDragMotion();
+
+        root.draggedTileData = null;
+        root.draggedFromGroupId = 0;
+        root.draggedFromFolderId = "";
+        root.draggedSourceIndex = -1;
+        root.dropTargetType = "none";
+        root.dropTargetGroupId = 0;
+        root.dropTargetFolderId = "";
+        root.dropTargetTileId = "";
+        root.dropTargetIndex = -1;
+        root.dropTargetCol = 0;
+        root.dropTargetRow = 0;
+        root.dropActionBadge = "";
+    }
+
+    function endDraggingTile() {
+        if (!root.isDraggingTile || !root.draggedTileData) {
+            cancelDraggingTile();
+            return;
+        }
+
+        const tile = root.draggedTileData;
+        const fromGId = root.draggedFromGroupId;
+        const fromFId = root.draggedFromFolderId;
+        const targetType = root.dropTargetType;
+        const targetGId = root.dropTargetGroupId || fromGId || 1;
+        const targetFolderId = root.dropTargetFolderId;
+        const targetIndex = root.dropTargetIndex;
+        const fromIndex = root.draggedSourceIndex;
+        const targetCol = root.dropTargetCol;
+        const targetRow = root.dropTargetRow;
+        const targetTg = (targetGId === 1) ? tileGroup1 : tileGroup2;
+        const displaced = (targetType === "reorder" && targetTg && typeof targetTg.getDisplacedMap === "function")
+            ? targetTg.getDisplacedMap(targetCol, targetRow) : {};
+
+        if (targetType === "none") {
+            cancelDraggingTile();
+            return;
+        }
+
+        // Prepare updated lists locally without intermediate triggering of Repeater models
+        let g1 = (root.group1Tiles || []).slice();
+        let g2 = (root.group2Tiles || []).slice();
+
+        // 1. Remove from source
+        if (fromFId) {
+            const removeFromF = function(list) {
+                return (list || []).map(function(item) {
+                    if (item.id === fromFId && item.isFolder && item.tiles) {
+                        const sub = item.tiles.filter(function(t) { return t.id !== tile.id; });
+                        return Object.assign({}, item, { tiles: sub });
+                    }
+                    return item;
+                });
+            };
+            g1 = removeFromF(g1);
+            g2 = removeFromF(g2);
+        } else {
+            const removeTop = function(list) {
+                return (list || []).filter(function(t) { return t.id !== tile.id; });
+            };
+            if (fromGId === 1)
+                g1 = removeTop(g1);
+            else if (fromGId === 2)
+                g2 = removeTop(g2);
+        }
+
+        // 2. Insert into target
+        if (targetType === "add-to-folder") {
+            const addToF = function(list) {
+                return (list || []).map(function(item) {
+                    if (item.id === targetFolderId && item.isFolder) {
+                        const sub = (item.tiles || []).filter(function(t) { return t.id !== tile.id; });
+                        sub.push(root.toFolderChild(tile));
+                        return Object.assign({}, item, { tiles: sub });
+                    }
+                    return item;
+                });
+            };
+            g1 = addToF(g1);
+            g2 = addToF(g2);
+        } else if (targetType === "reorder-folder") {
+            const reorderF = function(list) {
+                return (list || []).map(function(item) {
+                    if (item.id === targetFolderId && item.isFolder && item.tiles) {
+                        const sub = item.tiles.filter(function(t) { return t.id !== tile.id; });
+                        const clamped = Math.max(0, Math.min(targetIndex, sub.length));
+                        sub.splice(clamped, 0, root.toFolderChild(tile));
+                        return Object.assign({}, item, { tiles: sub });
+                    }
+                    return item;
+                });
+            };
+            g1 = reorderF(g1);
+            g2 = reorderF(g2);
+        } else if (targetType === "create-folder") {
+            const createF = function(list) {
+                return (list || []).map(function(item) {
+                    if (item.id === root.dropTargetTileId) {
+                        return {
+                            "id": "folder_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
+                            "isFolder": true,
+                            "name": "New folder",
+                            "size": "medium",
+                            "wide": false,
+                            "isExpanded": false,
+                            "col": (typeof item.col === "number") ? item.col : 0,
+                            "row": (typeof item.row === "number") ? item.row : 0,
+                            "tiles": [
+                                root.toFolderChild(item),
+                                root.toFolderChild(tile)
+                            ]
+                        };
+                    }
+                    return item;
+                });
+            };
+            if (targetGId === 1)
+                g1 = createF(g1);
+            else if (targetGId === 2)
+                g2 = createF(g2);
+        } else {
+            const droppedTile = {
+                "id": tile.id,
+                "name": tile.name,
+                "icon": tile.icon || "",
+                "size": tile.size || "medium",
+                "wide": !!tile.wide,
+                "isFolder": !!tile.isFolder,
+                "tiles": tile.tiles || [],
+                "col": targetCol,
+                "row": targetRow
+            };
+
+            const applyDisplaced = function(list) {
+                return (list || []).map(function(item) {
+                    if (displaced && displaced[item.id]) {
+                        const pt = displaced[item.id];
+                        return Object.assign({}, item, { col: pt.x, row: pt.y });
+                    }
+                    return item;
+                });
+            };
+
+            if (targetGId === 1) {
+                g1 = applyDisplaced(g1);
+                g1.push(droppedTile);
+                g1 = packTilesGrid(g1);
+            } else {
+                g2 = applyDisplaced(g2);
+                g2.push(droppedTile);
+                g2 = packTilesGrid(g2);
+            }
+        }
+
+        // Clean up empty folders and unpack 1-tile folders
+        const cleanEmpty = function(list) {
+            const res = [];
+            for (let i = 0; i < (list || []).length; i++) {
+                const it = list[i];
+                if (it.isFolder) {
+                    if (!it.tiles || it.tiles.length === 0) continue;
+                    if (it.tiles.length === 1) {
+                        const single = Object.assign({}, it.tiles[0], {
+                            col: (typeof it.col === "number") ? it.col : 0,
+                            row: (typeof it.row === "number") ? it.row : 0,
+                            isFolder: false
+                        });
+                        res.push(single);
+                        continue;
+                    }
+                }
+                res.push(it);
+            }
+            return res;
+        };
+        g1 = cleanEmpty(g1);
+        g2 = cleanEmpty(g2);
+
+        // Repeater rebuilds the group; freeze motion so new delegates don't fly from (0,0).
+        root.dragCommitting = true;
+        root.group1Tiles = g1;
+        root.group2Tiles = g2;
+
+        // If open folder was emptied or removed, close it
+        if (root.openFolderId) {
+            const openFolderExists = (root.group1Tiles || []).concat(root.group2Tiles || []).some(function(it) {
+                return it.id === root.openFolderId && it.isFolder && it.tiles && it.tiles.length > 0;
+            });
+            if (!openFolderExists)
+                root.closeActiveFolder();
+        }
+
+        saveTilesState();
+        cancelDraggingTile();
     }
 
     function togglePinApp(app) {
@@ -647,7 +1569,7 @@ Item {
     }
 
     function doPower(action) {
-        root.powerMenuOpen = false;
+        root.resetMenuState();
         if (root.closePopout)
             root.closePopout();
 
@@ -680,8 +1602,18 @@ Item {
     focus: true
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
+            if (root.renamingItemId !== "") {
+                root.renamingItemId = "";
+                event.accepted = true;
+                return;
+            }
             if (root.contextMenuVisible) {
                 root.contextMenuVisible = false;
+                event.accepted = true;
+                return;
+            }
+            if (root.openFolderId !== "") {
+                root.closeActiveFolder();
                 event.accepted = true;
                 return;
             }
@@ -691,8 +1623,12 @@ Item {
                 return;
             }
             if (root.powerMenuOpen || root.userMenuOpen) {
-                root.powerMenuOpen = false;
-                root.userMenuOpen = false;
+                root.closeSidebarAndPopovers();
+                event.accepted = true;
+                return;
+            }
+            if (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded) {
+                root.closeSidebarAndPopovers();
                 event.accepted = true;
                 return;
             }
@@ -718,6 +1654,7 @@ Item {
             return;
         }
         if (root.isSearchMode && (typeof searchField !== "undefined" && searchField && !searchField.activeFocus) && event.text && event.text.length > 0 && event.text.charCodeAt(0) >= 32) {
+            root.closeSidebarAndPopovers();
             searchField.forceActiveFocus();
             searchField.text += event.text;
             searchField.cursorPosition = searchField.text.length;
@@ -732,37 +1669,56 @@ Item {
         refreshTiles();
     }
 
+    onVisibleChanged: {
+        if (!visible) {
+            root.resetMenuState();
+        }
+    }
+
     Connections {
+        target: root.parentPopout
+
         function onOpened() {
-            root.query = "";
-            root.isSearchMode = false;
-            root.activeSearchCategory = "apps";
-            root.powerMenuOpen = false;
-            root.userMenuOpen = false;
-            root.alphabetZoomOpen = false;
-            root.contextMenuVisible = false;
-            root.railPinnedOpen = false;
-            if (typeof railDrawer !== "undefined" && railDrawer) {
-                railDrawer.railHovered = false;
-                railDrawer.railTemporarilyDismissed = false;
-            }
+            root.resetMenuState();
             buildAppListModel();
             root.forceActiveFocus();
+            Qt.callLater(function() {
+                if (typeof appListView !== "undefined" && appListView) {
+                    if (appListView.flicking) appListView.cancelFlick();
+                    appListView.contentY = 0;
+                    appListView.positionViewAtBeginning();
+                }
+                if (typeof tileFlickable !== "undefined" && tileFlickable) {
+                    if (tileFlickable.flicking) tileFlickable.cancelFlick();
+                    tileFlickable.contentY = 0;
+                }
+            });
+        }
+
+        function onPopoutClosed() {
+            root.resetMenuState();
         }
 
         function onShouldBeVisibleChanged() {
             if (root.parentPopout && root.parentPopout.shouldBeVisible) {
+                root.resetMenuState();
+                buildAppListModel();
                 root.forceActiveFocus();
+                Qt.callLater(function() {
+                    if (typeof appListView !== "undefined" && appListView) {
+                        if (appListView.flicking) appListView.cancelFlick();
+                        appListView.contentY = 0;
+                        appListView.positionViewAtBeginning();
+                    }
+                    if (typeof tileFlickable !== "undefined" && tileFlickable) {
+                        if (tileFlickable.flicking) tileFlickable.cancelFlick();
+                        tileFlickable.contentY = 0;
+                    }
+                });
             } else {
-                root.railPinnedOpen = false;
-                if (typeof railDrawer !== "undefined" && railDrawer) {
-                    railDrawer.railHovered = false;
-                    railDrawer.railTemporarilyDismissed = false;
-                }
+                root.resetMenuState();
             }
         }
-
-        target: root.parentPopout
     }
 
     Connections {
@@ -1136,6 +2092,7 @@ Item {
                     maximumFlickVelocity: 4000
                     clip: true
                     flickableDirection: Flickable.VerticalFlick
+                    interactive: !root.isDraggingTile
 
                     WheelHandler {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
@@ -1157,6 +2114,14 @@ Item {
                         }
                     }
 
+                    MouseArea {
+                        anchors.fill: parent
+                        z: -1
+                        onClicked: {
+                            root.closeSidebarAndPopovers();
+                        }
+                    }
+
                     Row {
                         id: tileRow
 
@@ -1166,22 +2131,400 @@ Item {
                         anchors.leftMargin: 16
                         spacing: 16
 
-                        // Group 1: "Life at a glance" (width = 288px)
+                        // Group 1 (width = 288px)
                         TileGroup {
+                            id: tileGroup1
+                            groupId: 1
                             visible: root.hasGroup1
-                            groupTitle: "Life at a glance"
+                            groupTitle: root.group1Title
                             tilesModel: root.group1Tiles
                             groupWidth: 288
+                            onTitleChanged: function(newTitle) {
+                                root.group1Title = newTitle;
+                                root.saveTilesState();
+                            }
                         }
 
-                        // Group 2: "Play & explore" (width = 288px)
+                        // Group 2 (width = 288px)
                         TileGroup {
+                            id: tileGroup2
+                            groupId: 2
                             visible: root.hasGroup2
-                            groupTitle: "Play & explore"
+                            groupTitle: root.group2Title
                             tilesModel: root.group2Tiles
                             groupWidth: 288
+                            onTitleChanged: function(newTitle) {
+                                root.group2Title = newTitle;
+                                root.saveTilesState();
+                            }
                         }
 
+                    }
+
+                }
+
+                // ==========================================
+                // FOLDER DISMISS BACKDROP (Clicks on empty space in pinned area close folder)
+                // ==========================================
+                MouseArea {
+                    id: folderDismissBackdrop
+
+                    anchors.fill: parent
+                    z: 70
+                    visible: root.openFolderId !== "" && !root.isDraggingTile
+                    enabled: !root.isDraggingTile
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: {
+                        root.closeActiveFolder();
+                    }
+                }
+
+                // ==========================================
+                // WINDOWS 10 FOLDER OVERLAY (Draws over pinned area items)
+                // ==========================================
+                Item {
+                    id: folderOverlayContainer
+
+                    readonly property var folderData: root.getOpenFolderData()
+                    readonly property real calculatedHeight: {
+                        var fD = folderData;
+                        if (!fD || !fD.tiles || fD.tiles.length === 0) return 60;
+                        var count = fD.tiles.length;
+                        if (root.isDraggingTile && root.dropTargetType === "reorder-folder" && root.draggedFromFolderId !== fD.id) {
+                            count += 1;
+                        }
+                        var rows = Math.ceil(count / 3);
+                        return 36 + rows * 98 + 8;
+                    }
+                    visible: root.openFolderId !== "" && folderData !== null
+                    z: 75
+
+                    x: root.openFolderX
+                    y: root.openFolderY
+                    width: root.openFolderWidth
+                    height: Math.min(tileArea.height - y - 16, calculatedHeight)
+
+                    function folderSlotToPixel(slot) {
+                        var c = slot % 3;
+                        var r = Math.floor(slot / 3);
+                        return Qt.point(c * 98, r * 98);
+                    }
+
+                    function calculateFolderSlot(mx, my) {
+                        var totalCount = folderData ? (folderData.tiles ? folderData.tiles.length : 0) : 0;
+                        if (totalCount === 0) return 0;
+
+                        var isDragFromThisFolder = (root.draggedFromFolderId === folderData.id);
+                        var maxSlot = isDragFromThisFolder ? Math.max(0, totalCount - 1) : totalCount;
+
+                        var lx = Math.max(0, mx - 6);
+                        var ly = Math.max(0, my - 36);
+
+                        var col = Math.max(0, Math.min(2, Math.floor(lx / 98)));
+                        var row = Math.max(0, Math.floor(ly / 98));
+                        var slot = row * 3 + col;
+
+                        return Math.max(0, Math.min(maxSlot, slot));
+                    }
+
+                    function getFolderTileDisplacement(itemIndex) {
+                        if (root.dragCommitting || !root.isDraggingTile || root.dropTargetType !== "reorder-folder" || !folderData || root.dropTargetFolderId !== folderData.id) {
+                            return Qt.point(0, 0);
+                        }
+                        var targetSlot = root.dropTargetIndex;
+                        var draggedIdx = (root.draggedFromFolderId === folderData.id) ? root.draggedSourceIndex : -1;
+
+                        if (itemIndex === draggedIdx) {
+                            return Qt.point(0, 0);
+                        }
+
+                        var visSlot = itemIndex;
+                        if (draggedIdx !== -1) {
+                            if (draggedIdx < targetSlot) {
+                                if (itemIndex > draggedIdx && itemIndex <= targetSlot) {
+                                    visSlot = itemIndex - 1;
+                                }
+                            } else if (draggedIdx > targetSlot) {
+                                if (itemIndex >= targetSlot && itemIndex < draggedIdx) {
+                                    visSlot = itemIndex + 1;
+                                }
+                            }
+                        } else {
+                            if (itemIndex >= targetSlot) {
+                                visSlot = itemIndex + 1;
+                            }
+                        }
+
+                        var normalPos = folderSlotToPixel(itemIndex);
+                        var visPos = folderSlotToPixel(visSlot);
+                        return Qt.point(visPos.x - normalPos.x, visPos.y - normalPos.y);
+                    }
+
+                    // Main folder panel surface (100% OPAQUE solid surface - NO transparency)
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Theme.surfaceContainerHigh
+                        border.width: 0
+
+                        // Absorb clicks on folder background so it doesn't dismiss
+                        MouseArea {
+                            anchors.fill: parent
+                            z: -1
+                            enabled: !root.isDraggingTile
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.RightButton && folderOverlayContainer.folderData) {
+                                    root.contextMenuItem = folderOverlayContainer.folderData;
+                                    root.contextMenuGroupId = root.openFolderGroupId;
+                                    root.contextMenuType = "folder";
+                                    const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                    root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                    root.contextMenuY = Math.min(gp.y, menuBackground.height - 180);
+                                    root.contextMenuVisible = true;
+                                }
+                            }
+                        }
+
+                        Column {
+                            id: folderInnerCol
+
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 6
+                            spacing: 6
+
+                            // Folder Header (Simple clean title, right-click to edit)
+                            Item {
+                                width: parent.width
+                                height: 24
+
+                                // View Title Mode
+                                Item {
+                                    anchors.fill: parent
+                                    visible: root.renamingItemId !== (folderOverlayContainer.folderData ? folderOverlayContainer.folderData.id : "")
+
+                                    StyledText {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "Folder") : "Folder"
+                                        color: root.winText
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                // Edit Title Mode (Authentic Windows 10 style inline rename)
+                                Rectangle {
+                                    anchors.fill: parent
+                                    visible: folderOverlayContainer.folderData && root.renamingItemId === folderOverlayContainer.folderData.id
+                                    color: Qt.rgba(0, 0, 0, 0.75)
+                                    border.color: root.winAccent
+                                    border.width: 1
+
+                                    TextInput {
+                                        id: foRenameInput
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 4
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        color: "#ffffff"
+                                        selectByMouse: true
+                                        selectionColor: root.winAccent
+                                        selectedTextColor: "#ffffff"
+                                        clip: true
+                                        text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : ""
+
+                                        onVisibleChanged: {
+                                            if (visible) {
+                                                text = folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : "";
+                                                forceActiveFocus();
+                                                selectAll();
+                                            }
+                                        }
+
+                                        onAccepted: {
+                                            if (folderOverlayContainer.folderData)
+                                                root.renameTileOrFolder(folderOverlayContainer.folderData.id, text);
+                                            root.renamingItemId = "";
+                                        }
+
+                                        Keys.onEscapePressed: {
+                                            root.renamingItemId = "";
+                                        }
+
+                                        onActiveFocusChanged: {
+                                            if (!activeFocus && folderOverlayContainer.folderData && root.renamingItemId === folderOverlayContainer.folderData.id) {
+                                                root.renameTileOrFolder(folderOverlayContainer.folderData.id, text);
+                                                root.renamingItemId = "";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Child Tiles Grid Area (Exact same visual placeholder & displacement as TileGroup)
+                            Item {
+                                id: folderTileArea
+                                width: 288
+                                implicitHeight: Math.ceil(((folderOverlayContainer.folderData && folderOverlayContainer.folderData.tiles) ? folderOverlayContainer.folderData.tiles.length : 0) / 3) * 98
+                                height: implicitHeight
+
+                                // Animated Slot Placeholder inside folder (Windows 10 accent outline - identical to TileGroup)
+                                Rectangle {
+                                    id: foSlotPlaceholder
+                                    z: 10
+                                    visible: root.isDraggingTile && root.dropTargetType === "reorder-folder" && root.dropTargetFolderId === (folderOverlayContainer.folderData ? folderOverlayContainer.folderData.id : "")
+                                    width: 92
+                                    height: 92
+                                    color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.2)
+                                    border.color: root.winAccent
+                                    border.width: 2
+
+                                    readonly property point slotPos: folderOverlayContainer.folderSlotToPixel(root.dropTargetIndex)
+                                    x: slotPos.x
+                                    y: slotPos.y
+                                }
+
+                                Repeater {
+                                    id: foRepeater
+                                    model: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.tiles || []) : []
+
+                                    Rectangle {
+                                        id: foTileRect
+
+                                        required property var modelData
+                                        required property int index
+
+                                        readonly property bool isBeingDragged: root.isDraggingTile && root.draggedTileData && root.draggedTileData.id === modelData.id
+
+                                        readonly property point normalPos: folderOverlayContainer.folderSlotToPixel(index)
+                                        x: normalPos.x
+                                        y: normalPos.y
+
+                                        width: 92
+                                        height: 92
+                                        color: foTileMouse.containsMouse ? root.winTileHoverBg : root.winTileBg
+                                        border.color: foTileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent"
+                                        border.width: 1
+                                        opacity: isBeingDragged ? 0.0 : 1.0
+                                        scale: foTileMouse.pressed && !foTileMouse.draggingStarted ? 0.96 : 1
+
+                                        Behavior on scale {
+                                            NumberAnimation { duration: 80 }
+                                        }
+
+                                        // Dynamic displacement to make room for dragged item
+                                        readonly property point displacement: folderOverlayContainer.getFolderTileDisplacement(index)
+
+                                        transform: Translate {
+                                            x: foTileRect.displacement.x
+                                            y: foTileRect.displacement.y
+
+                                            Behavior on x {
+                                                enabled: root.isDraggingTile && !root.dragCommitting
+                                                NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                                            }
+                                            Behavior on y {
+                                                enabled: root.isDraggingTile && !root.dragCommitting
+                                                NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                                            }
+                                        }
+
+                                        AppIconRenderer {
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            y: 16
+                                            width: 36
+                                            height: 36
+                                            iconValue: modelData.icon || ""
+                                            iconSize: 36
+                                            fallbackText: (modelData.name || "?").charAt(0)
+                                        }
+
+                                        StyledText {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 8
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 8
+                                            anchors.bottom: parent.bottom
+                                            anchors.bottomMargin: 6
+                                            text: modelData.name || ""
+                                            color: root.winText
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                            wrapMode: Text.NoWrap
+                                        }
+
+                                        MouseArea {
+                                            id: foTileMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                            cursorShape: Qt.PointingHandCursor
+                                            property point pressPos: Qt.point(0, 0)
+                                            property bool draggingStarted: false
+                                            enabled: !root.isDraggingTile || draggingStarted
+
+                                            onPressed: function(mouse) {
+                                                pressPos = Qt.point(mouse.x, mouse.y);
+                                                draggingStarted = false;
+                                                preventStealing = false;
+                                            }
+
+                                            onPositionChanged: function(mouse) {
+                                                if (pressed) {
+                                                    var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
+                                                    if (!root.isDraggingTile && !draggingStarted && dist > 7) {
+                                                        draggingStarted = true;
+                                                        preventStealing = true;
+                                                        var gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                        root.startDraggingTile(modelData, root.openFolderGroupId, root.openFolderId, index, width, height, mouse.x, mouse.y, gp.x, gp.y);
+                                                    } else if (root.isDraggingTile) {
+                                                        var gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                        root.updateDragPosition(gp.x, gp.y);
+                                                    }
+                                                }
+                                            }
+
+                                            onReleased: function(mouse) {
+                                                preventStealing = false;
+                                                if (root.isDraggingTile) {
+                                                    root.endDraggingTile();
+                                                } else if (!draggingStarted) {
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                        root.contextMenuItem = modelData;
+                                                        root.contextMenuGroupId = root.openFolderGroupId;
+                                                        root.contextMenuType = "folderTile";
+                                                        root.contextMenuParentFolder = folderOverlayContainer.folderData;
+                                                        root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                                        root.contextMenuY = Math.min(gp.y, menuBackground.height - 240);
+                                                        root.contextMenuVisible = true;
+                                                        return;
+                                                    }
+                                                    root.launchById(modelData.id);
+                                                    root.closeMenu();
+                                                }
+                                                draggingStarted = false;
+                                            }
+
+                                            onCanceled: {
+                                                preventStealing = false;
+                                                if (root.isDraggingTile) {
+                                                    root.cancelDraggingTile();
+                                                }
+                                                draggingStarted = false;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                 }
@@ -1275,6 +2618,11 @@ Item {
                         selectedTextColor: "#ffffff"
                         clip: true
                         text: root.query
+
+                        onActiveFocusChanged: {
+                            if (activeFocus)
+                                root.closeSidebarAndPopovers();
+                        }
 
                         onTextEdited: {
                             root.query = text;
@@ -1980,6 +3328,22 @@ Item {
         }
 
         // ==========================================
+        // BACKDROP DISMISSER FOR POPOVERS & EXPANDED SIDEBAR
+        // ==========================================
+        MouseArea {
+            id: popoverDismissBackdrop
+
+            anchors.fill: parent
+            z: 48
+            visible: root.powerMenuOpen || root.userMenuOpen || root.contextMenuVisible
+            hoverEnabled: false
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: function(mouse) {
+                root.closeSidebarAndPopovers();
+            }
+        }
+
+        // ==========================================
         // LEFT RAIL DRAWER (Human, Settings, Power)
         // ==========================================
         Rectangle {
@@ -1988,7 +3352,8 @@ Item {
             property bool railHovered: false
             property bool railTemporarilyDismissed: false
 
-            readonly property bool isRailExpanded: (railHovered && !railTemporarilyDismissed) || root.railPinnedOpen || root.powerMenuOpen || root.userMenuOpen
+            readonly property bool isFlyoutHovered: (root.powerMenuOpen && powerFlyoutHover.hovered) || (root.userMenuOpen && userFlyoutHover.hovered)
+            readonly property bool isRailExpanded: ((railHovered || isFlyoutHovered) && !railTemporarilyDismissed) || root.railPinnedOpen || root.powerMenuOpen || root.userMenuOpen
 
             anchors.left: parent.left
             anchors.top: parent.top
@@ -2000,6 +3365,7 @@ Item {
             z: 50
 
             Behavior on width {
+                enabled: (root.parentPopout ? root.parentPopout.shouldBeVisible : root.visible)
                 NumberAnimation {
                     duration: 180
                     easing.type: Easing.OutCubic
@@ -2028,11 +3394,11 @@ Item {
                 id: railHoverHandler
 
                 onHoveredChanged: {
-                    if (!hovered) {
-                        railDrawer.railTemporarilyDismissed = false;
+                    if (!hovered && !railDrawer.isFlyoutHovered) {
                         railExpandTimer.stop();
                         railCollapseTimer.restart();
-                    } else {
+                    } else if (hovered) {
+                        railDrawer.railTemporarilyDismissed = false;
                         railCollapseTimer.stop();
                         if (!railDrawer.railTemporarilyDismissed) {
                             railExpandTimer.restart();
@@ -2041,11 +3407,13 @@ Item {
                 }
             }
 
-            // Absorb clicks on empty drawer space so they don't fall through to app list beneath
+            // Absorb clicks on empty drawer space & close popovers
             MouseArea {
                 anchors.fill: parent
                 z: -1
-                onClicked: {}
+                onClicked: {
+                    root.closeSidebarAndPopovers();
+                }
             }
 
             // Subtle 1px right divider when expanded
@@ -2069,6 +3437,7 @@ Item {
                     iconName: "search"
                     labelText: "Search"
                     onClicked: {
+                        root.closeSidebarAndPopovers();
                         if (root.isSearchMode) {
                             if (typeof searchField !== "undefined" && searchField)
                                 searchField.forceActiveFocus();
@@ -2142,26 +3511,23 @@ Item {
         }
 
         // ==========================================
-        // POWER FLYOUT
+        // POWER FLYOUT (Directly above Power button)
         // ==========================================
         Rectangle {
             id: powerFlyout
 
             visible: root.powerMenuOpen
-            width: 180
+            width: 220
             height: powerCol.implicitHeight + 8
-            x: railDrawer.width + 4
-            y: parent.height - height - 8
+            x: 0
+            y: parent.height - 48 - height
             color: Theme.surfaceContainer
-            border.color: root.winBorder
+            border.color: Qt.rgba(1, 1, 1, 0.12)
             border.width: 1
             z: 60
 
-            Behavior on x {
-                NumberAnimation {
-                    duration: 180
-                    easing.type: Easing.OutCubic
-                }
+            HoverHandler {
+                id: powerFlyoutHover
             }
 
             Column {
@@ -2201,27 +3567,53 @@ Item {
 
         }
 
+        // Elevation shadows for power flyout (outer top and right edges)
+        Rectangle {
+            anchors.left: powerFlyout.right
+            anchors.top: powerFlyout.top
+            anchors.bottom: powerFlyout.bottom
+            width: 12
+            z: 59
+            visible: root.powerMenuOpen
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.4) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        Rectangle {
+            anchors.left: powerFlyout.left
+            anchors.right: powerFlyout.right
+            anchors.bottom: powerFlyout.top
+            height: 8
+            z: 59
+            visible: root.powerMenuOpen
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.25) }
+            }
+        }
+
         // ==========================================
-        // USER FLYOUT
+        // USER FLYOUT (Directly above User button)
         // ==========================================
         Rectangle {
             id: userFlyout
 
             visible: root.userMenuOpen
-            width: 210
+            width: 220
             height: userCol.implicitHeight + 8
-            x: railDrawer.width + 4
-            y: parent.height - (48 * 3) - height - 4
+            x: 0
+            y: parent.height - 144 - height
             color: Theme.surfaceContainer
-            border.color: root.winBorder
+            border.color: Qt.rgba(1, 1, 1, 0.12)
             border.width: 1
             z: 60
 
-            Behavior on x {
-                NumberAnimation {
-                    duration: 180
-                    easing.type: Easing.OutCubic
-                }
+            HoverHandler {
+                id: userFlyoutHover
             }
 
             Column {
@@ -2258,17 +3650,46 @@ Item {
 
         }
 
+        // Elevation shadows for user flyout (outer top and right edges)
+        Rectangle {
+            anchors.left: userFlyout.right
+            anchors.top: userFlyout.top
+            anchors.bottom: userFlyout.bottom
+            width: 12
+            z: 59
+            visible: root.userMenuOpen
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.4) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        Rectangle {
+            anchors.left: userFlyout.left
+            anchors.right: userFlyout.right
+            anchors.bottom: userFlyout.top
+            height: 8
+            z: 59
+            visible: root.userMenuOpen
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.25) }
+            }
+        }
+
         // ==========================================
-        // CONTEXT MENU (Pin/Unpin/Resize)
+        // CONTEXT MENU (Pin/Unpin/Resize/Rename/Folder)
         // ==========================================
         Rectangle {
             id: contextMenuOverlay
 
             visible: root.contextMenuVisible
-            width: 170
+            width: 200
             height: contextMenuCol.implicitHeight + 8
-            x: root.contextMenuX
-            y: root.contextMenuY
+            x: Math.max(8, Math.min(root.contextMenuX, menuBackground.width - width - 8))
+            y: Math.max(8, Math.min(root.contextMenuY, menuBackground.height - height - 8))
             color: Theme.surfaceContainer
             border.color: root.winBorder
             border.width: 1
@@ -2283,6 +3704,9 @@ Item {
                 anchors.margins: 4
                 spacing: 0
 
+                // ----------------------------------------------------
+                // 1. APP IN ALL-APPS LIST
+                // ----------------------------------------------------
                 PowerRow {
                     visible: root.contextMenuType === "app"
                     iconName: "push_pin"
@@ -2294,26 +3718,7 @@ Item {
                 }
 
                 PowerRow {
-                    visible: root.contextMenuType === "tile"
-                    iconName: "remove_circle_outline"
-                    label: "Unpin from Start"
-                    onClicked: {
-                        root.unpinTile(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                PowerRow {
-                    visible: root.contextMenuType === "tile"
-                    iconName: "aspect_ratio"
-                    label: (root.contextMenuItem && root.contextMenuItem.wide) ? "Resize to Medium" : "Resize to Wide"
-                    onClicked: {
-                        root.toggleTileSize(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                PowerRow {
+                    visible: root.contextMenuType === "app"
                     iconName: "launch"
                     label: "Launch"
                     onClicked: {
@@ -2322,9 +3727,406 @@ Item {
                     }
                 }
 
+                // ----------------------------------------------------
+                // 2. TILE IN PIN AREA
+                // ----------------------------------------------------
+                PowerRow {
+                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folderTile"
+                    iconName: "launch"
+                    label: "Launch"
+                    onClicked: {
+                        root.launchById(root.contextMenuItem ? root.contextMenuItem.id : "");
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // Resize section for top-level tile
+                Item {
+                    visible: root.contextMenuType === "tile"
+                    width: parent.width
+                    height: 50
+
+                    Column {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 4
+
+                        StyledText {
+                            text: "Resize"
+                            font.pixelSize: 11
+                            color: root.winMuted
+                        }
+
+                        Row {
+                            spacing: 4
+                            width: parent.width
+
+                            Repeater {
+                                model: [
+                                    { "id": "small", "label": "Small" },
+                                    { "id": "medium", "label": "Medium" },
+                                    { "id": "wide", "label": "Wide" },
+                                    { "id": "large", "label": "Large" }
+                                ]
+
+                                Rectangle {
+                                    required property var modelData
+                                    readonly property bool isCurrent: root.contextMenuItem && (root.contextMenuItem.size === modelData.id || (!root.contextMenuItem.size && modelData.id === (root.contextMenuItem.wide ? "wide" : "medium")))
+
+                                    width: 42
+                                    height: 24
+                                    color: isCurrent ? root.winAccent : (rBtnHover.containsMouse ? root.winHover : Qt.rgba(255, 255, 255, 0.05))
+                                    border.color: isCurrent ? Qt.lighter(root.winAccent, 1.2) : Qt.rgba(255, 255, 255, 0.15)
+                                    border.width: 1
+
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: parent.modelData.label
+                                        font.pixelSize: 10
+                                        font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
+                                        color: parent.isCurrent ? Theme.primaryText : root.winText
+                                    }
+
+                                    MouseArea {
+                                        id: rBtnHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.setTileSize(root.contextMenuItem, parent.modelData.id);
+                                            root.contextMenuVisible = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Rename tile
+                PowerRow {
+                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folderTile"
+                    iconName: "edit"
+                    label: "Rename tile"
+                    onClicked: {
+                        root.renamingItemId = root.contextMenuItem ? root.contextMenuItem.id : "";
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // Create folder with this tile
+                PowerRow {
+                    visible: root.contextMenuType === "tile"
+                    iconName: "create_new_folder"
+                    label: "Group into folder"
+                    onClicked: {
+                        root.createFolderWithTile(root.contextMenuItem, "New folder");
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // Add to existing folders in group
+                Repeater {
+                    model: (root.contextMenuType === "tile") ? root.getFoldersInGroup(root.contextMenuGroupId) : []
+
+                    PowerRow {
+                        required property var modelData
+                        iconName: "folder"
+                        label: "Add to \"" + (modelData.name || "Folder") + "\""
+                        onClicked: {
+                            root.addTileToFolder(root.contextMenuItem, modelData.id);
+                            root.contextMenuVisible = false;
+                        }
+                    }
+                }
+
+                // Move tile to other group
+                PowerRow {
+                    visible: root.contextMenuType === "tile"
+                    iconName: "swap_horiz"
+                    label: "Move to " + (root.contextMenuGroupId === 1 ? (root.group2Title || "Play & explore") : (root.group1Title || "Life at a glance"))
+                    onClicked: {
+                        root.moveTileBetweenGroups(root.contextMenuItem);
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // ----------------------------------------------------
+                // 3. FOLDER
+                // ----------------------------------------------------
+                PowerRow {
+                    visible: root.contextMenuType === "folder"
+                    iconName: (root.contextMenuItem && root.openFolderId === root.contextMenuItem.id) ? "folder" : "folder_open"
+                    label: (root.contextMenuItem && root.openFolderId === root.contextMenuItem.id) ? "Close folder" : "Open folder"
+                    onClicked: {
+                        if (root.contextMenuItem) {
+                            if (root.openFolderId === root.contextMenuItem.id)
+                                root.closeActiveFolder();
+                            else
+                                root.openFolder(root.contextMenuItem.id, root.contextMenuGroupId);
+                        }
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // Resize folder
+                Item {
+                    visible: root.contextMenuType === "folder"
+                    width: parent.width
+                    height: 50
+
+                    Column {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 4
+
+                        StyledText {
+                            text: "Resize"
+                            font.pixelSize: 11
+                            color: root.winMuted
+                        }
+
+                        Row {
+                            spacing: 4
+                            width: parent.width
+
+                            Repeater {
+                                model: [
+                                    { "id": "medium", "label": "Medium" },
+                                    { "id": "wide", "label": "Wide" }
+                                ]
+
+                                Rectangle {
+                                    required property var modelData
+                                    readonly property bool isCurrent: root.contextMenuItem && (root.contextMenuItem.size === modelData.id || (!root.contextMenuItem.size && modelData.id === (root.contextMenuItem.wide ? "wide" : "medium")))
+
+                                    width: 88
+                                    height: 24
+                                    color: isCurrent ? root.winAccent : (fRBtnHover.containsMouse ? root.winHover : Qt.rgba(255, 255, 255, 0.05))
+                                    border.color: isCurrent ? Qt.lighter(root.winAccent, 1.2) : Qt.rgba(255, 255, 255, 0.15)
+                                    border.width: 1
+
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: parent.modelData.label
+                                        font.pixelSize: 10
+                                        font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
+                                        color: parent.isCurrent ? Theme.primaryText : root.winText
+                                    }
+
+                                    MouseArea {
+                                        id: fRBtnHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.setTileSize(root.contextMenuItem, parent.modelData.id);
+                                            root.contextMenuVisible = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                PowerRow {
+                    visible: root.contextMenuType === "folder"
+                    iconName: "edit"
+                    label: "Rename folder"
+                    onClicked: {
+                        root.renamingItemId = root.contextMenuItem ? root.contextMenuItem.id : "";
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                PowerRow {
+                    visible: root.contextMenuType === "folder"
+                    iconName: "folder_delete"
+                    label: "Ungroup folder"
+                    onClicked: {
+                        root.ungroupFolder(root.contextMenuItem);
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                PowerRow {
+                    visible: root.contextMenuType === "folder"
+                    iconName: "swap_horiz"
+                    label: "Move to " + (root.contextMenuGroupId === 1 ? (root.group2Title || "Play & explore") : (root.group1Title || "Life at a glance"))
+                    onClicked: {
+                        root.moveTileBetweenGroups(root.contextMenuItem);
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // ----------------------------------------------------
+                // 4. TILE INSIDE FOLDER
+                // ----------------------------------------------------
+                PowerRow {
+                    visible: root.contextMenuType === "folderTile"
+                    iconName: "drive_file_move"
+                    label: "Remove from folder"
+                    onClicked: {
+                        root.removeTileFromFolder(root.contextMenuItem, root.contextMenuParentFolder ? root.contextMenuParentFolder.id : "");
+                        root.contextMenuVisible = false;
+                    }
+                }
+
+                // ----------------------------------------------------
+                // 5. GROUP HEADER
+                // ----------------------------------------------------
+                PowerRow {
+                    visible: root.contextMenuType === "groupHeader"
+                    iconName: "edit"
+                    label: "Rename group"
+                    onClicked: {
+                        root.contextMenuVisible = false;
+                        if (root.contextMenuGroupId === 1 && typeof tileGroup1 !== "undefined") {
+                            tileGroup1.isEditingHeader = true;
+                        } else if (root.contextMenuGroupId === 2 && typeof tileGroup2 !== "undefined") {
+                            tileGroup2.isEditingHeader = true;
+                        }
+                    }
+                }
+
+                // ----------------------------------------------------
+                // 6. UNPIN FROM START (Shared)
+                // ----------------------------------------------------
+                Rectangle {
+                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folder" || root.contextMenuType === "folderTile"
+                    width: parent.width - 16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: 1
+                    color: Qt.rgba(255, 255, 255, 0.08)
+                }
+
+                PowerRow {
+                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folder" || root.contextMenuType === "folderTile"
+                    iconName: "remove_circle_outline"
+                    label: root.contextMenuType === "folder" ? "Unpin folder from Start" : "Unpin from Start"
+                    onClicked: {
+                        root.unpinTile(root.contextMenuItem);
+                        root.contextMenuVisible = false;
+                    }
+                }
+
             }
 
         }
+
+        // ==========================================
+        // FLOATING DRAG GHOST (Tile following cursor)
+        // ==========================================
+        Item {
+            id: dragGhostContainer
+
+            visible: root.isDraggingTile && root.draggedTileData !== null
+            x: root.dragGhostX
+            y: root.dragGhostY
+            width: root.dragTileWidth
+            height: root.dragTileHeight
+            z: 999
+
+            Rectangle {
+                anchors.fill: parent
+                color: root.winAccent
+                opacity: 0.92
+                scale: 1.04
+
+                // Outer elevation drop shadow
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    color: "transparent"
+                    border.color: Qt.rgba(0, 0, 0, 0.5)
+                    border.width: 4
+                    z: -1
+                }
+
+                // If folder, show 2x2 grid preview
+                Grid {
+                    visible: !!(root.draggedTileData && root.draggedTileData.isFolder)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: 12
+                    columns: 2
+                    spacing: 4
+
+                    Repeater {
+                        model: (root.draggedTileData && root.draggedTileData.tiles ? root.draggedTileData.tiles : []).slice(0, 4)
+
+                        Rectangle {
+                            required property var modelData
+                            width: 20
+                            height: 20
+                            color: Qt.rgba(255, 255, 255, 0.15)
+
+                            AppIconRenderer {
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 16
+                                iconValue: modelData.icon || ""
+                                iconSize: 16
+                                fallbackText: (modelData.name || "?").charAt(0)
+                            }
+                        }
+                    }
+                }
+
+                // If regular app tile, show app icon
+                AppIconRenderer {
+                    visible: !(root.draggedTileData && root.draggedTileData.isFolder)
+                    anchors.centerIn: parent
+                    width: parent.height > 60 ? 36 : 22
+                    height: parent.height > 60 ? 36 : 22
+                    iconValue: (root.draggedTileData && root.draggedTileData.icon) ? root.draggedTileData.icon : ""
+                    iconSize: parent.height > 60 ? 36 : 22
+                    fallbackText: ((root.draggedTileData && root.draggedTileData.name) || "?").charAt(0)
+                }
+
+                // Tile / Folder Name
+                StyledText {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 6
+                    text: (root.draggedTileData && root.draggedTileData.name) || ""
+                    color: "#ffffff"
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                    visible: parent.height > 45
+                }
+            }
+
+            // Action Badge (e.g. "+ Create folder", "+ Add to folder", "Move here")
+            Rectangle {
+                visible: root.dropActionBadge !== ""
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.bottom
+                anchors.topMargin: 8
+                width: badgeText.implicitWidth + 16
+                height: 24
+                color: Qt.rgba(0, 0, 0, 0.88)
+                border.color: root.winAccent
+                border.width: 1
+
+                StyledText {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: root.dropActionBadge
+                    color: "#ffffff"
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+        }
+
+    }
 
     }
 
@@ -2442,9 +4244,276 @@ Item {
     component TileGroup: Item {
         id: tg
 
+        property int groupId: 1
         property string groupTitle: ""
         property var tilesModel: []
         property real groupWidth: 288
+        property bool isEditingHeader: false
+
+        signal titleChanged(string newTitle)
+
+        function cellToPixel(c, r) {
+            var bCol = Math.floor(c / 2);
+            var lCol = c % 2;
+            var bRow = Math.floor(r / 2);
+            var lRow = r % 2;
+            var px = bCol * 98 + lCol * 49;
+            var py = bRow * 98 + lRow * 49;
+            return Qt.point(px, py);
+        }
+
+        readonly property var tilePositions: {
+            var model = tg.tilesModel || [];
+            var arr = [];
+            for (var i = 0; i < model.length; i++) {
+                var it = model[i];
+                var c = (typeof it.col === "number") ? it.col : 0;
+                var r = (typeof it.row === "number") ? it.row : 0;
+                arr.push(tg.cellToPixel(c, r));
+            }
+            return arr;
+        }
+
+        readonly property real contentHeight: {
+            var maxH = 0;
+            var model = tg.tilesModel || [];
+            for (var i = 0; i < model.length; i++) {
+                var it = model[i];
+                var c = (typeof it.col === "number") ? it.col : 0;
+                var r = (typeof it.row === "number") ? it.row : 0;
+                var p = tg.cellToPixel(c, r);
+                var cSize = it.size || (it.wide ? "wide" : "medium");
+                var h = cSize === "small" ? 43 : (cSize === "large" ? 190 : 92);
+                if (p.y + h > maxH) maxH = p.y + h;
+            }
+            return Math.max(92, maxH);
+        }
+
+        function getOtherItems() {
+            var model = tg.tilesModel || [];
+            var list = [];
+            for (var i = 0; i < model.length; i++) {
+                var it = model[i];
+                if (!it) continue;
+                if (root.isDraggingTile && root.draggedTileData && root.draggedFromGroupId === tg.groupId && !root.draggedFromFolderId && root.draggedTileData.id === it.id) {
+                    continue;
+                }
+                var cSize = it.size || (it.wide ? "wide" : "medium");
+                var itW = cSize === "small" ? 43 : ((cSize === "wide" || cSize === "large") ? 190 : 92);
+                var itH = cSize === "small" ? 43 : (cSize === "large" ? 190 : 92);
+                var wc = cSize === "small" ? 1 : ((cSize === "wide" || cSize === "large") ? 4 : 2);
+                var hc = cSize === "small" ? 1 : (cSize === "large" ? 4 : 2);
+                list.push({ id: it.id, size: cSize, width: itW, height: itH, wCells: wc, hCells: hc, col: it.col, row: it.row, modelData: it });
+            }
+            return list;
+        }
+
+        function calculateTargetCell(globalX, globalY) {
+            var lp = tileFlowItem.mapFromItem(menuBackground, globalX, globalY);
+            var lx = Math.max(0, lp.x);
+            var ly = Math.max(0, lp.y);
+
+            var dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
+            var dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
+            var isSmall = (dragW <= 45 && dragH <= 45);
+            var isWide = (dragW > 100 && dragH <= 100);
+            var isLarge = (dragW > 100 && dragH > 100);
+            var wCells = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
+            var hCells = isSmall ? 1 : (isLarge ? 4 : 2);
+
+            var majorCol = Math.max(0, Math.min(2, Math.floor(lx / 98)));
+            var inMajorX = lx - majorCol * 98;
+            var subCol = (isSmall && inMajorX >= 49) ? 1 : 0;
+            var c = majorCol * 2 + subCol;
+
+            var majorRow = Math.max(0, Math.floor(ly / 98));
+            var inMajorY = ly - majorRow * 98;
+            var subRow = (isSmall && inMajorY >= 49) ? 1 : 0;
+            var r = majorRow * 2 + subRow;
+
+            if (c + wCells > 6) {
+                c = 6 - wCells;
+            }
+            if (!isSmall) {
+                c = Math.floor(c / 2) * 2;
+                r = Math.floor(r / 2) * 2;
+            }
+
+            return Qt.point(c, r);
+        }
+
+        function getDisplacedMap(targetCol, targetRow) {
+            if (!root.isDraggingTile || !root.dragReorderLive || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId)
+                return {};
+
+            var dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
+            var dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
+            var isSmall = (dragW <= 45 && dragH <= 45);
+            var isWide = (dragW > 100 && dragH <= 100);
+            var isLarge = (dragW > 100 && dragH > 100);
+            var dw = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
+            var dh = isSmall ? 1 : (isLarge ? 4 : 2);
+
+            var occupied = {};
+            for (var dr = 0; dr < dh; dr++) {
+                for (var dc = 0; dc < dw; dc++) {
+                    occupied[(targetRow + dr) + "," + (targetCol + dc)] = true;
+                }
+            }
+
+            function canFit(r, c, w, h) {
+                if (c + w > 6) return false;
+                for (var ddr = 0; ddr < h; ddr++) {
+                    for (var ddc = 0; ddc < w; ddc++) {
+                        if (occupied[(r + ddr) + "," + (c + ddc)]) return false;
+                    }
+                }
+                return true;
+            }
+
+            function occupy(r, c, w, h) {
+                for (var ddr = 0; ddr < h; ddr++) {
+                    for (var ddc = 0; ddc < w; ddc++) {
+                        occupied[(r + ddr) + "," + (c + ddc)] = true;
+                    }
+                }
+            }
+
+            var other = getOtherItems();
+            other.sort(function(a, b) {
+                var ra = (typeof a.row === "number") ? a.row : 0;
+                var ca = (typeof a.col === "number") ? a.col : 0;
+                var rb = (typeof b.row === "number") ? b.row : 0;
+                var cb = (typeof b.col === "number") ? b.col : 0;
+                return (ra * 6 + ca) - (rb * 6 + cb);
+            });
+
+            var result = {};
+            for (var i = 0; i < other.length; i++) {
+                var it = other[i];
+                var c = (typeof it.col === "number") ? it.col : -1;
+                var r = (typeof it.row === "number") ? it.row : -1;
+                var w = it.wCells;
+                var h = it.hCells;
+                var stepC = (w === 1) ? 1 : 2;
+                var stepR = (h === 1) ? 1 : 2;
+
+                if (c >= 0 && r >= 0 && canFit(r, c, w, h)) {
+                    occupy(r, c, w, h);
+                    result[it.id] = Qt.point(c, r);
+                } else {
+                    var placed = false;
+                    var startR = Math.min(r >= 0 ? r : targetRow, targetRow);
+                    startR = Math.floor(startR / stepR) * stepR;
+                    for (var sr = startR; sr < 200 && !placed; sr += stepR) {
+                        for (var sc = 0; sc <= 6 - w && !placed; sc += stepC) {
+                            if (canFit(sr, sc, w, h)) {
+                                occupy(sr, sc, w, h);
+                                result[it.id] = Qt.point(sc, sr);
+                                placed = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function folderHitFromItem(item, i) {
+            return {
+                type: item.modelData.isFolder ? "folder" : "tile",
+                folderId: item.modelData.id,
+                tileId: item.modelData.id,
+                tileIndex: i,
+                targetTile: item.modelData,
+                item: item
+            };
+        }
+
+        function tileGroupHeaderOffset() {
+            if (typeof tgCol !== "undefined" && tgCol && tgCol.children && tgCol.children.length > 0)
+                return tgCol.children[0].height + tgCol.spacing;
+            return 36;
+        }
+
+        function tileRectAt(i, item) {
+            var headerOffset = tg.tileGroupHeaderOffset();
+            var normalPos = (i < tg.tilePositions.length) ? tg.tilePositions[i] : Qt.point(item.x, item.y);
+            return {
+                x: normalPos.x,
+                y: headerOffset + normalPos.y,
+                w: item.width > 0 ? item.width : 92,
+                h: item.height > 0 ? item.height : 92
+            };
+        }
+
+        function pointerAndGhost() {
+            var ghostPos = tg.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
+            return {
+                ghostCx: ghostPos.x + ((root.dragTileWidth > 0) ? root.dragTileWidth : 92) / 2,
+                ghostCy: ghostPos.y + ((root.dragTileHeight > 0) ? root.dragTileHeight : 92) / 2
+            };
+        }
+
+        function checkStickyDropTarget(lx, ly) {
+            if (typeof tileRepeater === "undefined" || !tileRepeater)
+                return null;
+            if (!root.draggedTileData || !root.dragFolderStickyId)
+                return null;
+
+            var pg = tg.pointerAndGhost();
+            for (var i = 0; i < tileRepeater.count; i++) {
+                var item = tileRepeater.itemAt(i);
+                if (!item || !item.modelData || item.modelData.id !== root.dragFolderStickyId)
+                    continue;
+                if (item.modelData.id === root.draggedTileData.id)
+                    return null;
+
+                var r = tg.tileRectAt(i, item);
+                var pad = 10;
+                var pointerIn = (lx >= r.x - pad && lx <= r.x + r.w + pad &&
+                                 ly >= r.y - pad && ly <= r.y + r.h + pad);
+                var ghostIn = (pg.ghostCx >= r.x - pad && pg.ghostCx <= r.x + r.w + pad &&
+                               pg.ghostCy >= r.y - pad && pg.ghostCy <= r.y + r.h + pad);
+                if (pointerIn || ghostIn)
+                    return tg.folderHitFromItem(item, i);
+                return null;
+            }
+            return null;
+        }
+
+        function checkCenterDropTarget(lx, ly) {
+            if (typeof tileRepeater === "undefined" || !tileRepeater)
+                return null;
+            if (!root.draggedTileData || root.draggedTileData.isFolder)
+                return null;
+
+            var pg = tg.pointerAndGhost();
+            var best = null;
+            var bestDist = 1e9;
+
+            for (var i = 0; i < tileRepeater.count; i++) {
+                var item = tileRepeater.itemAt(i);
+                if (!item || !item.modelData) continue;
+                if (item.modelData.id === root.draggedTileData.id) continue;
+                if (root.draggedFromFolderId && root.draggedFromFolderId === item.modelData.id) continue;
+
+                var r = tg.tileRectAt(i, item);
+                var cx = r.x + r.w / 2;
+                var cy = r.y + r.h / 2;
+                var dist = Math.min(
+                    Math.hypot(lx - cx, ly - cy),
+                    Math.hypot(pg.ghostCx - cx, pg.ghostCy - cy)
+                );
+                var limit = Math.max(18, Math.min(r.w, r.h) * 0.34);
+                if (dist <= limit && dist < bestDist) {
+                    bestDist = dist;
+                    best = tg.folderHitFromItem(item, i);
+                }
+            }
+            return best;
+        }
 
         implicitWidth: groupWidth
         width: groupWidth
@@ -2457,117 +4526,620 @@ Item {
             width: parent.width
             spacing: 8
 
-            // Header with hover drag lines icon
+            // ==========================================
+            // GROUP HEADER (Click to rename, hover handle)
+            // ==========================================
             Item {
                 width: parent.width
-                height: 24
+                height: 28
 
-                StyledText {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: tg.groupTitle
-                    color: root.winText
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                }
-
-                DankIcon {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "drag_handle"
-                    size: 18
-                    color: tgHeaderHover.containsMouse ? root.winText : "transparent"
-                }
-
-                MouseArea {
-                    id: tgHeaderHover
-
+                // View Mode
+                Item {
                     anchors.fill: parent
-                    hoverEnabled: true
-                }
+                    visible: !tg.isEditingHeader
 
-            }
+                    StyledText {
+                        id: headerTitleText
 
-            // 3-Column Tile Flow (medium = 92px, wide = 190px, spacing = 6px)
-            Flow {
-                width: parent.width
-                spacing: 6
+                        anchors.left: parent.left
+                        anchors.leftMargin: 4
+                        anchors.right: dragHandleIcon.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: tg.groupTitle || "Name group"
+                        color: tg.groupTitle ? (headerMouse.containsMouse ? "#ffffff" : Qt.lighter(root.winText, 1.1)) : root.winMuted
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                        visible: tg.groupTitle !== "" || headerMouse.containsMouse
+                    }
 
-                Repeater {
-                    model: tg.tilesModel
+                    // Authentic Windows 10 double-line drag handle
+                    Column {
+                        id: dragHandleIcon
 
-                    Rectangle {
-                        id: tileRect
+                        anchors.right: parent.right
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        visible: headerMouse.containsMouse
 
-                        required property var modelData
-                        required property int index
+                        Rectangle { width: 14; height: 1.5; color: root.winMuted }
+                        Rectangle { width: 14; height: 1.5; color: root.winMuted }
+                    }
 
-                        width: modelData.wide ? 190 : 92
-                        height: 92
-                        color: tileMouse.containsMouse ? root.winTileHoverBg : root.winTileBg
-                        border.color: tileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent"
-                        border.width: 1
-                        scale: tileMouse.pressed ? 0.96 : 1
+                    MouseArea {
+                        id: headerMouse
 
-                        AppIconRenderer {
-                            anchors.centerIn: parent
-                            width: 36
-                            height: 36
-                            iconValue: modelData.icon || ""
-                            iconSize: 36
-                            fallbackText: (modelData.name || "?").charAt(0)
-                        }
-
-                        StyledText {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 6
-                            text: modelData.name || ""
-                            color: root.winText
-                            font.pixelSize: 11
-                            elide: Text.ElideRight
-                            wrapMode: Text.NoWrap
-                        }
-
-                        MouseArea {
-                            id: tileMouse
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: function(mouse) {
-                                if (mouse.button === Qt.RightButton) {
-                                    const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
-                                    root.contextMenuItem = modelData;
-                                    root.contextMenuType = "tile";
-                                    root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 180);
-                                    root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 120);
-                                    root.contextMenuVisible = true;
-                                    return ;
-                                }
-                                root.launchById(modelData.id);
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function(mouse) {
+                            if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
+                                root.closeSidebarAndPopovers();
+                                return;
                             }
-                        }
-
-                        Behavior on scale {
-                            NumberAnimation {
-                                duration: 80
+                            if (mouse.button === Qt.RightButton) {
+                                root.contextMenuItem = null;
+                                root.contextMenuGroupId = tg.groupId;
+                                root.contextMenuType = "groupHeader";
+                                const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                root.contextMenuY = Math.min(gp.y, menuBackground.height - 100);
+                                root.contextMenuVisible = true;
+                                return;
                             }
-
+                            tg.isEditingHeader = true;
                         }
-
                     }
 
                 }
 
+                // Edit Mode (Authentic Windows 10 Header TextBox)
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.rightMargin: 4
+                    visible: tg.isEditingHeader
+                    color: Qt.rgba(0, 0, 0, 0.75)
+                    border.color: root.winAccent
+                    border.width: 1
+
+                    TextInput {
+                        id: headerEditInput
+
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8
+                        anchors.right: headerClearBtn.left
+                        anchors.rightMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: "#ffffff"
+                        selectByMouse: true
+                        selectionColor: root.winAccent
+                        selectedTextColor: "#ffffff"
+                        clip: true
+                        text: tg.groupTitle
+
+                        Component.onCompleted: {
+                            if (tg.isEditingHeader) {
+                                forceActiveFocus();
+                                selectAll();
+                            }
+                        }
+
+                        onVisibleChanged: {
+                            if (visible) {
+                                text = tg.groupTitle;
+                                forceActiveFocus();
+                                selectAll();
+                            }
+                        }
+
+                        onAccepted: {
+                            tg.titleChanged(text.trim());
+                            tg.isEditingHeader = false;
+                        }
+
+                        Keys.onEscapePressed: {
+                            tg.isEditingHeader = false;
+                        }
+
+                        onActiveFocusChanged: {
+                            if (!activeFocus && tg.isEditingHeader) {
+                                tg.titleChanged(text.trim());
+                                tg.isEditingHeader = false;
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Name group"
+                        color: root.winMuted
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        visible: headerEditInput.text.length === 0
+                    }
+
+                    Rectangle {
+                        id: headerClearBtn
+
+                        anchors.right: parent.right
+                        anchors.rightMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 20
+                        height: 20
+                        color: clearHeaderMouse.containsMouse ? root.winHover : "transparent"
+                        visible: headerEditInput.text.length > 0
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "close"
+                            size: 14
+                            color: root.winMuted
+                        }
+
+                        MouseArea {
+                            id: clearHeaderMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                headerEditInput.text = "";
+                                headerEditInput.forceActiveFocus();
+                            }
+                        }
+                    }
+                }
+
             }
 
-        }
+            // ==========================================
+            // TILE FLOW & FOLDERS
+            // ==========================================
+            Item {
+                id: tileFlowItem
 
+                width: parent.width
+                implicitHeight: Math.max(tg.contentHeight, (slotPlaceholder.visible ? (slotPlaceholder.y + slotPlaceholder.height) : 0))
+                height: implicitHeight
+
+                // Slot Placeholder (Windows 10 accent outline)
+                Rectangle {
+                    id: slotPlaceholder
+
+                    z: 10
+                    visible: root.isDraggingTile && root.dragReorderLive && root.dropTargetType === "reorder" && root.dropTargetGroupId === tg.groupId
+                    width: (root.dragTileWidth > 0) ? root.dragTileWidth : 92
+                    height: (root.dragTileHeight > 0) ? root.dragTileHeight : 92
+                    color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.2)
+                    border.color: root.winAccent
+                    border.width: 2
+
+                    readonly property point slotPos: tg.cellToPixel(root.dropTargetCol, root.dropTargetRow)
+                    x: slotPos.x
+                    y: slotPos.y
+                }
+
+                Item {
+                    id: tileContainer
+
+                    width: parent.width
+                    height: tg.contentHeight
+
+                    Repeater {
+                        id: tileRepeater
+                        model: tg.tilesModel
+
+                        Item {
+                            id: tileDelegateRoot
+
+                            required property var modelData
+                            required property int index
+
+                            readonly property bool isTileFolder: !!modelData.isFolder
+                            readonly property string currentTileSize: modelData.size || (modelData.wide ? "wide" : "medium")
+                            readonly property bool isBeingDragged: root.isDraggingTile && root.draggedTileData && root.draggedTileData.id === modelData.id
+
+                            readonly property point normalPos: tg.cellToPixel(
+                                (typeof modelData.col === "number") ? modelData.col : 0,
+                                (typeof modelData.row === "number") ? modelData.row : 0
+                            )
+                            x: normalPos.x
+                            y: normalPos.y
+
+                            width: currentTileSize === "small" ? 43 : ((currentTileSize === "wide" || currentTileSize === "large") ? 190 : 92)
+                            height: currentTileSize === "small" ? 43 : (currentTileSize === "large" ? 190 : 92)
+                            opacity: (isBeingDragged || (tileDelegateRoot.isTileFolder && root.openFolderId === modelData.id)) ? 0.0 : 1.0
+
+                            // Dynamic displacement to make room for dragged item
+                            readonly property point displacement: {
+                                if (root.dragCommitting || !root.isDraggingTile || !root.dragReorderLive || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId || isBeingDragged) {
+                                    return Qt.point(0, 0);
+                                }
+                                var displacedMap = tg.getDisplacedMap(root.dropTargetCol, root.dropTargetRow);
+                                if (!displacedMap || !displacedMap[modelData.id]) {
+                                    return Qt.point(0, 0);
+                                }
+                                var targetCell = displacedMap[modelData.id];
+                                var newPx = tg.cellToPixel(targetCell.x, targetCell.y);
+                                return Qt.point(newPx.x - normalPos.x, newPx.y - normalPos.y);
+                            }
+
+                            transform: Translate {
+                                x: tileDelegateRoot.displacement.x
+                                y: tileDelegateRoot.displacement.y
+
+                                Behavior on x {
+                                    enabled: root.isDraggingTile && !root.dragCommitting
+                                    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                                }
+                                Behavior on y {
+                                    enabled: root.isDraggingTile && !root.dragCommitting
+                                    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                                }
+                            }
+
+                            // ==========================================
+                            // CASE 1: COLLAPSED FOLDER TILE
+                            // ==========================================
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: tileDelegateRoot.isTileFolder
+                                color: folderTileMouse.containsMouse ? root.winTileHoverBg : root.winTileBg
+                                border.color: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? root.winAccent : (folderTileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent")
+                                border.width: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? 2 : 1
+                                scale: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? 0.96 : (folderTileMouse.pressed && !folderTileMouse.draggingStarted ? 0.96 : 1)
+
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 80
+                                    }
+                                }
+
+                                // Overlay cue when dragging a tile over this folder
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: Qt.rgba(0, 0, 0, 0.65)
+                                    border.color: root.winAccent
+                                    border.width: 2
+                                    visible: root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id
+                                    z: 50
+
+                                    Row {
+                                        anchors.centerIn: parent
+                                        spacing: 4
+                                        DankIcon { name: "folder_open"; size: 14; color: root.winAccent }
+                                        StyledText { text: "Add to folder"; color: "#ffffff"; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                    }
+                                }
+
+                                // 2x2 Mini Preview Grid
+                                Grid {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 12
+                                    columns: 2
+                                    spacing: 4
+
+                                    Repeater {
+                                        model: (modelData.tiles || []).slice(0, 4)
+
+                                        Rectangle {
+                                            required property var modelData
+                                            width: 20
+                                            height: 20
+                                            color: Qt.rgba(255, 255, 255, 0.08)
+
+                                            AppIconRenderer {
+                                                anchors.centerIn: parent
+                                                width: 16
+                                                height: 16
+                                                iconValue: modelData.icon || ""
+                                                iconSize: 16
+                                                fallbackText: (modelData.name || "?").charAt(0)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Folder Label & Chevron at bottom
+                                Row {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 8
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 8
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 6
+                                    spacing: 4
+
+                                    StyledText {
+                                        id: folderLabelText
+
+                                        width: parent.width - 16
+                                        text: modelData.name || "Folder"
+                                        color: root.winText
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                        wrapMode: Text.NoWrap
+                                    }
+
+                                    DankIcon {
+                                        name: "expand_more"
+                                        size: 12
+                                        color: root.winMuted
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: folderTileMouse
+
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    cursorShape: Qt.PointingHandCursor
+
+                                    property point pressPos: Qt.point(0, 0)
+                                    property bool draggingStarted: false
+
+                                    onPressed: function(mouse) {
+                                        pressPos = Qt.point(mouse.x, mouse.y);
+                                        draggingStarted = false;
+                                        preventStealing = false;
+                                    }
+
+                                    onPositionChanged: function(mouse) {
+                                        if (pressed) {
+                                            var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
+                                            if (!root.isDraggingTile && !draggingStarted && dist > 7) {
+                                                draggingStarted = true;
+                                                preventStealing = true;
+                                                var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                root.startDraggingTile(modelData, tg.groupId, "", index, width, height, mouse.x, mouse.y, globalPos.x, globalPos.y);
+                                            } else if (root.isDraggingTile) {
+                                                var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                root.updateDragPosition(globalPos.x, globalPos.y);
+                                            }
+                                        }
+                                    }
+
+                                    onReleased: function(mouse) {
+                                        preventStealing = false;
+                                        if (root.isDraggingTile) {
+                                            root.endDraggingTile();
+                                        } else if (!draggingStarted) {
+                                            if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
+                                                root.closeSidebarAndPopovers();
+                                                return;
+                                            }
+                                            if (mouse.button === Qt.RightButton) {
+                                                const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                root.contextMenuItem = modelData;
+                                                root.contextMenuGroupId = tg.groupId;
+                                                root.contextMenuType = "folder";
+                                                root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 210);
+                                                root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 180);
+                                                root.contextMenuVisible = true;
+                                                return;
+                                            }
+                                            root.openFolder(modelData.id, tg.groupId, tileDelegateRoot);
+                                        }
+                                        draggingStarted = false;
+                                    }
+
+                                    onCanceled: {
+                                        preventStealing = false;
+                                        if (root.isDraggingTile) {
+                                            root.cancelDraggingTile();
+                                        }
+                                        draggingStarted = false;
+                                    }
+                                }
+                            }
+
+                            // ==========================================
+                            // CASE 2: REGULAR APP TILE
+                            // ==========================================
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: !tileDelegateRoot.isTileFolder
+                                color: tileMouse.containsMouse ? root.winTileHoverBg : root.winTileBg
+                                border.color: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? root.winAccent : (tileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent")
+                                border.width: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? 2 : 1
+                                scale: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? 0.96 : (tileMouse.pressed && !tileMouse.draggingStarted ? 0.96 : 1)
+
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 80
+                                    }
+                                }
+
+                                // Overlay cue when dragging a tile over this regular tile to create a folder
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: Qt.rgba(0, 0, 0, 0.65)
+                                    border.color: root.winAccent
+                                    border.width: 2
+                                    visible: root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id
+                                    z: 50
+
+                                    Row {
+                                        anchors.centerIn: parent
+                                        spacing: 4
+                                        DankIcon { name: "create_new_folder"; size: 14; color: root.winAccent }
+                                        StyledText { text: "Create folder"; color: "#ffffff"; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                    }
+                                }
+
+                                AppIconRenderer {
+                                    anchors.horizontalCenter: tileDelegateRoot.currentTileSize === "wide" ? undefined : parent.horizontalCenter
+                                    anchors.left: tileDelegateRoot.currentTileSize === "wide" ? parent.left : undefined
+                                    anchors.leftMargin: tileDelegateRoot.currentTileSize === "wide" ? 16 : 0
+                                    anchors.verticalCenter: (tileDelegateRoot.currentTileSize === "small" || tileDelegateRoot.currentTileSize === "wide") ? parent.verticalCenter : undefined
+                                    y: (tileDelegateRoot.currentTileSize === "small" || tileDelegateRoot.currentTileSize === "wide") ? 0 : (tileDelegateRoot.currentTileSize === "large" ? 44 : 16)
+                                    width: tileDelegateRoot.currentTileSize === "small" ? 22 : (tileDelegateRoot.currentTileSize === "large" ? 54 : 36)
+                                    height: tileDelegateRoot.currentTileSize === "small" ? 22 : (tileDelegateRoot.currentTileSize === "large" ? 54 : 36)
+                                    iconValue: modelData.icon || ""
+                                    iconSize: tileDelegateRoot.currentTileSize === "small" ? 22 : (tileDelegateRoot.currentTileSize === "large" ? 54 : 36)
+                                    fallbackText: (modelData.name || "?").charAt(0)
+                                }
+
+                                // Tile Display Name (Normal)
+                                StyledText {
+                                    visible: tileDelegateRoot.currentTileSize !== "small" && root.renamingItemId !== modelData.id
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: tileDelegateRoot.currentTileSize === "large" ? 12 : 8
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: tileDelegateRoot.currentTileSize === "large" ? 12 : 8
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: tileDelegateRoot.currentTileSize === "large" ? 10 : 6
+                                    text: modelData.name || ""
+                                    color: root.winText
+                                    font.pixelSize: tileDelegateRoot.currentTileSize === "large" ? 12 : 11
+                                    font.weight: tileDelegateRoot.currentTileSize === "large" ? Font.DemiBold : Font.Normal
+                                    elide: Text.ElideRight
+                                    wrapMode: Text.NoWrap
+                                }
+
+                                // Inline Tile Rename Field (Authentic Windows 10 style)
+                                Rectangle {
+                                    visible: root.renamingItemId === modelData.id
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 4
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 4
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 4
+                                    height: 22
+                                    color: Qt.rgba(0, 0, 0, 0.75)
+                                    border.color: root.winAccent
+                                    border.width: 1
+
+                                    TextInput {
+                                        id: tileRenameInput
+
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 4
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        font.pixelSize: 11
+                                        color: "#ffffff"
+                                        selectByMouse: true
+                                        selectionColor: root.winAccent
+                                        selectedTextColor: "#ffffff"
+                                        clip: true
+                                        text: modelData.name || ""
+
+                                        Component.onCompleted: {
+                                            if (root.renamingItemId === modelData.id) {
+                                                forceActiveFocus();
+                                                selectAll();
+                                            }
+                                        }
+
+                                        onVisibleChanged: {
+                                            if (visible) {
+                                                text = modelData.name || "";
+                                                forceActiveFocus();
+                                                selectAll();
+                                            }
+                                        }
+
+                                        onAccepted: {
+                                            root.renameTileOrFolder(modelData.id, text);
+                                            root.renamingItemId = "";
+                                        }
+
+                                        Keys.onEscapePressed: {
+                                            root.renamingItemId = "";
+                                        }
+
+                                        onActiveFocusChanged: {
+                                            if (!activeFocus && root.renamingItemId === modelData.id) {
+                                                root.renameTileOrFolder(modelData.id, text);
+                                                root.renamingItemId = "";
+                                            }
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: tileMouse
+
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    cursorShape: Qt.PointingHandCursor
+
+                                    property point pressPos: Qt.point(0, 0)
+                                    property bool draggingStarted: false
+
+                                    onPressed: function(mouse) {
+                                        pressPos = Qt.point(mouse.x, mouse.y);
+                                        draggingStarted = false;
+                                        preventStealing = false;
+                                    }
+
+                                    onPositionChanged: function(mouse) {
+                                        if (pressed) {
+                                            var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
+                                            if (!root.isDraggingTile && !draggingStarted && dist > 7) {
+                                                draggingStarted = true;
+                                                preventStealing = true;
+                                                var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                root.startDraggingTile(modelData, tg.groupId, "", index, width, height, mouse.x, mouse.y, globalPos.x, globalPos.y);
+                                            } else if (root.isDraggingTile) {
+                                                var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                root.updateDragPosition(globalPos.x, globalPos.y);
+                                            }
+                                        }
+                                    }
+
+                                    onReleased: function(mouse) {
+                                        preventStealing = false;
+                                        if (root.isDraggingTile) {
+                                            root.endDraggingTile();
+                                        } else if (!draggingStarted) {
+                                            if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
+                                                root.closeSidebarAndPopovers();
+                                                return;
+                                            }
+                                            if (mouse.button === Qt.RightButton) {
+                                                const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                root.contextMenuItem = modelData;
+                                                root.contextMenuGroupId = tg.groupId;
+                                                root.contextMenuType = "tile";
+                                                root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 210);
+                                                root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 240);
+                                                root.contextMenuVisible = true;
+                                                return;
+                                            }
+                                            root.launchById(modelData.id);
+                                        }
+                                        draggingStarted = false;
+                                    }
+
+                                    onCanceled: {
+                                        preventStealing = false;
+                                        if (root.isDraggingTile) {
+                                            root.cancelDraggingTile();
+                                        }
+                                        draggingStarted = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     component CategoryTab: Item {
