@@ -21,7 +21,8 @@ text/json=dev.zed.Zed.desktop
 application/x-yaml=dev.zed.Zed.desktop
 text/yaml=dev.zed.Zed.desktop
 application/xml=dev.zed.Zed.desktop
-text/html=dev.zed.Zed.desktop
+text/html=zen.desktop
+application/xhtml+xml=zen.desktop
 text/css=dev.zed.Zed.desktop
 text/javascript=dev.zed.Zed.desktop
 application/javascript=dev.zed.Zed.desktop
@@ -30,6 +31,9 @@ text/x-diff=dev.zed.Zed.desktop
 
 [Added Associations]
 x-scheme-handler/http=zen.desktop;
+x-scheme-handler/https=zen.desktop;
+text/html=zen.desktop;
+application/xhtml+xml=zen.desktop;
 image/jpeg=swappy.desktop;
 image/png=swappy.desktop;
 application/pdf=zen.desktop;
