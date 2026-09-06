@@ -1664,7 +1664,7 @@ Item {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         height: 3
-                        color: "#0078d7"
+                        color: Theme.primary
                         visible: root.isFullHeight && isActive
                     }
 
