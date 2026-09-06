@@ -3570,6 +3570,7 @@ Item {
 
                     width: parent.width
                     iconName: "person"
+                    useAvatar: true
                     labelText: UserInfoService.fullName || UserInfoService.username || "User"
                     onClicked: {
                         root.userMenuOpen = !root.userMenuOpen;
@@ -3740,7 +3741,7 @@ Item {
                     iconName: "manage_accounts"
                     label: "Account settings"
                     onClicked: {
-                        PopoutService.openSettings();
+                        PopoutService.openSettingsWithTab("users");
                         root.closeMenu();
                     }
                 }
@@ -4265,6 +4266,7 @@ Item {
 
         property string iconName: ""
         property string labelText: ""
+        property bool useAvatar: false
 
         signal clicked()
 
@@ -4286,9 +4288,25 @@ Item {
 
             DankIcon {
                 anchors.centerIn: parent
+                visible: !rar.useAvatar
                 name: rar.iconName
                 size: 20
                 color: root.winText
+            }
+
+            DankCircularImage {
+                anchors.centerIn: parent
+                visible: rar.useAvatar
+                width: 28
+                height: 28
+                imageSource: {
+                    if (!rar.useAvatar || PortalService.profileImage === "")
+                        return "";
+                    if (PortalService.profileImage.startsWith("/"))
+                        return "file://" + PortalService.profileImage;
+                    return PortalService.profileImage;
+                }
+                fallbackIcon: rar.iconName || "person"
             }
         }
 

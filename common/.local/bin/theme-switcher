@@ -13,7 +13,7 @@ THEMES_DIR="${DOTFILES_DIR}/themes"
 CURRENT_THEME_FILE="${HOME}/.config/.current_theme"
 HYPR_THEME_SYMLINK="${HOME}/.config/hypr/theme.lua"
 DMS_CONFIG_DIR="${HOME}/.config/DankMaterialShell"
-MANAGED_PLUGINS=(win10Start win10Clock win10Media)
+MANAGED_PLUGINS=(win10Start win10Clock win10Media win10Tray)
 
 BOLD='\033[1m'
 CYAN='\033[0;36m'

@@ -21,13 +21,7 @@ hl.window_rule({
 	no_dim = true,
 })
 
--- 3. Slightly fade unfocused tiled windows on desktop
-hl.window_rule({
-	match = { float = false, focus = false },
-	opacity = "0.9 0.9",
-})
-
--- 4. Picture-in-Picture on Desktop (send to secondary portrait monitor DP-2 on Workspace 10, bottom position)
+-- 3. Picture-in-Picture on Desktop (send to secondary portrait monitor DP-2 on Workspace 10, bottom position)
 hl.window_rule({
 	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
 	float = true,
@@ -37,13 +31,13 @@ hl.window_rule({
 	workspace = "10",
 })
 
--- 5. Pin all games to primary monitor DP-1 on Desktop
+-- 4. Pin all games to primary monitor DP-1 on Desktop
 hl.window_rule({
 	match = { class = "^(steam_app_.*|.*\\.exe.*)$" },
 	monitor = "DP-1",
 })
 
--- 6. Pin DMS Settings to primary monitor DP-1 on Desktop
+-- 5. Pin DMS Settings to primary monitor DP-1 on Desktop
 hl.window_rule({
 	match = { class = "^(com\\.danklinux\\.dms)$", title = "^(Settings)$" },
 	monitor = "DP-1",

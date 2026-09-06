@@ -137,6 +137,9 @@
   "win10Clock": {
     "enabled": true
   },
+  "win10Tray": {
+    "enabled": true
+  },
   "win10Media": {
     "enabled": false
   },

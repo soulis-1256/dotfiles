@@ -66,6 +66,9 @@ hl.config({
 		border_part_of_window = false,
 		active_opacity = 1.0,
 		inactive_opacity = 1.0,
+		blur = {
+			enabled = false,
+		},
 		shadow = {
 			enabled = true,
 			range = 30,

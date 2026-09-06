@@ -39,8 +39,8 @@
   "niriLayoutGapsOverride": -1,
   "niriLayoutRadiusOverride": -1,
   "niriLayoutBorderSize": -1,
-  "hyprlandLayoutGapsOverride": 2,
-  "hyprlandLayoutGapsOutOverride": 4,
+  "hyprlandLayoutGapsOverride": 0,
+  "hyprlandLayoutGapsOutOverride": 0,
   "hyprlandLayoutRadiusOverride": 0,
   "hyprlandLayoutBorderSize": 2,
   "hyprlandResizeOnBorder": true,
@@ -667,7 +667,7 @@
           "enabled": true
         },
         {
-          "id": "systemTray",
+          "id": "win10Tray",
           "enabled": true
         },
         {
@@ -757,7 +757,7 @@
       "centerWidgets": [],
       "rightWidgets": [
         {
-          "id": "systemTray",
+          "id": "win10Tray",
           "enabled": true
         },
         {

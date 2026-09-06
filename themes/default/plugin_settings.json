@@ -8,6 +8,9 @@
   "win10Media": {
     "enabled": false
   },
+  "win10Tray": {
+    "enabled": false
+  },
   "win10Actions": {
     "enabled": false
   }

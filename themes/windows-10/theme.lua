@@ -1,10 +1,10 @@
 -- Windows 10 Theme for Hyprland
--- Sharp corners, electric blue accent, compact gaps, snappy window animations
+-- Sharp corners, electric blue accent, no gaps, snappy window animations
 
 hl.config({
 	general = {
-		gaps_in = 2,
-		gaps_out = 4,
+		gaps_in = 0,
+		gaps_out = 0,
 		border_size = 2,
 		col = {
 			inactive_border = "rgb(2b2b2b)",
@@ -12,6 +12,9 @@ hl.config({
 	},
 	decoration = {
 		rounding = 0,
+		blur = {
+			enabled = false,
+		},
 		shadow = {
 			enabled = true,
 			range = 16,

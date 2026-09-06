@@ -1,0 +1,14 @@
+{
+    "id": "win10Tray",
+    "name": "Windows 10 System Tray",
+    "description": "Stock DMS tray icons with Windows-style left-click menus",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win10TrayWidget.qml",
+    "icon": "notifications",
+    "permissions": [
+        "settings_read"
+    ]
+}
