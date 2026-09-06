@@ -31,5 +31,13 @@ hl.window_rule({
 	pin = true,
 })
 
+-- DMS Settings: float at the current size, centered on the focused monitor
+hl.window_rule({
+	match = { class = "^(com\\.danklinux\\.dms)$", title = "^(Settings)$" },
+	float = true,
+	center = true,
+	size = {1535, 994},
+})
+
 -- Win11-style floats: hovering them does not steal mouse/keyboard focus
 hl.window_rule({ match = { float = true }, no_follow_mouse = true })
