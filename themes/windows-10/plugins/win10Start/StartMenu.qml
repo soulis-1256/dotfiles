@@ -56,6 +56,45 @@ Item {
     property var group1Tiles: []
     property var group2Tiles: []
     property string renamingItemId: ""
+    property var activeRenameInput: null
+
+    function dismissInlineRename() {
+        root.renamingItemId = "";
+        root.activeRenameInput = null;
+        if (typeof tileGroup1 !== "undefined" && tileGroup1)
+            tileGroup1.isEditingHeader = false;
+        if (typeof tileGroup2 !== "undefined" && tileGroup2)
+            tileGroup2.isEditingHeader = false;
+    }
+
+    function beginItemRename(id) {
+        if (typeof tileGroup1 !== "undefined" && tileGroup1)
+            tileGroup1.isEditingHeader = false;
+        if (typeof tileGroup2 !== "undefined" && tileGroup2)
+            tileGroup2.isEditingHeader = false;
+        root.renamingItemId = id || "";
+    }
+
+    function beginGroupRename(groupId) {
+        root.renamingItemId = "";
+        root.activeRenameInput = null;
+        if (typeof tileGroup1 !== "undefined" && tileGroup1)
+            tileGroup1.isEditingHeader = (groupId === 1);
+        if (typeof tileGroup2 !== "undefined" && tileGroup2)
+            tileGroup2.isEditingHeader = (groupId === 2);
+    }
+
+    function bindRenameInput(input) {
+        root.activeRenameInput = input;
+        if (!input)
+            return;
+        Qt.callLater(function() {
+            if (root.activeRenameInput === input && input.visible) {
+                input.forceActiveFocus();
+                input.selectAll();
+            }
+        });
+    }
     property var searchResults: []
     property var bestMatchApp: null
     readonly property var currentPreviewItem: hoveredSearchItem || (selectedSearchIndex >= 0 && selectedSearchIndex < searchResults.length ? searchResults[selectedSearchIndex] : bestMatchApp)
@@ -81,6 +120,7 @@ Item {
         root.contextMenuItem = null;
         root.contextMenuParentFolder = null;
         root.renamingItemId = "";
+        root.activeRenameInput = null;
         root.openFolderId = folderId;
         root.openFolderGroupId = groupId || 1;
         root.openFolderWidth = 300;
@@ -103,6 +143,7 @@ Item {
         root.openFolderId = "";
         root.openFolderGroupId = 0;
         root.renamingItemId = "";
+        root.activeRenameInput = null;
     }
 
     function getOpenFolderData() {
@@ -233,11 +274,7 @@ Item {
         root.contextMenuVisible = false;
         root.contextMenuItem = null;
         root.contextMenuParentFolder = null;
-        root.renamingItemId = "";
-        if (typeof tileGroup1 !== "undefined" && tileGroup1)
-            tileGroup1.isEditingHeader = false;
-        if (typeof tileGroup2 !== "undefined" && tileGroup2)
-            tileGroup2.isEditingHeader = false;
+        root.dismissInlineRename();
 
         // 4. Search State
         root.isSearchMode = false;
@@ -272,7 +309,7 @@ Item {
         root.contextMenuVisible = false;
         root.contextMenuItem = null;
         root.contextMenuParentFolder = null;
-        root.renamingItemId = "";
+        root.dismissInlineRename();
         if (!root.isDraggingTile) {
             root.closeActiveFolder();
             root.cancelDraggingTile();
@@ -1046,7 +1083,7 @@ Item {
         root.dragGhostX = globalX - localX;
         root.dragGhostY = globalY - localY;
         root.contextMenuVisible = false;
-        root.renamingItemId = "";
+        root.dismissInlineRename();
         root.dropTargetType = fromFolderId ? "reorder-folder" : "reorder";
         root.dropTargetGroupId = fromGroupId;
         root.dropTargetFolderId = fromFolderId || "";
@@ -1602,8 +1639,8 @@ Item {
     focus: true
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
-            if (root.renamingItemId !== "") {
-                root.renamingItemId = "";
+            if (root.renamingItemId !== "" || (typeof tileGroup1 !== "undefined" && tileGroup1 && tileGroup1.isEditingHeader) || (typeof tileGroup2 !== "undefined" && tileGroup2 && tileGroup2.isEditingHeader)) {
+                root.dismissInlineRename();
                 event.accepted = true;
                 return;
             }
@@ -2294,77 +2331,101 @@ Item {
                             anchors.margins: 6
                             spacing: 6
 
-                            // Folder Header (Simple clean title, right-click to edit)
+                            // Folder Header — click the title to rename in place
                             Item {
                                 width: parent.width
                                 height: 24
 
-                                // View Title Mode
-                                Item {
-                                    anchors.fill: parent
-                                    visible: root.renamingItemId !== (folderOverlayContainer.folderData ? folderOverlayContainer.folderData.id : "")
+                                readonly property bool foRenaming: folderOverlayContainer.folderData && root.renamingItemId === folderOverlayContainer.folderData.id
 
-                                    StyledText {
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 4
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "Folder") : "Folder"
-                                        color: root.winText
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
+                                StyledText {
+                                    id: foTitleText
+
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.min(implicitWidth, parent.width - 12)
+                                    visible: !parent.foRenaming
+                                    text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "Folder") : "Folder"
+                                    color: foTitleMouse.containsMouse ? "#ffffff" : root.winText
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+
+                                MouseArea {
+                                    id: foTitleMouse
+
+                                    anchors.fill: foTitleText
+                                    anchors.margins: -4
+                                    enabled: foTitleText.visible
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: function(mouse) {
+                                        if (!folderOverlayContainer.folderData)
+                                            return;
+                                        if (mouse.button === Qt.RightButton) {
+                                            root.contextMenuItem = folderOverlayContainer.folderData;
+                                            root.contextMenuGroupId = root.openFolderGroupId;
+                                            root.contextMenuType = "folder";
+                                            const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                            root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                            root.contextMenuY = Math.min(gp.y, menuBackground.height - 180);
+                                            root.contextMenuVisible = true;
+                                            return;
+                                        }
+                                        root.beginItemRename(folderOverlayContainer.folderData.id);
                                     }
                                 }
 
-                                // Edit Title Mode (Authentic Windows 10 style inline rename)
-                                Rectangle {
-                                    anchors.fill: parent
-                                    visible: folderOverlayContainer.folderData && root.renamingItemId === folderOverlayContainer.folderData.id
-                                    color: Qt.rgba(0, 0, 0, 0.75)
-                                    border.color: root.winAccent
-                                    border.width: 1
+                                TextInput {
+                                    id: foRenameInput
 
-                                    TextInput {
-                                        id: foRenameInput
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 4
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 4
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                        color: "#ffffff"
-                                        selectByMouse: true
-                                        selectionColor: root.winAccent
-                                        selectedTextColor: "#ffffff"
-                                        clip: true
-                                        text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : ""
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width - 12)
+                                    visible: parent.foRenaming
+                                    z: 2
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    color: root.winText
+                                    selectByMouse: true
+                                    selectionColor: root.winAccent
+                                    selectedTextColor: "#ffffff"
+                                    clip: true
+                                    text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : ""
 
-                                        onVisibleChanged: {
-                                            if (visible) {
-                                                text = folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : "";
-                                                forceActiveFocus();
-                                                selectAll();
-                                            }
-                                        }
-
-                                        onAccepted: {
-                                            if (folderOverlayContainer.folderData)
-                                                root.renameTileOrFolder(folderOverlayContainer.folderData.id, text);
-                                            root.renamingItemId = "";
-                                        }
-
-                                        Keys.onEscapePressed: {
-                                            root.renamingItemId = "";
-                                        }
-
-                                        onActiveFocusChanged: {
-                                            if (!activeFocus && folderOverlayContainer.folderData && root.renamingItemId === folderOverlayContainer.folderData.id) {
-                                                root.renameTileOrFolder(folderOverlayContainer.folderData.id, text);
-                                                root.renamingItemId = "";
-                                            }
+                                    onVisibleChanged: {
+                                        if (visible) {
+                                            text = folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : "";
+                                            root.bindRenameInput(foRenameInput);
+                                        } else if (root.activeRenameInput === foRenameInput) {
+                                            root.activeRenameInput = null;
                                         }
                                     }
+
+                                    onAccepted: {
+                                        if (folderOverlayContainer.folderData)
+                                            root.renameTileOrFolder(folderOverlayContainer.folderData.id, text);
+                                        root.dismissInlineRename();
+                                    }
+
+                                    Keys.onEscapePressed: function(event) {
+                                        root.dismissInlineRename();
+                                        event.accepted = true;
+                                    }
+                                }
+
+                                Rectangle {
+                                    visible: foRenameInput.visible
+                                    anchors.left: foRenameInput.left
+                                    width: foRenameInput.width
+                                    anchors.top: foRenameInput.bottom
+                                    anchors.topMargin: 1
+                                    height: 1
+                                    color: root.winAccent
                                 }
                             }
 
@@ -2447,6 +2508,7 @@ Item {
                                         }
 
                                         StyledText {
+                                            visible: root.renamingItemId !== modelData.id
                                             anchors.left: parent.left
                                             anchors.leftMargin: 8
                                             anchors.right: parent.right
@@ -2460,6 +2522,55 @@ Item {
                                             wrapMode: Text.NoWrap
                                         }
 
+                                        TextInput {
+                                            id: foTileRenameInput
+
+                                            visible: root.renamingItemId === modelData.id
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 8
+                                            anchors.bottom: parent.bottom
+                                            anchors.bottomMargin: 6
+                                            width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width - 16)
+                                            font.pixelSize: 11
+                                            color: root.winText
+                                            selectByMouse: true
+                                            selectionColor: root.winAccent
+                                            selectedTextColor: "#ffffff"
+                                            clip: true
+                                            text: modelData.name || ""
+                                            z: 2
+
+                                            onVisibleChanged: {
+                                                if (visible) {
+                                                    text = modelData.name || "";
+                                                    root.bindRenameInput(foTileRenameInput);
+                                                } else if (root.activeRenameInput === foTileRenameInput) {
+                                                    root.activeRenameInput = null;
+                                                }
+                                            }
+
+                                            onAccepted: {
+                                                root.renameTileOrFolder(modelData.id, text);
+                                                root.dismissInlineRename();
+                                            }
+
+                                            Keys.onEscapePressed: function(event) {
+                                                root.dismissInlineRename();
+                                                event.accepted = true;
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            visible: foTileRenameInput.visible
+                                            anchors.left: foTileRenameInput.left
+                                            width: foTileRenameInput.width
+                                            anchors.top: foTileRenameInput.bottom
+                                            anchors.topMargin: 1
+                                            height: 1
+                                            color: root.winAccent
+                                            z: 2
+                                        }
+
                                         MouseArea {
                                             id: foTileMouse
                                             anchors.fill: parent
@@ -2468,7 +2579,7 @@ Item {
                                             cursorShape: Qt.PointingHandCursor
                                             property point pressPos: Qt.point(0, 0)
                                             property bool draggingStarted: false
-                                            enabled: !root.isDraggingTile || draggingStarted
+                                            enabled: root.renamingItemId !== modelData.id && (!root.isDraggingTile || draggingStarted)
 
                                             onPressed: function(mouse) {
                                                 pressPos = Qt.point(mouse.x, mouse.y);
@@ -3810,7 +3921,7 @@ Item {
                     iconName: "edit"
                     label: "Rename tile"
                     onClicked: {
-                        root.renamingItemId = root.contextMenuItem ? root.contextMenuItem.id : "";
+                        root.beginItemRename(root.contextMenuItem ? root.contextMenuItem.id : "");
                         root.contextMenuVisible = false;
                     }
                 }
@@ -3937,7 +4048,7 @@ Item {
                     iconName: "edit"
                     label: "Rename folder"
                     onClicked: {
-                        root.renamingItemId = root.contextMenuItem ? root.contextMenuItem.id : "";
+                        root.beginItemRename(root.contextMenuItem ? root.contextMenuItem.id : "");
                         root.contextMenuVisible = false;
                     }
                 }
@@ -3984,11 +4095,7 @@ Item {
                     label: "Rename group"
                     onClicked: {
                         root.contextMenuVisible = false;
-                        if (root.contextMenuGroupId === 1 && typeof tileGroup1 !== "undefined") {
-                            tileGroup1.isEditingHeader = true;
-                        } else if (root.contextMenuGroupId === 2 && typeof tileGroup2 !== "undefined") {
-                            tileGroup2.isEditingHeader = true;
-                        }
+                        root.beginGroupRename(root.contextMenuGroupId);
                     }
                 }
 
@@ -4015,6 +4122,29 @@ Item {
 
             }
 
+        }
+
+        // Click-away catcher for inline rename (Enter commits; Escape / click away dismisses)
+        MouseArea {
+            id: renameClickAway
+
+            anchors.fill: parent
+            z: 80
+            enabled: root.renamingItemId !== "" || (typeof tileGroup1 !== "undefined" && tileGroup1 && tileGroup1.isEditingHeader) || (typeof tileGroup2 !== "undefined" && tileGroup2 && tileGroup2.isEditingHeader)
+            hoverEnabled: false
+            propagateComposedEvents: true
+            onPressed: function(mouse) {
+                var inp = root.activeRenameInput;
+                if (inp && inp.visible) {
+                    var p = mapToItem(inp, mouse.x, mouse.y);
+                    if (p.x >= -6 && p.y >= -6 && p.x <= inp.width + 6 && p.y <= inp.height + 10) {
+                        mouse.accepted = false;
+                        return;
+                    }
+                }
+                root.dismissInlineRename();
+                mouse.accepted = true;
+            }
         }
 
         // ==========================================
@@ -4527,176 +4657,127 @@ Item {
             spacing: 8
 
             // ==========================================
-            // GROUP HEADER (Click to rename, hover handle)
+            // GROUP HEADER (Click title to rename, hover handle)
             // ==========================================
             Item {
                 width: parent.width
                 height: 28
 
-                // View Mode
-                Item {
-                    anchors.fill: parent
-                    visible: !tg.isEditingHeader
+                StyledText {
+                    id: headerTitleText
 
-                    StyledText {
-                        id: headerTitleText
-
-                        anchors.left: parent.left
-                        anchors.leftMargin: 4
-                        anchors.right: dragHandleIcon.left
-                        anchors.rightMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: tg.groupTitle || "Name group"
-                        color: tg.groupTitle ? (headerMouse.containsMouse ? "#ffffff" : Qt.lighter(root.winText, 1.1)) : root.winMuted
-                        font.pixelSize: 13
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                        visible: tg.groupTitle !== "" || headerMouse.containsMouse
-                    }
-
-                    // Authentic Windows 10 double-line drag handle
-                    Column {
-                        id: dragHandleIcon
-
-                        anchors.right: parent.right
-                        anchors.rightMargin: 6
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 2
-                        visible: headerMouse.containsMouse
-
-                        Rectangle { width: 14; height: 1.5; color: root.winMuted }
-                        Rectangle { width: 14; height: 1.5; color: root.winMuted }
-                    }
-
-                    MouseArea {
-                        id: headerMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: function(mouse) {
-                            if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
-                                root.closeSidebarAndPopovers();
-                                return;
-                            }
-                            if (mouse.button === Qt.RightButton) {
-                                root.contextMenuItem = null;
-                                root.contextMenuGroupId = tg.groupId;
-                                root.contextMenuType = "groupHeader";
-                                const gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
-                                root.contextMenuY = Math.min(gp.y, menuBackground.height - 100);
-                                root.contextMenuVisible = true;
-                                return;
-                            }
-                            tg.isEditingHeader = true;
-                        }
-                    }
-
+                    anchors.left: parent.left
+                    anchors.leftMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width - (dragHandleIcon.visible ? 32 : 12))
+                    text: tg.groupTitle || "Name group"
+                    color: tg.groupTitle ? (headerMouse.containsMouse ? "#ffffff" : Qt.lighter(root.winText, 1.1)) : root.winMuted
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                    visible: !tg.isEditingHeader && (tg.groupTitle !== "" || headerMouse.containsMouse)
                 }
 
-                // Edit Mode (Authentic Windows 10 Header TextBox)
-                Rectangle {
+                Column {
+                    id: dragHandleIcon
+
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    visible: headerMouse.containsMouse && !tg.isEditingHeader
+
+                    Rectangle { width: 14; height: 1.5; color: root.winMuted }
+                    Rectangle { width: 14; height: 1.5; color: root.winMuted }
+                }
+
+                MouseArea {
+                    id: headerMouse
+
                     anchors.fill: parent
-                    anchors.rightMargin: 4
+                    enabled: !tg.isEditingHeader
+                    hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: function(mouse) {
+                        if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
+                            root.closeSidebarAndPopovers();
+                            return;
+                        }
+                        if (mouse.button === Qt.RightButton) {
+                            root.contextMenuItem = null;
+                            root.contextMenuGroupId = tg.groupId;
+                            root.contextMenuType = "groupHeader";
+                            const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                            root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                            root.contextMenuY = Math.min(gp.y, menuBackground.height - 100);
+                            root.contextMenuVisible = true;
+                            return;
+                        }
+                        root.beginGroupRename(tg.groupId);
+                    }
+                }
+
+                StyledText {
+                    id: headerRenamePlaceholder
+
+                    anchors.left: parent.left
+                    anchors.leftMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Name group"
+                    color: root.winMuted
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    visible: tg.isEditingHeader && headerEditInput.text.length === 0
+                }
+
+                TextInput {
+                    id: headerEditInput
+
+                    anchors.left: parent.left
+                    anchors.leftMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(Math.max(Math.ceil(contentWidth) + 2, headerRenamePlaceholder.implicitWidth), parent.width - 12)
                     visible: tg.isEditingHeader
-                    color: Qt.rgba(0, 0, 0, 0.75)
-                    border.color: root.winAccent
-                    border.width: 1
+                    z: 2
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    color: root.winText
+                    selectByMouse: true
+                    selectionColor: root.winAccent
+                    selectedTextColor: "#ffffff"
+                    clip: true
+                    text: tg.groupTitle
 
-                    TextInput {
-                        id: headerEditInput
-
-                        anchors.left: parent.left
-                        anchors.leftMargin: 8
-                        anchors.right: headerClearBtn.left
-                        anchors.rightMargin: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        color: "#ffffff"
-                        selectByMouse: true
-                        selectionColor: root.winAccent
-                        selectedTextColor: "#ffffff"
-                        clip: true
-                        text: tg.groupTitle
-
-                        Component.onCompleted: {
-                            if (tg.isEditingHeader) {
-                                forceActiveFocus();
-                                selectAll();
-                            }
-                        }
-
-                        onVisibleChanged: {
-                            if (visible) {
-                                text = tg.groupTitle;
-                                forceActiveFocus();
-                                selectAll();
-                            }
-                        }
-
-                        onAccepted: {
-                            tg.titleChanged(text.trim());
-                            tg.isEditingHeader = false;
-                        }
-
-                        Keys.onEscapePressed: {
-                            tg.isEditingHeader = false;
-                        }
-
-                        onActiveFocusChanged: {
-                            if (!activeFocus && tg.isEditingHeader) {
-                                tg.titleChanged(text.trim());
-                                tg.isEditingHeader = false;
-                            }
+                    onVisibleChanged: {
+                        if (visible) {
+                            text = tg.groupTitle;
+                            root.bindRenameInput(headerEditInput);
+                        } else if (root.activeRenameInput === headerEditInput) {
+                            root.activeRenameInput = null;
                         }
                     }
 
-                    StyledText {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Name group"
-                        color: root.winMuted
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        visible: headerEditInput.text.length === 0
+                    onAccepted: {
+                        tg.titleChanged(text.trim());
+                        root.dismissInlineRename();
                     }
 
-                    Rectangle {
-                        id: headerClearBtn
-
-                        anchors.right: parent.right
-                        anchors.rightMargin: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 20
-                        height: 20
-                        color: clearHeaderMouse.containsMouse ? root.winHover : "transparent"
-                        visible: headerEditInput.text.length > 0
-
-                        DankIcon {
-                            anchors.centerIn: parent
-                            name: "close"
-                            size: 14
-                            color: root.winMuted
-                        }
-
-                        MouseArea {
-                            id: clearHeaderMouse
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                headerEditInput.text = "";
-                                headerEditInput.forceActiveFocus();
-                            }
-                        }
+                    Keys.onEscapePressed: function(event) {
+                        root.dismissInlineRename();
+                        event.accepted = true;
                     }
                 }
 
+                Rectangle {
+                    visible: tg.isEditingHeader
+                    anchors.left: headerEditInput.left
+                    width: headerEditInput.width
+                    anchors.top: headerEditInput.bottom
+                    anchors.topMargin: 1
+                    height: 1
+                    color: root.winAccent
+                }
             }
 
             // ==========================================
@@ -4849,19 +4930,23 @@ Item {
                                 }
 
                                 // Folder Label & Chevron at bottom
-                                Row {
+                                Item {
                                     anchors.left: parent.left
                                     anchors.leftMargin: 8
                                     anchors.right: parent.right
                                     anchors.rightMargin: 8
                                     anchors.bottom: parent.bottom
                                     anchors.bottomMargin: 6
-                                    spacing: 4
+                                    height: 16
 
                                     StyledText {
                                         id: folderLabelText
 
-                                        width: parent.width - 16
+                                        anchors.left: parent.left
+                                        anchors.right: folderChevron.left
+                                        anchors.rightMargin: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: root.renamingItemId !== modelData.id
                                         text: modelData.name || "Folder"
                                         color: root.winText
                                         font.pixelSize: 11
@@ -4870,10 +4955,61 @@ Item {
                                     }
 
                                     DankIcon {
+                                        id: folderChevron
+
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: root.renamingItemId !== modelData.id
                                         name: "expand_more"
                                         size: 12
                                         color: root.winMuted
+                                    }
+
+                                    TextInput {
+                                        id: folderRenameInput
+
+                                        anchors.left: parent.left
                                         anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width)
+                                        visible: root.renamingItemId === modelData.id
+                                        font.pixelSize: 11
+                                        color: root.winText
+                                        selectByMouse: true
+                                        selectionColor: root.winAccent
+                                        selectedTextColor: "#ffffff"
+                                        clip: true
+                                        text: modelData.name || ""
+                                        z: 2
+
+                                        onVisibleChanged: {
+                                            if (visible) {
+                                                text = modelData.name || "";
+                                                root.bindRenameInput(folderRenameInput);
+                                            } else if (root.activeRenameInput === folderRenameInput) {
+                                                root.activeRenameInput = null;
+                                            }
+                                        }
+
+                                        onAccepted: {
+                                            root.renameTileOrFolder(modelData.id, text);
+                                            root.dismissInlineRename();
+                                        }
+
+                                        Keys.onEscapePressed: function(event) {
+                                            root.dismissInlineRename();
+                                            event.accepted = true;
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        visible: folderRenameInput.visible
+                                        anchors.left: folderRenameInput.left
+                                        width: folderRenameInput.width
+                                        anchors.top: folderRenameInput.bottom
+                                        anchors.topMargin: 1
+                                        height: 1
+                                        color: root.winAccent
+                                        z: 2
                                     }
                                 }
 
@@ -4881,6 +5017,7 @@ Item {
                                     id: folderTileMouse
 
                                     anchors.fill: parent
+                                    enabled: root.renamingItemId !== modelData.id
                                     hoverEnabled: true
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     cursorShape: Qt.PointingHandCursor
@@ -4992,6 +5129,8 @@ Item {
 
                                 // Tile Display Name (Normal)
                                 StyledText {
+                                    id: tileNameText
+
                                     visible: tileDelegateRoot.currentTileSize !== "small" && root.renamingItemId !== modelData.id
                                     anchors.left: parent.left
                                     anchors.leftMargin: tileDelegateRoot.currentTileSize === "large" ? 12 : 8
@@ -5007,73 +5146,61 @@ Item {
                                     wrapMode: Text.NoWrap
                                 }
 
-                                // Inline Tile Rename Field (Authentic Windows 10 style)
-                                Rectangle {
+                                TextInput {
+                                    id: tileRenameInput
+
                                     visible: root.renamingItemId === modelData.id
                                     anchors.left: parent.left
-                                    anchors.leftMargin: 4
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 4
+                                    anchors.leftMargin: tileDelegateRoot.currentTileSize === "large" ? 12 : 8
                                     anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: 4
-                                    height: 22
-                                    color: Qt.rgba(0, 0, 0, 0.75)
-                                    border.color: root.winAccent
-                                    border.width: 1
+                                    anchors.bottomMargin: tileDelegateRoot.currentTileSize === "large" ? 10 : 6
+                                    width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width - (tileDelegateRoot.currentTileSize === "large" ? 24 : 16))
+                                    font.pixelSize: tileDelegateRoot.currentTileSize === "large" ? 12 : 11
+                                    font.weight: tileDelegateRoot.currentTileSize === "large" ? Font.DemiBold : Font.Normal
+                                    color: root.winText
+                                    selectByMouse: true
+                                    selectionColor: root.winAccent
+                                    selectedTextColor: "#ffffff"
+                                    clip: true
+                                    text: modelData.name || ""
+                                    z: 2
 
-                                    TextInput {
-                                        id: tileRenameInput
-
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 4
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 4
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        font.pixelSize: 11
-                                        color: "#ffffff"
-                                        selectByMouse: true
-                                        selectionColor: root.winAccent
-                                        selectedTextColor: "#ffffff"
-                                        clip: true
-                                        text: modelData.name || ""
-
-                                        Component.onCompleted: {
-                                            if (root.renamingItemId === modelData.id) {
-                                                forceActiveFocus();
-                                                selectAll();
-                                            }
-                                        }
-
-                                        onVisibleChanged: {
-                                            if (visible) {
-                                                text = modelData.name || "";
-                                                forceActiveFocus();
-                                                selectAll();
-                                            }
-                                        }
-
-                                        onAccepted: {
-                                            root.renameTileOrFolder(modelData.id, text);
-                                            root.renamingItemId = "";
-                                        }
-
-                                        Keys.onEscapePressed: {
-                                            root.renamingItemId = "";
-                                        }
-
-                                        onActiveFocusChanged: {
-                                            if (!activeFocus && root.renamingItemId === modelData.id) {
-                                                root.renameTileOrFolder(modelData.id, text);
-                                                root.renamingItemId = "";
-                                            }
+                                    onVisibleChanged: {
+                                        if (visible) {
+                                            text = modelData.name || "";
+                                            root.bindRenameInput(tileRenameInput);
+                                        } else if (root.activeRenameInput === tileRenameInput) {
+                                            root.activeRenameInput = null;
                                         }
                                     }
+
+                                    onAccepted: {
+                                        root.renameTileOrFolder(modelData.id, text);
+                                        root.dismissInlineRename();
+                                    }
+
+                                    Keys.onEscapePressed: function(event) {
+                                        root.dismissInlineRename();
+                                        event.accepted = true;
+                                    }
+                                }
+
+                                Rectangle {
+                                    visible: tileRenameInput.visible
+                                    anchors.left: tileRenameInput.left
+                                    width: tileRenameInput.width
+                                    anchors.top: tileRenameInput.bottom
+                                    anchors.topMargin: 1
+                                    height: 1
+                                    color: root.winAccent
+                                    z: 2
                                 }
 
                                 MouseArea {
                                     id: tileMouse
 
                                     anchors.fill: parent
+                                    enabled: root.renamingItemId !== modelData.id
                                     hoverEnabled: true
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     cursorShape: Qt.PointingHandCursor
