@@ -1489,6 +1489,7 @@ Item {
                                                     color: root.winText
                                                     font.pixelSize: 11
                                                     elide: Text.ElideRight
+                                                    wrapMode: Text.NoWrap
                                                 }
                                             }
 
@@ -1700,13 +1701,16 @@ Item {
                                                     font.pixelSize: 15
                                                     font.weight: Font.DemiBold
                                                     elide: Text.ElideRight
+                                                    wrapMode: Text.NoWrap
                                                 }
 
                                                 StyledText {
+                                                    width: parent.width
                                                     text: (root.bestMatchApp && root.bestMatchApp.isWeb ? "Web search" : (root.bestMatchApp && root.bestMatchApp.comment ? root.bestMatchApp.comment : "App"))
                                                     color: root.winMuted
                                                     font.pixelSize: 11
                                                     elide: Text.ElideRight
+                                                    wrapMode: Text.NoWrap
                                                 }
                                             }
 
@@ -1820,6 +1824,7 @@ Item {
                                                     color: root.winText
                                                     font.pixelSize: 13
                                                     elide: Text.ElideRight
+                                                    wrapMode: Text.NoWrap
                                                 }
 
                                                 StyledText {
@@ -2605,6 +2610,7 @@ Item {
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
+                wrapMode: Text.NoWrap
             }
 
             StyledText {
@@ -2613,6 +2619,7 @@ Item {
                 color: root.winMuted
                 font.pixelSize: 10
                 elide: Text.ElideRight
+                wrapMode: Text.NoWrap
             }
         }
 

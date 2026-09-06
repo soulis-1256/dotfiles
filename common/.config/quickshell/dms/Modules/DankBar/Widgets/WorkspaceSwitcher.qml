@@ -1398,12 +1398,14 @@ Item {
                         if (mouseArea.pressed)
                             return "#1a1a1a";
                         if (delegateRoot.isHovered)
-                            return "#323232";
+                            return isUrgent ? Qt.lighter(urgentColor, 1.15) : "#323232";
                         if (isActive)
                             return "#2a2a2a";
+                        if (isUrgent)
+                            return urgentColor;
                         return "transparent";
                     }
-                    return isActive ? activeColor : isUrgent ? urgentColor : isPlaceholder ? Theme.surfaceTextLight : isHovered ? Theme.withAlpha(unfocusedColor, 0.7) : isOccupied ? occupiedColor : unfocusedColor;
+                    return isActive ? activeColor : isUrgent ? (isHovered ? Qt.lighter(urgentColor, 1.15) : urgentColor) : isPlaceholder ? Theme.surfaceTextLight : isHovered ? Theme.withAlpha(unfocusedColor, 0.7) : isOccupied ? occupiedColor : unfocusedColor;
                 }
 
                 property bool colorAnimationReady: false
@@ -1668,8 +1670,8 @@ Item {
                         visible: root.isFullHeight && isActive
                     }
 
-                    border.width: dragHandler.dragging ? 2 : (isUrgent ? 2 : (isDropTarget ? 2 : 0))
-                    border.color: dragHandler.dragging ? Theme.primary : (isUrgent ? urgentColor : (isDropTarget ? Theme.primary : Theme.withAlpha(Theme.primary, 0)))
+                    border.width: dragHandler.dragging ? 2 : (isDropTarget ? 2 : 0)
+                    border.color: dragHandler.dragging ? Theme.primary : (isDropTarget ? Theme.primary : Theme.withAlpha(Theme.primary, 0))
 
                     transform: Translate {
                         x: root.isVertical ? 0 : (dragHandler.dragging ? dragHandler.dragAxisOffset : 0)
@@ -1927,7 +1929,7 @@ Item {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         name: loadedIconData?.value ?? ""
                                         size: root.workspaceLabelSize
-                                        color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                         weight: (isActive && !isPlaceholder) ? 500 : 400
                                     }
 
@@ -1935,7 +1937,7 @@ Item {
                                         visible: loadedHasIcon && loadedIconData?.type === "text"
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: loadedIconData?.value ?? ""
-                                        color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                         font.pixelSize: root.workspaceLabelSize
                                         font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                     }
@@ -1944,7 +1946,7 @@ Item {
                                         visible: (SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName) && !loadedHasIcon
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: root.getWorkspaceIndex(modelData, index)
-                                        color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                         font.pixelSize: root.workspaceLabelSize
                                         font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                     }
