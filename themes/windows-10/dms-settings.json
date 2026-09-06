@@ -681,11 +681,13 @@
         }
       ],
       "spacing": 0,
-      "innerPadding": 12,
+      "innerPadding": 0,
+      "barInsetPadding": 0,
       "bottomGap": 0,
       "transparency": 1,
       "widgetTransparency": 0,
       "squareCorners": true,
+      "fullHeightWidgets": true,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
@@ -706,7 +708,8 @@
       "widgetOutlineEnabled": false,
       "scrollEnabled": true,
       "clickThrough": false,
-      "widgetPadding": 6
+      "removeWidgetPadding": true,
+      "widgetPadding": 0
     },
     {
       "id": "bar1770393292481",
@@ -746,11 +749,13 @@
         }
       ],
       "spacing": 0,
-      "innerPadding": 12,
+      "innerPadding": 0,
+      "barInsetPadding": 0,
       "bottomGap": 0,
       "transparency": 1,
       "widgetTransparency": 0,
       "squareCorners": true,
+      "fullHeightWidgets": true,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
@@ -779,7 +784,8 @@
       "shadowOpacity": 60,
       "shadowColorMode": "text",
       "shadowCustomColor": "#000000",
-      "widgetPadding": 6
+      "removeWidgetPadding": true,
+      "widgetPadding": 0
     }
   ],
   "desktopClockEnabled": false,

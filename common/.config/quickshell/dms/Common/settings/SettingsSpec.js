@@ -549,6 +549,7 @@ var SPEC = {
             transparency: 1.0,
             widgetTransparency: 1.0,
             squareCorners: false,
+            fullHeightWidgets: false,
             noBackground: false,
             maximizeWidgetIcons: false,
             maximizeWidgetText: false,

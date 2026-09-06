@@ -23,6 +23,7 @@ Item {
     property var parentScreen: null
 
     readonly property bool isMango: CompositorService.isMango
+    readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
 
     readonly property real _leftMargin: {
         if (isVertical)
@@ -667,6 +668,8 @@ Item {
     readonly property real visualWidth: isVertical ? widgetHeight : (workspaceRow.implicitWidth + padding * 2)
     readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + padding * 2) : widgetHeight
     readonly property real appIconSize: Theme.barIconSize(barThickness, -6 + SettingsData.workspaceAppIconSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+    readonly property int appCountBadgeSize: Math.max(11, Math.round(appIconSize * 0.58))
+    readonly property int appCountBadgeTextSize: Math.max(8, Math.round(appCountBadgeSize * 0.68))
 
     function getRealWorkspaces() {
         return root.workspaceList.filter(ws => {
@@ -1287,6 +1290,8 @@ Item {
                     return Math.max(baseWidth + iconsExtraWidth, contentImplicitWidth + padding);
                 }
                 readonly property real visualHeight: {
+                    if (root.isFullHeight)
+                        return root.barThickness;
                     if (contentImplicitHeight <= 0)
                         return baseHeight + iconsExtraHeight;
                     const padding = root.isVertical ? Theme.spacingS : Theme.spacingXS;
@@ -1369,7 +1374,18 @@ Item {
                 readonly property color quickshellIconActiveColor: getContrastingIconColor(activeColor)
                 readonly property color quickshellIconInactiveColor: getContrastingIconColor(unfocusedColor)
 
-                readonly property color requestedColor: isActive ? activeColor : isUrgent ? urgentColor : isPlaceholder ? Theme.surfaceTextLight : isHovered ? Theme.withAlpha(unfocusedColor, 0.7) : isOccupied ? occupiedColor : unfocusedColor
+                readonly property color requestedColor: {
+                    if (root.isFullHeight) {
+                        if (mouseArea.pressed)
+                            return "#1a1a1a";
+                        if (delegateRoot.isHovered)
+                            return "#323232";
+                        if (isActive)
+                            return "#2a2a2a";
+                        return "transparent";
+                    }
+                    return isActive ? activeColor : isUrgent ? urgentColor : isPlaceholder ? Theme.surfaceTextLight : isHovered ? Theme.withAlpha(unfocusedColor, 0.7) : isOccupied ? occupiedColor : unfocusedColor;
+                }
 
                 property bool colorAnimationReady: false
 
@@ -1549,8 +1565,8 @@ Item {
                     dataUpdateTimer.restart();
                 }
 
-                width: root.isVertical ? root.widgetHeight : visualWidth
-                height: root.isVertical ? visualHeight : root.widgetHeight
+                width: root.isVertical ? (root.isFullHeight ? root.barThickness : root.widgetHeight) : visualWidth
+                height: root.isVertical ? visualHeight : (root.isFullHeight ? root.barThickness : root.widgetHeight)
 
                 Behavior on width {
                     NumberAnimation {
@@ -1568,6 +1584,7 @@ Item {
 
                 Rectangle {
                     id: focusedBorderRing
+                    visible: !root.isFullHeight
                     x: root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2
                     y: root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2
                     width: {
@@ -1615,12 +1632,32 @@ Item {
                 Rectangle {
                     id: visualContent
                     width: delegateRoot.visualWidth
-                    height: delegateRoot.visualHeight
-                    x: root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2
-                    y: root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2
-                    radius: Theme.cornerRadius
+                    height: root.isFullHeight ? root.barThickness : delegateRoot.visualHeight
+                    x: root.isFullHeight ? 0 : (root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2)
+                    y: root.isFullHeight ? 0 : (root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2)
+                    radius: root.isFullHeight ? 0 : Theme.cornerRadius
                     color: delegateRoot.displayColor
                     opacity: dragHandler.dragging ? 0.8 : 1.0
+
+                    Rectangle {
+                        id: activeIndicator
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 3
+                        color: "#0078d7"
+                        visible: root.isFullHeight && isActive
+                    }
+
+                    Rectangle {
+                        id: occupiedIndicator
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(24, parent.width - 12)
+                        height: 2
+                        color: "#767676"
+                        visible: root.isFullHeight && !isActive && isOccupied
+                    }
 
                     border.width: dragHandler.dragging ? 2 : (isUrgent ? 2 : (isDropTarget ? 2 : 0))
                     border.color: dragHandler.dragging ? Theme.primary : (isUrgent ? urgentColor : (isDropTarget ? Theme.primary : Theme.withAlpha(Theme.primary, 0)))
@@ -1696,7 +1733,7 @@ Item {
                                             anchors.verticalCenter: parent.verticalCenter
                                             name: loadedIconData?.value ?? ""
                                             size: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
-                                            color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                            color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                             weight: (isActive && !isPlaceholder) ? 500 : 400
                                         }
                                     }
@@ -1710,7 +1747,7 @@ Item {
                                             id: wsText
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: loadedIconData?.value ?? ""
-                                            color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                            color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                             font.pixelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
                                             font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                         }
@@ -1725,7 +1762,7 @@ Item {
                                             id: wsIndexText
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: loadedHasIcon ? (modelData?.name ?? "") : root.getWorkspaceIndex(modelData, index)
-                                            color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                            color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                             font.pixelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
                                             font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                         }
@@ -1844,22 +1881,24 @@ Item {
                                             }
 
                                             Rectangle {
-                                                visible: modelData.count > 1 && !isActive
-                                                width: root.appIconSize * 0.67
-                                                height: root.appIconSize * 0.67
-                                                radius: root.appIconSize * 0.33
-                                                color: "black"
-                                                border.color: "white"
-                                                border.width: 1
+                                                id: countBadge
+                                                visible: modelData.count > 1
+                                                z: 10
                                                 anchors.right: parent.right
                                                 anchors.bottom: parent.bottom
-                                                z: 2
+                                                height: root.appCountBadgeSize
+                                                width: Math.max(height, countLabel.implicitWidth + 6)
+                                                radius: height / 2
+                                                color: Theme.primary
+                                                border.width: 0
 
                                                 StyledText {
+                                                    id: countLabel
                                                     anchors.centerIn: parent
                                                     text: modelData.count
-                                                    font.pixelSize: root.appIconSize * 0.44
-                                                    color: "white"
+                                                    font.pixelSize: root.appCountBadgeTextSize
+                                                    font.weight: Font.DemiBold
+                                                    color: Theme.onPrimary
                                                 }
                                             }
                                         }
@@ -2013,22 +2052,24 @@ Item {
                                             }
 
                                             Rectangle {
-                                                visible: modelData.count > 1 && !isActive
-                                                width: root.appIconSize * 0.67
-                                                height: root.appIconSize * 0.67
-                                                radius: root.appIconSize * 0.33
-                                                color: "black"
-                                                border.color: "white"
-                                                border.width: 1
+                                                id: colCountBadge
+                                                visible: modelData.count > 1
+                                                z: 10
                                                 anchors.right: parent.right
                                                 anchors.bottom: parent.bottom
-                                                z: 2
+                                                height: root.appCountBadgeSize
+                                                width: Math.max(height, colCountLabel.implicitWidth + 6)
+                                                radius: height / 2
+                                                color: Theme.primary
+                                                border.width: 0
 
                                                 StyledText {
+                                                    id: colCountLabel
                                                     anchors.centerIn: parent
                                                     text: modelData.count
-                                                    font.pixelSize: root.appIconSize * 0.44
-                                                    color: "white"
+                                                    font.pixelSize: root.appCountBadgeTextSize
+                                                    font.weight: Font.DemiBold
+                                                    color: Theme.onPrimary
                                                 }
                                             }
                                         }

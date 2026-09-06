@@ -14,6 +14,7 @@ BasePill {
 
     enableBackgroundHover: false
     enableCursor: false
+    readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
 
     property var parentWindow: null
     property var widgetData: null
@@ -467,7 +468,7 @@ BasePill {
                     property string itemKey: modelData.key
                     property string iconSource: root.trayIconSourceFor(trayItem)
 
-                    width: root.trayItemSize
+                    width: root.isFullHeight ? (root.trayItemSize + 10) : root.trayItemSize
                     height: root.barThickness
                     z: dragHandler.dragging ? 100 : 0
 
@@ -502,11 +503,24 @@ BasePill {
 
                     Rectangle {
                         id: visualContent
-                        width: root.trayItemSize
-                        height: root.trayItemSize
+                        width: root.isFullHeight ? (root.trayItemSize + 10) : root.trayItemSize
+                        height: root.isFullHeight ? root.barThickness : root.trayItemSize
                         anchors.centerIn: parent
-                        radius: Theme.cornerRadius
-                        color: trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                        radius: root.isFullHeight ? 0 : Theme.cornerRadius
+                        color: {
+                            if (root.isFullHeight) {
+                                if (trayItemArea.pressed) return "#1a1a1a";
+                                if (trayItemArea.containsMouse) return "#323232";
+                                return "transparent";
+                            }
+                            return trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0);
+                        }
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: root.isFullHeight ? 100 : 0
+                            }
+                        }
                         border.width: dragHandler.dragging ? 2 : 0
                         border.color: Theme.primary
                         opacity: dragHandler.dragging ? 0.8 : 1.0
@@ -629,17 +643,30 @@ BasePill {
             }
 
             Item {
-                width: root.trayItemSize
+                width: root.isFullHeight ? 24 : root.trayItemSize
                 height: root.barThickness
                 visible: root.hasHiddenItems
 
                 Rectangle {
                     id: caretButton
-                    width: root.trayItemSize
-                    height: root.trayItemSize
+                    width: root.isFullHeight ? 24 : root.trayItemSize
+                    height: root.isFullHeight ? root.barThickness : root.trayItemSize
                     anchors.centerIn: parent
-                    radius: Theme.cornerRadius
-                    color: caretArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                    radius: root.isFullHeight ? 0 : Theme.cornerRadius
+                    color: {
+                        if (root.isFullHeight) {
+                            if (caretArea.pressed) return "#1a1a1a";
+                            if (caretArea.containsMouse) return "#323232";
+                            return "transparent";
+                        }
+                        return caretArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0);
+                    }
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: root.isFullHeight ? 100 : 0
+                        }
+                    }
 
                     DankIcon {
                         anchors.centerIn: parent

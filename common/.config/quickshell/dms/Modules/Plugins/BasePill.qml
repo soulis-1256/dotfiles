@@ -28,9 +28,10 @@ Item {
     property bool isTopBarEdge: false
     property bool isBottomBarEdge: false
     readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
-    readonly property real horizontalPadding: (barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr)
-    readonly property real visualWidth: Theme.snap(isVerticalOrientation ? widgetThickness : (contentLoader.item ? (contentLoader.item.implicitWidth + horizontalPadding * 2) : 0), dpr)
-    readonly property real visualHeight: Theme.snap(isVerticalOrientation ? (contentLoader.item ? (contentLoader.item.implicitHeight + horizontalPadding * 2) : 0) : widgetThickness, dpr)
+    readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
+    readonly property real horizontalPadding: isFullHeight ? 0 : ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr))
+    readonly property real visualWidth: Theme.snap(isVerticalOrientation ? (isFullHeight ? barThickness : widgetThickness) : (contentLoader.item ? (contentLoader.item.implicitWidth + horizontalPadding * 2) : 0), dpr)
+    readonly property real visualHeight: Theme.snap(isVerticalOrientation ? (contentLoader.item ? (contentLoader.item.implicitHeight + horizontalPadding * 2) : 0) : (isFullHeight ? barThickness : widgetThickness), dpr)
     readonly property alias visualContent: visualContent
     readonly property real barEdgeExtension: 1000
     readonly property real gapExtension: sectionSpacing
@@ -99,9 +100,17 @@ Item {
         Rectangle {
             id: background
             anchors.fill: parent
-            radius: (barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius
+            radius: root.isFullHeight ? 0 : ((barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius)
             color: {
                 if (barConfig?.noBackground ?? false) {
+                    return "transparent";
+                }
+
+                if (root.isFullHeight) {
+                    if (mouseArea.pressed)
+                        return "#1a1a1a";
+                    if (root.enableBackgroundHover && (mouseArea.containsMouse || (root.isHovered || false)))
+                        return "#323232";
                     return "transparent";
                 }
 
@@ -114,6 +123,12 @@ Item {
                     return Theme.blendAlpha(baseColor, transparency);
                 }
                 return Theme.withAlpha(baseColor, transparency);
+            }
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: root.isFullHeight ? 100 : 0
+                }
             }
         }
 

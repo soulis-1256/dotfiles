@@ -12,8 +12,8 @@ BasePill {
 
     content: Component {
         Item {
-            implicitWidth: notifIcon.width
-            implicitHeight: root.widgetThickness - root.horizontalPadding * 2
+            implicitWidth: (root.barConfig && root.barConfig.fullHeightWidgets) ? 44 : notifIcon.width
+            implicitHeight: (root.barConfig && root.barConfig.fullHeightWidgets) ? root.barThickness : (root.widgetThickness - root.horizontalPadding * 2)
 
             DankIcon {
                 id: notifIcon

@@ -27,8 +27,8 @@ BasePill {
 
     content: Component {
         Item {
-            implicitWidth: root.isVerticalOrientation ? (root.widgetThickness - root.horizontalPadding * 2) : contentRow.implicitWidth
-            implicitHeight: root.isVerticalOrientation ? contentColumn.implicitHeight : (root.widgetThickness - root.horizontalPadding * 2)
+            implicitWidth: root.isVerticalOrientation ? (root.isFullHeight ? root.barThickness : (root.widgetThickness - root.horizontalPadding * 2)) : (contentRow.implicitWidth + (root.isFullHeight ? 16 : 0))
+            implicitHeight: root.isVerticalOrientation ? (contentColumn.implicitHeight + (root.isFullHeight ? 16 : 0)) : (root.isFullHeight ? root.barThickness : (root.widgetThickness - root.horizontalPadding * 2))
 
             Column {
                 id: contentColumn
