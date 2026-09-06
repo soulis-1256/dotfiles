@@ -1,11 +1,19 @@
 -- Window rules. Deploy writes ~/.config/hypr/dms/windowrules.lua
 -- Extra rules from the previous hyprland.conf (stock DMS rules stay in hyprland.lua).
 
--- Float Steam's main windows and maximize the main client
+-- Float Steam dialogs and tile the main client
 hl.window_rule({ match = { class = "^(steam)$" }, float = true })
 hl.window_rule({
 	match = { class = "^(steam)$", title = "^(Steam)$" },
-	maximize = true,
+	tile = true,
+})
+-- Force Steam dialogs to stay focused so clicks/close buttons work properly
+hl.window_rule({
+	match = {
+		class = "^(steam)$",
+		title = "^(Steam Settings|Friends List|.*Dialog.*|.*Properties.*|Special Offers|.*News.*|Sign in to Steam)$",
+	},
+	stay_focused = true,
 })
 -- Remove borders and disable blur/shadow effects on Steam
 hl.window_rule({
