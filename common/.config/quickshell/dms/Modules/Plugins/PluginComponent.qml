@@ -15,6 +15,13 @@ Item {
     property real barSpacing: 4
     property var barConfig: null
     property var blurBarWindow: null
+    property bool isFirst: false
+    property bool isLast: false
+    property real sectionSpacing: 0
+    property bool isLeftBarEdge: false
+    property bool isRightBarEdge: false
+    property bool isTopBarEdge: false
+    property bool isBottomBarEdge: false
     property string pluginId: ""
     property var pluginService: null
 
@@ -178,6 +185,17 @@ Item {
     width: isVertical ? (hasVerticalPill ? verticalPill.width : 0) : (hasHorizontalPill ? horizontalPill.width : 0)
     height: isVertical ? (hasVerticalPill ? verticalPill.height : 0) : (hasHorizontalPill ? horizontalPill.height : 0)
 
+    function popupTriggerArgs() {
+        const pill = isVertical ? verticalPill : horizontalPill;
+        const origin = (pill && pill.visualContent) ? pill.visualContent : (pill || root);
+        const globalPos = origin.mapToItem(null, 0, 0);
+        const currentScreen = parentScreen || Screen;
+        const barPosition = axis?.edge === "left" ? 2 : (axis?.edge === "right" ? 3 : (axis?.edge === "top" ? 0 : 1));
+        const triggerWidth = pill?.visualWidth || width;
+        const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, triggerWidth, barSpacing, barPosition, barConfig);
+        return [pos.x, pos.y, pos.width, section, currentScreen, barPosition, barThickness, barSpacing, barConfig];
+    }
+
     BasePill {
         id: horizontalPill
         visible: !isVertical && hasHorizontalPill
@@ -191,6 +209,13 @@ Item {
         barSpacing: root.barSpacing
         barConfig: root.barConfig
         blurBarWindow: root.blurBarWindow
+        isFirst: root.isFirst
+        isLast: root.isLast
+        sectionSpacing: root.sectionSpacing
+        isLeftBarEdge: root.isLeftBarEdge
+        isRightBarEdge: root.isRightBarEdge
+        isTopBarEdge: root.isTopBarEdge
+        isBottomBarEdge: root.isBottomBarEdge
         content: root.horizontalBarPill
 
         states: State {
@@ -212,28 +237,20 @@ Item {
 
         onClicked: {
             if (pillClickAction) {
-                if (pillClickAction.length === 0) {
+                if (pillClickAction.length === 0)
                     pillClickAction();
-                } else {
-                    const globalPos = mapToItem(null, 0, 0);
-                    const currentScreen = parentScreen || Screen;
-                    const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, width);
-                    pillClickAction(pos.x, pos.y, pos.width, section, currentScreen);
-                }
+                else
+                    pillClickAction(...root.popupTriggerArgs());
             } else if (hasPopout) {
                 pluginPopout.toggle();
             }
         }
         onRightClicked: {
             if (pillRightClickAction) {
-                if (pillRightClickAction.length === 0) {
+                if (pillRightClickAction.length === 0)
                     pillRightClickAction();
-                } else {
-                    const globalPos = mapToItem(null, 0, 0);
-                    const currentScreen = parentScreen || Screen;
-                    const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, width);
-                    pillRightClickAction(pos.x, pos.y, pos.width, section, currentScreen);
-                }
+                else
+                    pillRightClickAction(...root.popupTriggerArgs());
             }
         }
     }
@@ -251,6 +268,13 @@ Item {
         barSpacing: root.barSpacing
         barConfig: root.barConfig
         blurBarWindow: root.blurBarWindow
+        isFirst: root.isFirst
+        isLast: root.isLast
+        sectionSpacing: root.sectionSpacing
+        isLeftBarEdge: root.isLeftBarEdge
+        isRightBarEdge: root.isRightBarEdge
+        isTopBarEdge: root.isTopBarEdge
+        isBottomBarEdge: root.isBottomBarEdge
         content: root.verticalBarPill
         isVerticalOrientation: true
 
@@ -273,28 +297,20 @@ Item {
 
         onClicked: {
             if (pillClickAction) {
-                if (pillClickAction.length === 0) {
+                if (pillClickAction.length === 0)
                     pillClickAction();
-                } else {
-                    const globalPos = mapToItem(null, 0, 0);
-                    const currentScreen = parentScreen || Screen;
-                    const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, width);
-                    pillClickAction(pos.x, pos.y, pos.width, section, currentScreen);
-                }
+                else
+                    pillClickAction(...root.popupTriggerArgs());
             } else if (hasPopout) {
                 pluginPopout.toggle();
             }
         }
         onRightClicked: {
             if (pillRightClickAction) {
-                if (pillRightClickAction.length === 0) {
+                if (pillRightClickAction.length === 0)
                     pillRightClickAction();
-                } else {
-                    const globalPos = mapToItem(null, 0, 0);
-                    const currentScreen = parentScreen || Screen;
-                    const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, width);
-                    pillRightClickAction(pos.x, pos.y, pos.width, section, currentScreen);
-                }
+                else
+                    pillRightClickAction(...root.popupTriggerArgs());
             }
         }
     }
@@ -307,27 +323,17 @@ Item {
 
     function triggerPopout() {
         if (pillClickAction) {
-            if (pillClickAction.length === 0) {
+            if (pillClickAction.length === 0)
                 pillClickAction();
-                return;
-            }
-            const pill = isVertical ? verticalPill : horizontalPill;
-            const globalPos = pill.mapToItem(null, 0, 0);
-            const currentScreen = parentScreen || Screen;
-            const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, pill.width);
-            pillClickAction(pos.x, pos.y, pos.width, section, currentScreen);
+            else
+                pillClickAction(...root.popupTriggerArgs());
             return;
         }
         if (!hasPopout)
             return;
 
-        const pill = isVertical ? verticalPill : horizontalPill;
-        const globalPos = pill.visualContent.mapToItem(null, 0, 0);
-        const currentScreen = parentScreen || Screen;
-        const barPosition = axis?.edge === "left" ? 2 : (axis?.edge === "right" ? 3 : (axis?.edge === "top" ? 0 : 1));
-        const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, pill.visualWidth, barSpacing, barPosition, barConfig);
-
-        pluginPopout.setTriggerPosition(pos.x, pos.y, pos.width, section, currentScreen, barPosition, barThickness, barSpacing, barConfig);
+        const args = root.popupTriggerArgs();
+        pluginPopout.setTriggerPosition(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
         pluginPopout.toggle();
     }
 
@@ -339,13 +345,8 @@ Item {
         if (!hasPopout)
             return;
 
-        const pill = isVertical ? verticalPill : horizontalPill;
-        const globalPos = pill.visualContent.mapToItem(null, 0, 0);
-        const currentScreen = parentScreen || Screen;
-        const barPosition = axis?.edge === "left" ? 2 : (axis?.edge === "right" ? 3 : (axis?.edge === "top" ? 0 : 1));
-        const pos = SettingsData.getPopupTriggerPosition(globalPos, currentScreen, barThickness, pill.visualWidth, barSpacing, barPosition, barConfig);
-
-        pluginPopout.setTriggerPosition(pos.x, pos.y, pos.width, section, currentScreen, barPosition, barThickness, barSpacing, barConfig);
+        const args = root.popupTriggerArgs();
+        pluginPopout.setTriggerPosition(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
         PopoutManager.requestHoverPopout(pluginPopout, undefined, widgetHostId || pluginId);
     }
 

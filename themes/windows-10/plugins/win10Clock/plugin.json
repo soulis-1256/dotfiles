@@ -1,7 +1,7 @@
 {
     "id": "win10Clock",
     "name": "Windows 10 Clock",
-    "description": "Two-line Windows 10 taskbar clock with a calendar flyout",
+    "description": "Two-line Windows 10 taskbar clock that opens the notification center with calendar",
     "version": "1.0.0",
     "author": "soulis",
     "type": "widget",

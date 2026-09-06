@@ -485,6 +485,7 @@ var SPEC = {
     notificationHistorySaveCritical: { def: true },
     notificationRules: { def: [] },
     notificationFocusedMonitor: { def: false },
+    notificationCenterShowCalendar: { def: false },
 
     osdAlwaysShowValue: { def: false },
     osdPosition: { def: 5 },

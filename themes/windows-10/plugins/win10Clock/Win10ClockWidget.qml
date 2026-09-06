@@ -2,19 +2,23 @@ import QtQuick
 import Quickshell
 import qs.Common
 import qs.Modules.Plugins
+import qs.Services
 import qs.Widgets
 
 PluginComponent {
     id: root
 
+    property var popoutService: null
+
     layerNamespacePlugin: "win10-clock"
-    popoutWidth: 340
-    popoutHeight: 430
-    popoutFlush: true
+
+    pillClickAction: (x, y, w, s, scr, barPosition, barTh, barSp, cfg) => {
+        popoutService?.toggleNotificationCenter(x, y, w, s, scr || parentScreen, barPosition, barTh, barSp, cfg);
+    }
 
     horizontalBarPill: Component {
         Item {
-            implicitWidth: clockCol.implicitWidth + 24
+            implicitWidth: clockCol.implicitWidth + 12
             implicitHeight: root.barThickness
 
             SystemClock {
@@ -65,6 +69,26 @@ PluginComponent {
 
             }
 
+            Rectangle {
+                visible: NotificationService.notifications.length > 0
+                anchors.right: parent.right
+                anchors.rightMargin: 4
+                anchors.top: parent.top
+                anchors.topMargin: 6
+                width: Math.max(16, badgeLabel.implicitWidth + 8)
+                height: 16
+                color: Theme.primary
+
+                StyledText {
+                    id: badgeLabel
+                    anchors.centerIn: parent
+                    text: NotificationService.notifications.length > 9 ? "9+" : String(NotificationService.notifications.length)
+                    color: Theme.primaryText
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                }
+            }
+
         }
 
     }
@@ -102,12 +126,6 @@ PluginComponent {
 
             }
 
-        }
-
-    }
-
-    popoutContent: Component {
-        CalendarFlyout {
         }
 
     }

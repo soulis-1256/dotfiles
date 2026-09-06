@@ -4,5 +4,11 @@
   },
   "win10Clock": {
     "enabled": true
+  },
+  "win10Media": {
+    "enabled": false
+  },
+  "win10Actions": {
+    "enabled": false
   }
 }

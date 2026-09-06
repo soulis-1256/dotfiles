@@ -11,8 +11,9 @@ Rectangle {
     LayoutMirroring.enabled: I18n.isRtl
     LayoutMirroring.childrenInherit: true
 
-    implicitWidth: SettingsData.showWeekNumber ? 736 : 700
+    implicitWidth: compactEmbed ? 360 : (SettingsData.showWeekNumber ? 736 : 700)
 
+    property bool compactEmbed: false
     property bool showEventDetails: false
     property date selectedDate: systemClock.date
     property var selectedDateEvents: []
@@ -210,10 +211,10 @@ Rectangle {
         enabled: CalendarService !== null
     }
 
-    radius: Theme.cornerRadius
-    color: Theme.nestedSurface
+    radius: compactEmbed ? 0 : Theme.cornerRadius
+    color: compactEmbed ? "transparent" : Theme.nestedSurface
     border.color: Theme.outlineMedium
-    border.width: 1
+    border.width: compactEmbed ? 0 : 1
 
     Column {
         anchors.fill: parent

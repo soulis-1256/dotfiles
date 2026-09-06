@@ -14,16 +14,16 @@ Item {
 
     property var closePopout: null
     property var parentPopout: null
-    readonly property color winBg: "#101010"
-    readonly property color winPanel: "#101010"
-    readonly property color winHover: "#2b2b2b"
-    readonly property color winAccent: "#0078d7"
-    readonly property color winText: "#ffffff"
-    readonly property color winMuted: "#a0a0a0"
-    readonly property color winRail: "#101010"
-    readonly property color winBorder: "#1a1a1a"
-    readonly property color winTileBg: Qt.rgba(1, 1, 1, 0.10)
-    readonly property color winTileHoverBg: Qt.rgba(1, 1, 1, 0.18)
+    readonly property color winBg: Theme.surface
+    readonly property color winPanel: Theme.surface
+    readonly property color winHover: Theme.surfaceContainerHigh
+    readonly property color winAccent: Theme.primary
+    readonly property color winText: Theme.surfaceText
+    readonly property color winMuted: Theme.surfaceVariantText
+    readonly property color winRail: Theme.surface
+    readonly property color winBorder: Theme.outline
+    readonly property color winTileBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.10)
+    readonly property color winTileHoverBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.18)
     readonly property bool hasGroup1: root.group1Tiles && root.group1Tiles.length > 0
     readonly property bool hasGroup2: root.group2Tiles && root.group2Tiles.length > 0
     readonly property real dynamicTileWidth: {
@@ -767,7 +767,7 @@ Item {
                                 anchors.right: parent.right
                                 anchors.rightMargin: 2
                                 width: appListScrollBar.expanded ? 10 : 3
-                                color: appListScrollBar.pressed ? "#d0d0d0" : (appListScrollBar.expanded ? "#a6a6a6" : "#6a6a6a")
+                                color: appListScrollBar.pressed ? Theme.surfaceText : (appListScrollBar.expanded ? Theme.surfaceVariantText : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.4))
                                 radius: 0
 
                                 Behavior on width {
@@ -781,7 +781,7 @@ Item {
 
                         background: Rectangle {
                             implicitWidth: 16
-                            color: appListScrollBar.expanded ? "#1a1a1a" : "transparent"
+                            color: appListScrollBar.expanded ? Theme.surfaceContainerHigh : "transparent"
 
                             Behavior on color {
                                 ColorAnimation {
@@ -843,14 +843,14 @@ Item {
 
                                 width: zoomGrid.cellWidth
                                 height: zoomGrid.cellHeight
-                                color: isActive ? (letterZoomHover.containsMouse ? Qt.lighter(root.winAccent, 1.15) : root.winAccent) : "#252525"
-                                border.color: isActive && letterZoomHover.containsMouse ? "#ffffff" : "transparent"
+                                color: isActive ? (letterZoomHover.containsMouse ? Qt.lighter(root.winAccent, 1.15) : root.winAccent) : Theme.surfaceContainer
+                                border.color: isActive && letterZoomHover.containsMouse ? Theme.primaryText : "transparent"
                                 border.width: 1
 
                                 StyledText {
                                     anchors.centerIn: parent
                                     text: parent.modelData
-                                    color: parent.isActive ? "#ffffff" : "#555555"
+                                    color: parent.isActive ? Theme.primaryText : Theme.surfaceVariantText
                                     font.pixelSize: 15
                                     font.weight: Font.DemiBold
                                 }
@@ -1003,7 +1003,7 @@ Item {
                     color: root.winText
                     font.pixelSize: 15
                     placeholderText: "Type here to search"
-                    placeholderTextColor: "#808080"
+                    placeholderTextColor: root.winMuted
                     selectByMouse: true
                     text: root.query
                     onTextChanged: {
@@ -1036,7 +1036,7 @@ Item {
                         anchors.centerIn: parent
                         name: "close"
                         size: 16
-                        color: clearHover.containsMouse ? "#ffffff" : root.winMuted
+                        color: clearHover.containsMouse ? root.winText : root.winMuted
                     }
 
                     MouseArea {
@@ -1123,7 +1123,7 @@ Item {
                                 Rectangle {
                                     width: parent.width
                                     height: 68
-                                    color: bestMatchHover.containsMouse ? root.winHover : "#252525"
+                                    color: bestMatchHover.containsMouse ? root.winHover : Theme.surfaceContainer
                                     border.color: bestMatchHover.containsMouse ? root.winAccent : "transparent"
                                     border.width: 1
 
@@ -1430,7 +1430,7 @@ Item {
             height: powerCol.implicitHeight + 8
             x: 52
             y: parent.height - height - 8
-            color: "#252525"
+            color: Theme.surfaceContainer
             border.color: root.winBorder
             border.width: 1
             z: 60
@@ -1483,7 +1483,7 @@ Item {
             height: userCol.implicitHeight + 8
             x: 52
             y: parent.height - (48 * 3) - height - 4
-            color: "#252525"
+            color: Theme.surfaceContainer
             border.color: root.winBorder
             border.width: 1
             z: 60
@@ -1533,7 +1533,7 @@ Item {
             height: contextMenuCol.implicitHeight + 8
             x: root.contextMenuX
             y: root.contextMenuY
-            color: "#252525"
+            color: Theme.surfaceContainer
             border.color: root.winBorder
             border.width: 1
             z: 70
@@ -1633,8 +1633,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: rarTooltipText.implicitWidth + 16
             height: 28
-            color: "#2b2b2b"
-            border.color: "#3a3a3a"
+            color: root.winHover
+            border.color: root.winBorder
             border.width: 1
             z: 100
 
@@ -1643,7 +1643,7 @@ Item {
 
                 anchors.centerIn: parent
                 text: rar.labelText
-                color: "#ffffff"
+                color: root.winText
                 font.pixelSize: 12
             }
 
@@ -1738,7 +1738,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     name: "drag_handle"
                     size: 18
-                    color: tgHeaderHover.containsMouse ? "#ffffff" : "transparent"
+                    color: tgHeaderHover.containsMouse ? root.winText : "transparent"
                 }
 
                 MouseArea {
@@ -1788,7 +1788,7 @@ Item {
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: 6
                             text: modelData.name || ""
-                            color: "#ffffff"
+                            color: root.winText
                             font.pixelSize: 11
                             elide: Text.ElideRight
                             wrapMode: Text.NoWrap
@@ -1845,7 +1845,7 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            color: ct.isActive ? root.winHover : (ctHover.containsMouse ? "#252525" : "transparent")
+            color: ct.isActive ? root.winHover : (ctHover.containsMouse ? Theme.surfaceContainer : "transparent")
             border.color: ct.isActive ? root.winAccent : "transparent"
             border.width: 1
         }
@@ -1855,7 +1855,7 @@ Item {
 
             anchors.centerIn: parent
             text: ct.label
-            color: ct.isActive ? "#ffffff" : root.winMuted
+            color: ct.isActive ? root.winText : root.winMuted
             font.pixelSize: 12
             font.weight: ct.isActive ? Font.DemiBold : Font.Normal
         }

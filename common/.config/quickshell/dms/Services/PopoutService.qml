@@ -119,10 +119,13 @@ Singleton {
             "settings": () => _unloadSettingsNow()
         })
 
-    function setPosition(popout, x, y, width, section, screen) {
-        if (popout && popout.setTriggerPosition && arguments.length >= 6) {
+    function setPosition(popout, x, y, width, section, screen, barPosition, barThickness, barSpacing, barConfig) {
+        if (!popout || !popout.setTriggerPosition)
+            return;
+        if (barPosition !== undefined)
+            popout.setTriggerPosition(x, y, width, section, screen, barPosition, barThickness, barSpacing, barConfig);
+        else
             popout.setTriggerPosition(x, y, width, section, screen);
-        }
     }
 
     function openControlCenter(x, y, width, section, screen) {
@@ -162,11 +165,22 @@ Singleton {
         _scheduleUnload("notificationCenter");
     }
 
-    function toggleNotificationCenter(x, y, width, section, screen) {
-        if (notificationCenterPopout) {
-            setPosition(notificationCenterPopout, x, y, width, section, screen);
-            notificationCenterPopout.toggle();
-        }
+    function toggleNotificationCenter(x, y, width, section, screen, barPosition, barThickness, barSpacing, barConfig) {
+        const loader = notificationCenterLoader;
+        if (!loader)
+            return;
+        loader.active = true;
+        const run = () => {
+            const popout = notificationCenterPopout || loader.item;
+            if (!popout)
+                return;
+            setPosition(popout, x, y, width, section, screen, barPosition, barThickness, barSpacing, barConfig);
+            popout.toggle();
+        };
+        if (loader.item)
+            run();
+        else
+            Qt.callLater(run);
     }
 
     function openAppDrawer(x, y, width, section, screen) {

@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Common
+import qs.Modules.DankDash.Overview
 import qs.Services
 import qs.Widgets
 
@@ -189,16 +190,19 @@ DankPopout {
 
             property var externalKeyboardController: null
             property real cachedHeaderHeight: 32
+            readonly property bool showCalendar: SettingsData.notificationCenterShowCalendar
+            readonly property real calendarBlockHeight: showCalendar ? 280 : 0
+            readonly property int bodySpacingCount: showCalendar ? 3 : 2
             readonly property real settingsMaxHeight: {
                 const screenH = root.screen ? root.screen.height : 1080;
                 const maxPopupH = screenH * 0.8;
-                const overhead = cachedHeaderHeight + Theme.spacingL * 2 + Theme.spacingM * 2;
+                const overhead = cachedHeaderHeight + Theme.spacingL * 2 + Theme.spacingM * 2 + calendarBlockHeight;
                 return Math.max(200, maxPopupH - overhead - 150);
             }
             implicitHeight: {
                 let baseHeight = Theme.spacingL * 2;
                 baseHeight += cachedHeaderHeight;
-                baseHeight += Theme.spacingM * 2;
+                baseHeight += Theme.spacingM * bodySpacingCount;
 
                 const settingsHeight = notificationSettings.expanded ? Math.min(notificationSettings.naturalContentHeight, settingsMaxHeight) : 0;
                 const currentListHeight = root.shouldBeVisible ? notificationList.stableContentHeight : notificationList.listContentHeight;
@@ -210,11 +214,12 @@ DankPopout {
                     listHeight = 200;
                 }
 
-                const maxContentArea = 600;
+                const maxContentArea = showCalendar ? 360 : 600;
                 const availableListSpace = Math.max(200, maxContentArea - settingsHeight);
 
                 baseHeight += settingsHeight;
                 baseHeight += Math.min(listHeight, availableListSpace);
+                baseHeight += calendarBlockHeight;
 
                 const maxHeight = root.screen ? root.screen.height * 0.8 : Screen.height * 0.8;
                 return Math.max(300, Math.min(baseHeight, maxHeight));
@@ -302,7 +307,7 @@ DankPopout {
                     Item {
                         visible: notificationHeader.currentTab === 0
                         width: parent.width
-                        height: parent.height - notificationContent.cachedHeaderHeight - notificationSettings.height - contentColumnInner.spacing * 2
+                        height: parent.height - notificationContent.cachedHeaderHeight - notificationSettings.height - notificationContent.calendarBlockHeight - contentColumnInner.spacing * notificationContent.bodySpacingCount
 
                         KeyboardNavigatedNotificationList {
                             id: notificationList
@@ -321,7 +326,15 @@ DankPopout {
                         id: historyList
                         visible: notificationHeader.currentTab === 1
                         width: parent.width
-                        height: parent.height - notificationContent.cachedHeaderHeight - notificationSettings.height - contentColumnInner.spacing * 2
+                        height: parent.height - notificationContent.cachedHeaderHeight - notificationSettings.height - notificationContent.calendarBlockHeight - contentColumnInner.spacing * notificationContent.bodySpacingCount
+                    }
+
+                    CalendarOverviewCard {
+                        visible: notificationContent.showCalendar
+                        width: parent.width
+                        height: notificationContent.calendarBlockHeight
+                        compactEmbed: true
+                        onCloseDash: root.close()
                     }
                 }
             }

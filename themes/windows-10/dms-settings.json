@@ -662,7 +662,15 @@
       "centerWidgets": [],
       "rightWidgets": [
         {
+          "id": "music",
+          "enabled": true
+        },
+        {
           "id": "systemTray",
+          "enabled": true
+        },
+        {
+          "id": "notepadButton",
           "enabled": true
         },
         {
@@ -672,11 +680,27 @@
           "keyboardLayoutNameShowIcon": true
         },
         {
+          "id": "cpuUsage",
+          "enabled": true,
+          "minimumWidth": true
+        },
+        {
+          "id": "memUsage",
+          "enabled": true,
+          "minimumWidth": true,
+          "showSwap": false,
+          "showInGb": true
+        },
+        {
+          "id": "network_speed_monitor",
+          "enabled": true
+        },
+        {
           "id": "win10Clock",
           "enabled": true
         },
         {
-          "id": "notificationButton",
+          "id": "controlCenterButton",
           "enabled": true
         }
       ],
@@ -708,8 +732,8 @@
       "widgetOutlineEnabled": false,
       "scrollEnabled": true,
       "clickThrough": false,
-      "removeWidgetPadding": true,
-      "widgetPadding": 0
+      "removeWidgetPadding": false,
+      "widgetPadding": 4
     },
     {
       "id": "bar1770393292481",
@@ -727,13 +751,14 @@
         {
           "id": "win10Start",
           "enabled": true
-        },
+        }
+      ],
+      "centerWidgets": [
         {
-          "id": "workspaceSwitcher",
+          "id": "weather",
           "enabled": true
         }
       ],
-      "centerWidgets": [],
       "rightWidgets": [
         {
           "id": "systemTray",
@@ -744,7 +769,7 @@
           "enabled": true
         },
         {
-          "id": "notificationButton",
+          "id": "controlCenterButton",
           "enabled": true
         }
       ],
@@ -784,8 +809,8 @@
       "shadowOpacity": 60,
       "shadowColorMode": "text",
       "shadowCustomColor": "#000000",
-      "removeWidgetPadding": true,
-      "widgetPadding": 0
+      "removeWidgetPadding": false,
+      "widgetPadding": 4
     }
   ],
   "desktopClockEnabled": false,
@@ -897,5 +922,6 @@
   "barInsetPaddingShared": -1,
   "barInsetPaddingSyncAll": false,
   "frameBarInsetPadding": -1,
-  "configVersion": 13
+  "configVersion": 13,
+  "notificationCenterShowCalendar": true
 }

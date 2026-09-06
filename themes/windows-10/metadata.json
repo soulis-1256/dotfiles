@@ -1,6 +1,6 @@
 {
   "id": "windows-10",
   "name": "Windows 10",
-  "description": "Windows 10 overall UI: Start Menu with Most used + tiles, two-line clock/calendar, square taskbar, sharp window chrome",
+  "description": "Windows 10 overall UI: Start Menu, stock now playing, and a clock that opens the notification center with calendar",
   "author": "soulis"
 }

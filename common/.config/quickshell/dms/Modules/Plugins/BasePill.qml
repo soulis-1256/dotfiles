@@ -29,11 +29,17 @@ Item {
     property bool isBottomBarEdge: false
     readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
     readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
-    readonly property real horizontalPadding: isFullHeight ? 0 : ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr))
+    readonly property real horizontalPadding: (barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr)
     readonly property real visualWidth: Theme.snap(isVerticalOrientation ? (isFullHeight ? barThickness : widgetThickness) : (contentLoader.item ? (contentLoader.item.implicitWidth + horizontalPadding * 2) : 0), dpr)
     readonly property real visualHeight: Theme.snap(isVerticalOrientation ? (contentLoader.item ? (contentLoader.item.implicitHeight + horizontalPadding * 2) : 0) : (isFullHeight ? barThickness : widgetThickness), dpr)
     readonly property alias visualContent: visualContent
-    readonly property real barEdgeExtension: 1000
+    readonly property real barEdgeExtension: {
+        const inset = barConfig?.barInsetPadding ?? -1;
+        const inner = barConfig?.innerPadding ?? 0;
+        if ((barConfig?.fullHeightWidgets) && inner <= 0 && inset <= 0)
+            return 0;
+        return 1000;
+    }
     readonly property real gapExtension: sectionSpacing
     readonly property real leftMargin: !isVerticalOrientation ? (isLeftBarEdge && isFirst ? barEdgeExtension : (isFirst ? gapExtension : gapExtension / 2)) : 0
     readonly property real rightMargin: !isVerticalOrientation ? (isRightBarEdge && isLast ? barEdgeExtension : (isLast ? gapExtension : gapExtension / 2)) : 0

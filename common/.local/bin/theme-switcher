@@ -13,7 +13,7 @@ THEMES_DIR="${DOTFILES_DIR}/themes"
 CURRENT_THEME_FILE="${HOME}/.config/.current_theme"
 HYPR_THEME_SYMLINK="${HOME}/.config/hypr/theme.lua"
 DMS_CONFIG_DIR="${HOME}/.config/DankMaterialShell"
-MANAGED_PLUGINS=(win10Start win10Clock)
+MANAGED_PLUGINS=(win10Start win10Clock win10Media)
 
 BOLD='\033[1m'
 CYAN='\033[0;36m'
@@ -115,10 +115,28 @@ if dest_path.exists():
     except json.JSONDecodeError:
         live = {}
 
-# Theme packs must not flip greeter/autologin state.
+# Theme packs control layout/chrome, not the user's DMS color theme
+# or greeter/autologin state.
+PRESERVE_PREFIXES = ("greeter",)
+PRESERVE_KEYS = {
+    "currentThemeName",
+    "currentThemeCategory",
+    "customThemeFile",
+    "registryThemeVariants",
+    "matugenScheme",
+    "matugenContrast",
+    "runUserMatugenTemplates",
+    "matugenTargetMonitor",
+    "widgetBackgroundColor",
+    "widgetBackgroundCustomColor",
+    "widgetBackgroundCustomStrength",
+    "widgetColorMode",
+    "controlCenterTileColorMode",
+    "buttonColorMode",
+}
 if isinstance(live, dict):
     for key, value in live.items():
-        if key.startswith("greeter"):
+        if key in PRESERVE_KEYS or key.startswith(PRESERVE_PREFIXES):
             theme[key] = value
 
 dest_path.write_text(json.dumps(theme, indent=2) + "\n")
