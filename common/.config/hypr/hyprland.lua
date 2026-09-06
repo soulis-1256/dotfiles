@@ -196,3 +196,7 @@ end, { locked = true, description = "Wake laptop screen on lid open" })
 -- Machine-specific overrides (loaded if present, e.g. from desktop or laptop packages)
 pcall(require, "desktop")
 pcall(require, "laptop")
+
+-- Active theme overrides (managed by theme-switcher)
+pcall(require, "theme")
+

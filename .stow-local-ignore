@@ -3,3 +3,6 @@ TIPS.*
 install.sh
 .git
 .gitignore
+themes
+themes/*
+

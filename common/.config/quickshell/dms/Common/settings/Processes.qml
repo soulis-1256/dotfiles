@@ -26,7 +26,7 @@ Singleton {
     }
 
     property var greeterAutoLoginPendingCheckProcess: Process {
-        command: ["sh", "-c", "if [ -f " + JSON.stringify(root.greeterAutoLoginPendingSyncPath) + " ]; then rm -f " + JSON.stringify(root.greeterAutoLoginPendingSyncPath) + "; echo pending; fi"]
+        command: ["sh", "-c", "f=" + JSON.stringify(root.greeterAutoLoginPendingSyncPath) + "; if [ -f \"$f\" ] && [ -w \"$f\" ] && rm -f \"$f\"; then echo pending; fi"]
         running: false
 
         stdout: StdioCollector {

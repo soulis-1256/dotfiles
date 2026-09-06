@@ -1,0 +1,14 @@
+{
+    "id": "win10Clock",
+    "name": "Windows 10 Clock",
+    "description": "Two-line Windows 10 taskbar clock with a calendar flyout",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win10ClockWidget.qml",
+    "icon": "schedule",
+    "permissions": [
+        "settings_read"
+    ]
+}

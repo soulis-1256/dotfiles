@@ -40,5 +40,11 @@ gtk-3.0/assets
 gtk-3.0/colors.css
 gtk-4.0/colors.css
 
+# Theme-switcher runtime (plugins + active theme packs live in the stowed DMS config)
+**/DankMaterialShell/plugin_settings.json
+**/DankMaterialShell/plugins/
+**/DankMaterialShell/themes/default
+**/DankMaterialShell/themes/windows-10
+
 
 

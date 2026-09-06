@@ -1,0 +1,8 @@
+{
+  "win10Start": {
+    "enabled": true
+  },
+  "win10Clock": {
+    "enabled": true
+  }
+}

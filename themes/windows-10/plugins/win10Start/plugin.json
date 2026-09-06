@@ -1,0 +1,15 @@
+{
+    "id": "win10Start",
+    "name": "Windows 10 Start",
+    "description": "Windows 10 Start button and two-column Start Menu (Most used + tiles)",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win10StartWidget.qml",
+    "icon": "apps",
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}
