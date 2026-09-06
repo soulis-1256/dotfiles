@@ -667,7 +667,12 @@ Item {
     readonly property real padding: (root.barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((root.barConfig?.widgetPadding ?? 12) * (widgetHeight / 30), dpr)
     readonly property real visualWidth: isVertical ? widgetHeight : (workspaceRow.implicitWidth + padding * 2)
     readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + padding * 2) : widgetHeight
-    readonly property real appIconSize: Theme.barIconSize(barThickness, -6 + SettingsData.workspaceAppIconSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+    readonly property real appIconSize: {
+        if (root.isFullHeight)
+            return Math.max(20, Math.round(root.barThickness * 0.54 + SettingsData.workspaceAppIconSizeOffset));
+        return Theme.barIconSize(barThickness, -6 + SettingsData.workspaceAppIconSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale);
+    }
+    readonly property int workspaceLabelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
     readonly property int appCountBadgeSize: Math.max(11, Math.round(appIconSize * 0.58))
     readonly property int appCountBadgeTextSize: Math.max(8, Math.round(appCountBadgeSize * 0.68))
 
@@ -1043,7 +1048,7 @@ Item {
 
         x: isVertical ? visualBackground.x : (parent.width - implicitWidth) / 2
         y: isVertical ? (parent.height - implicitHeight) / 2 : visualBackground.y
-        spacing: Theme.spacingS
+        spacing: root.isFullHeight ? (root.barConfig?.spacing ?? 0) : Theme.spacingS
         flow: isVertical ? Flow.TopToBottom : Flow.LeftToRight
 
         // mango reports active_tags=0 while the overview is open; surface it as a pill
@@ -1261,8 +1266,22 @@ Item {
                     return (SettingsData.groupWorkspaceApps && (!isActive || SettingsData.groupActiveWorkspaceApps)) ? groupedCount : totalCount;
                 }
 
-                readonly property real baseWidth: root.isVertical ? (SettingsData.showWorkspaceApps ? Math.max(widgetHeight * 0.7, root.appIconSize + Theme.spacingXS * 2) : widgetHeight * 0.5) : (isActive ? Math.max(root.widgetHeight * 1.05, root.appIconSize * 1.6) : Math.max(root.widgetHeight * 0.7, root.appIconSize * 1.2))
-                readonly property real baseHeight: root.isVertical ? (isActive ? Math.max(root.widgetHeight * 1.05, root.appIconSize * 1.6) : Math.max(root.widgetHeight * 0.7, root.appIconSize * 1.2)) : (SettingsData.showWorkspaceApps ? Math.max(widgetHeight * 0.7, root.appIconSize + Theme.spacingXS * 2) : widgetHeight * 0.5)
+                readonly property real baseWidth: {
+                    if (root.isFullHeight) {
+                        if (root.isVertical)
+                            return root.barThickness;
+                        return root.appIconSize + 10 + (isActive ? 6 : 0);
+                    }
+                    return root.isVertical ? (SettingsData.showWorkspaceApps ? Math.max(widgetHeight * 0.7, root.appIconSize + Theme.spacingXS * 2) : widgetHeight * 0.5) : (isActive ? Math.max(root.widgetHeight * 1.05, root.appIconSize * 1.6) : Math.max(root.widgetHeight * 0.7, root.appIconSize * 1.2));
+                }
+                readonly property real baseHeight: {
+                    if (root.isFullHeight) {
+                        if (!root.isVertical)
+                            return root.barThickness;
+                        return root.appIconSize + 10 + (isActive ? 6 : 0);
+                    }
+                    return root.isVertical ? (isActive ? Math.max(root.widgetHeight * 1.05, root.appIconSize * 1.6) : Math.max(root.widgetHeight * 0.7, root.appIconSize * 1.2)) : (SettingsData.showWorkspaceApps ? Math.max(widgetHeight * 0.7, root.appIconSize + Theme.spacingXS * 2) : widgetHeight * 0.5);
+                }
                 readonly property bool hasWorkspaceName: SettingsData.showWorkspaceName && modelData?.name && modelData.name !== ""
                 readonly property bool workspaceNamesEnabled: SettingsData.showWorkspaceName && (CompositorService.isNiri || CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
                 readonly property real contentImplicitWidth: appIconsLoader.item?.contentWidth ?? 0
@@ -1286,7 +1305,7 @@ Item {
                 readonly property real visualWidth: {
                     if (contentImplicitWidth <= 0)
                         return baseWidth + iconsExtraWidth;
-                    const padding = root.isVertical ? Theme.spacingXS : Theme.spacingS;
+                    const padding = root.isFullHeight ? 8 : (root.isVertical ? Theme.spacingXS : Theme.spacingS);
                     return Math.max(baseWidth + iconsExtraWidth, contentImplicitWidth + padding);
                 }
                 readonly property real visualHeight: {
@@ -1642,9 +1661,14 @@ Item {
                     Rectangle {
                         id: activeIndicator
                         anchors.bottom: parent.bottom
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        height: 3
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: {
+                            const content = appIconsLoader.item?.contentWidth ?? 0;
+                            const minW = Math.round(root.appIconSize * 0.75);
+                            const target = content > 0 ? Math.max(minW, content) : minW;
+                            return Math.max(8, Math.min(target, parent.width - 6));
+                        }
+                        height: Math.max(2, Math.round(root.appIconSize * 0.12))
                         color: "#0078d7"
                         visible: root.isFullHeight && isActive
                     }
@@ -1653,8 +1677,13 @@ Item {
                         id: occupiedIndicator
                         anchors.bottom: parent.bottom
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.min(24, parent.width - 12)
-                        height: 2
+                        width: {
+                            const content = appIconsLoader.item?.contentWidth ?? 0;
+                            const minW = Math.round(root.appIconSize * 0.55);
+                            const target = content > 0 ? Math.max(minW, content * 0.72) : minW;
+                            return Math.max(8, Math.min(target, parent.width - 6));
+                        }
+                        height: Math.max(2, Math.round(root.appIconSize * 0.08))
                         color: "#767676"
                         visible: root.isFullHeight && !isActive && isOccupied
                     }
@@ -1732,7 +1761,7 @@ Item {
                                             id: wsIcon
                                             anchors.verticalCenter: parent.verticalCenter
                                             name: loadedIconData?.value ?? ""
-                                            size: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+                                            size: root.workspaceLabelSize
                                             color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                             weight: (isActive && !isPlaceholder) ? 500 : 400
                                         }
@@ -1748,7 +1777,7 @@ Item {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: loadedIconData?.value ?? ""
                                             color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
-                                            font.pixelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+                                            font.pixelSize: root.workspaceLabelSize
                                             font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                         }
                                     }
@@ -1763,7 +1792,7 @@ Item {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: loadedHasIcon ? (modelData?.name ?? "") : root.getWorkspaceIndex(modelData, index)
                                             color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
-                                            font.pixelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+                                            font.pixelSize: root.workspaceLabelSize
                                             font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                         }
                                     }
@@ -1916,7 +1945,7 @@ Item {
                                         visible: loadedHasIcon && loadedIconData?.type === "icon"
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         name: loadedIconData?.value ?? ""
-                                        size: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+                                        size: root.workspaceLabelSize
                                         color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
                                         weight: (isActive && !isPlaceholder) ? 500 : 400
                                     }
@@ -1926,7 +1955,7 @@ Item {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: loadedIconData?.value ?? ""
                                         color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
-                                        font.pixelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+                                        font.pixelSize: root.workspaceLabelSize
                                         font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                     }
 
@@ -1935,7 +1964,7 @@ Item {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: root.getWorkspaceIndex(modelData, index)
                                         color: (isActive || isUrgent) ? Theme.withAlpha(Theme.surfaceContainer, 0.95) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
-                                        font.pixelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+                                        font.pixelSize: root.workspaceLabelSize
                                         font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
                                     }
 
