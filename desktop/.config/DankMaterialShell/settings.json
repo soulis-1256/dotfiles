@@ -554,7 +554,14 @@
   "notificationHistorySaveLow": true,
   "notificationHistorySaveNormal": true,
   "notificationHistorySaveCritical": true,
-  "notificationRules": [],
+  "notificationRules": [
+    {
+      "action": "popup_only",
+      "field": "appName",
+      "matchType": "exact",
+      "pattern": "Clock"
+    }
+  ],
   "notificationFocusedMonitor": false,
   "notificationCenterShowCalendar": true,
   "osdAlwaysShowValue": false,
@@ -750,32 +757,17 @@
       "showOnLastDisplay": false,
       "leftWidgets": [
         {
+          "id": "win10Start",
+          "enabled": true
+        }
+      ],
+      "centerWidgets": [
+        {
           "id": "weather",
           "enabled": true
         }
       ],
-      "centerWidgets": [],
       "rightWidgets": [
-        {
-          "id": "win10Tray",
-          "enabled": true
-        },
-        {
-          "id": "network_speed_monitor",
-          "enabled": true
-        },
-        {
-          "id": "cpuUsage",
-          "enabled": true,
-          "minimumWidth": true
-        },
-        {
-          "id": "memUsage",
-          "enabled": true,
-          "minimumWidth": true,
-          "showSwap": false,
-          "showInGb": true
-        },
         {
           "id": "controlCenterButton",
           "enabled": true

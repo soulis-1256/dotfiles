@@ -33,9 +33,11 @@ outputs.lua
 dms/outputs.lua
 # Runtime generated Matugen & DMS theme palettes
 dms/colors.lua
+colors/dms.lua
 dank-colors.css
 dankcolors
 dank-zed-theme.json
+zen.css
 gtk-3.0/assets
 gtk-3.0/colors.css
 gtk-4.0/colors.css

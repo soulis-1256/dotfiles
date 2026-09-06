@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""
+gamepad-clock-listener
+Listens for the Guide / Home button on any connected gamepad and displays
+a silent, transient desktop notification with the current time in 24-hour format.
+"""
+
+import os
+import sys
+import glob
+import time
+import select
+import struct
+import subprocess
+
+EVENT_SIZE = 24
+EVENT_FORMAT = 'qqHHi'
+EV_KEY = 1
+BTN_MODE = 316  # Standard evdev code for Xbox Guide / PlayStation / Nintendo Home button
+
+DEBOUNCE_SECONDS = 0.2
+_nonce = 0
+
+def show_clock():
+    global _nonce
+    _nonce = (_nonce + 1) % 10
+    # Append invisible zero-width spaces so notification servers (like DMS)
+    # do not drop consecutive presses as identical duplicate spam.
+    invisible_suffix = '\u200b' * _nonce
+
+    now_time = time.strftime('%H:%M') + invisible_suffix
+    now_date = time.strftime('%A, %d %B')
+    try:
+        subprocess.Popen([
+            'notify-send',
+            '-h', 'boolean:suppress-sound:true',
+            '-h', 'boolean:transient:true',
+            '-t', '2500',
+            '-a', 'Clock',
+            '-i', 'clock',
+            now_time,
+            now_date
+        ])
+    except Exception as e:
+        print(f"Failed to send clock notification: {e}", file=sys.stderr)
+
+def has_guide_button(event_path):
+    try:
+        cap_file = f"/sys/class/input/{os.path.basename(event_path)}/device/capabilities/key"
+        if os.path.exists(cap_file):
+            with open(cap_file, 'r') as f:
+                cap_hex = f.read().split()[0]
+                cap_val = int(cap_hex, 16)
+                return bool((cap_val >> (BTN_MODE - 0x100)) & 1)
+    except Exception:
+        pass
+    return False
+
+def scan_gamepads():
+    gamepads = []
+    for path in glob.glob('/dev/input/event*'):
+        if has_guide_button(path):
+            gamepads.append(path)
+    return gamepads
+
+def main():
+    last_trigger = 0.0
+    open_fds = {}
+
+    while True:
+        available_paths = set(scan_gamepads())
+
+        for fd in list(open_fds.keys()):
+            path = open_fds[fd]
+            if path not in available_paths or not os.path.exists(path):
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+                del open_fds[fd]
+
+        open_paths = set(open_fds.values())
+        for path in available_paths:
+            if path not in open_paths:
+                try:
+                    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                    open_fds[fd] = path
+                except Exception:
+                    pass
+
+        if not open_fds:
+            time.sleep(1.0)
+            continue
+
+        try:
+            readable, _, _ = select.select(list(open_fds.keys()), [], [], 1.5)
+            for fd in readable:
+                while True:
+                    try:
+                        data = os.read(fd, 4096)
+                        if not data:
+                            break
+                        for i in range(0, len(data), EVENT_SIZE):
+                            chunk = data[i:i + EVENT_SIZE]
+                            if len(chunk) == EVENT_SIZE:
+                                _, _, ev_type, code, val = struct.unpack(EVENT_FORMAT, chunk)
+                                if ev_type == EV_KEY and code == BTN_MODE and val == 1:
+                                    now = time.time()
+                                    if now - last_trigger >= DEBOUNCE_SECONDS:
+                                        last_trigger = now
+                                        show_clock()
+                    except BlockingIOError:
+                        break
+                    except (OSError, IOError):
+                        try:
+                            os.close(fd)
+                        except Exception:
+                            pass
+                        open_fds.pop(fd, None)
+                        break
+        except (ValueError, OSError):
+            time.sleep(0.1)
+
+if __name__ == '__main__':
+    main()

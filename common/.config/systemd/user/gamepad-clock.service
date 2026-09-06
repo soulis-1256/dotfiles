@@ -1,0 +1,13 @@
+[Unit]
+Description=Gamepad Home/Guide Button Clock Popup
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/gamepad-clock-listener
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
