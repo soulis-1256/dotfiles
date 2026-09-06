@@ -124,7 +124,7 @@ Singleton {
     }
 
     function getAppIcon(appId: string, desktopEntry: var): string {
-        if (appId === "org.quickshell") {
+        if (appId === "org.quickshell" || appId === "com.danklinux.dms") {
             return Qt.resolvedUrl("../assets/danklogo.svg");
         }
 

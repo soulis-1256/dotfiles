@@ -1799,7 +1799,7 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && rowAppIcon.status !== Image.Ready
+                                                visible: !modelData.isSteamApp && !rowAppIcon.visible && !rowQsIcon.visible
                                                 color: Theme.surfaceContainer
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
                                                 border.width: 1
@@ -1833,10 +1833,11 @@ Item {
                                             }
 
                                             IconImage {
+                                                id: rowQsIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon
                                                 opacity: modelData.active ? 1.0 : rowAppMouseArea.containsMouse ? 0.8 : 0.6
-                                                visible: modelData.isQuickshell
+                                                visible: modelData.isQuickshell && status === Image.Ready
                                                 layer.enabled: true
                                                 layer.effect: MultiEffect {
                                                     saturation: 0
@@ -1864,7 +1865,7 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: (rowAppIcon.visible || rowSteamIcon.visible || modelData.isQuickshell) && appHighlightActive
+                                                visible: (rowAppIcon.visible || rowSteamIcon.visible || rowQsIcon.visible) && appHighlightActive
                                                 color: "transparent"
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
                                                 border.width: 1
@@ -1970,7 +1971,7 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && colAppIcon.status !== Image.Ready
+                                                visible: !modelData.isSteamApp && !colAppIcon.visible && !colQsIcon.visible
                                                 color: Theme.surfaceContainer
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
                                                 border.width: 1
@@ -2004,10 +2005,11 @@ Item {
                                             }
 
                                             IconImage {
+                                                id: colQsIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon
                                                 opacity: modelData.active ? 1.0 : colAppMouseArea.containsMouse ? 0.8 : 0.6
-                                                visible: modelData.isQuickshell
+                                                visible: modelData.isQuickshell && status === Image.Ready
                                                 layer.enabled: true
                                                 layer.effect: MultiEffect {
                                                     saturation: 0
@@ -2035,7 +2037,7 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: (colAppIcon.visible || colSteamIcon.visible || modelData.isQuickshell) && appHighlightActive
+                                                visible: (colAppIcon.visible || colSteamIcon.visible || colQsIcon.visible) && appHighlightActive
                                                 color: "transparent"
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
                                                 border.width: 1
