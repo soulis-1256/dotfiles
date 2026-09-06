@@ -10,6 +10,7 @@ PluginComponent {
     layerNamespacePlugin: "win10-clock"
     popoutWidth: 340
     popoutHeight: 430
+    popoutFlush: true
 
     horizontalBarPill: Component {
         Item {

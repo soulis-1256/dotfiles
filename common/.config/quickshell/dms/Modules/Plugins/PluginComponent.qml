@@ -38,6 +38,7 @@ Item {
     property Component popoutContent: null
     property real popoutWidth: 400
     property real popoutHeight: 0
+    property bool popoutFlush: false
     property var pillClickAction: null
     property var pillRightClickAction: null
 
@@ -353,5 +354,6 @@ Item {
         contentWidth: root.popoutWidth
         contentHeight: root.popoutHeight
         pluginContent: root.popoutContent
+        flushContent: root.popoutFlush
     }
 }

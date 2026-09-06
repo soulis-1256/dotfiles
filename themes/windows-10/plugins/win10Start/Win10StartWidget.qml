@@ -24,6 +24,7 @@ PluginComponent {
     layerNamespacePlugin: "win10-start"
     popoutWidth: 948
     popoutHeight: 620
+    popoutFlush: true
     Component.onCompleted: {
         registerAsLauncher();
     }

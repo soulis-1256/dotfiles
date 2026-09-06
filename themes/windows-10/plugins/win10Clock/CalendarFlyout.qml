@@ -9,12 +9,12 @@ Item {
     property var closePopout: null
     property var parentPopout: null
 
-    readonly property color winBg: "#1f1f1f"
+    readonly property color winBg: "#101010"
     readonly property color winText: "#ffffff"
     readonly property color winMuted: "#c8c8c8"
     readonly property color winAccent: "#0078d7"
-    readonly property color winHover: "#3d3d3d"
-    readonly property color winCell: "#2b2b2b"
+    readonly property color winHover: "#2b2b2b"
+    readonly property color winCell: "#1a1a1a"
 
     implicitWidth: 324
     implicitHeight: 414

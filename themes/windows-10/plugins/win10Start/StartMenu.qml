@@ -14,16 +14,16 @@ Item {
 
     property var closePopout: null
     property var parentPopout: null
-    readonly property color winBg: "#1f1f1f"
-    readonly property color winPanel: "#181818"
-    readonly property color winHover: "#333333"
+    readonly property color winBg: "#101010"
+    readonly property color winPanel: "#101010"
+    readonly property color winHover: "#2b2b2b"
     readonly property color winAccent: "#0078d7"
     readonly property color winText: "#ffffff"
     readonly property color winMuted: "#a0a0a0"
     readonly property color winRail: "#101010"
-    readonly property color winBorder: "#2d2d2d"
-    readonly property color winTileBg: Qt.rgba(1, 1, 1, 0.08)
-    readonly property color winTileHoverBg: Qt.rgba(1, 1, 1, 0.16)
+    readonly property color winBorder: "#1a1a1a"
+    readonly property color winTileBg: Qt.rgba(1, 1, 1, 0.10)
+    readonly property color winTileHoverBg: Qt.rgba(1, 1, 1, 0.18)
     readonly property bool hasGroup1: root.group1Tiles && root.group1Tiles.length > 0
     readonly property bool hasGroup2: root.group2Tiles && root.group2Tiles.length > 0
     readonly property real dynamicTileWidth: {
@@ -546,8 +546,7 @@ Item {
 
         anchors.fill: parent
         color: root.winBg
-        border.color: root.winBorder
-        border.width: 1
+        border.width: 0
         clip: true
 
         MouseArea {
@@ -593,10 +592,36 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 4
                     anchors.topMargin: 8
+                    anchors.rightMargin: 0
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    boundsMovement: Flickable.StopAtBounds
+                    flickDeceleration: 2500
+                    maximumFlickVelocity: 4000
+                    pixelAligned: false
                     model: root.flatAppListModel
                     spacing: 0
+                    cacheBuffer: 400
+
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: event => {
+                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
+                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
+                            let dy = 0;
+                            if (pixelY !== 0)
+                                dy = -pixelY * 2.4;
+                            else if (angleY !== 0)
+                                dy = -(angleY / 120) * 152;
+                            if (dy === 0)
+                                return;
+                            if (appListView.flicking)
+                                appListView.cancelFlick();
+                            const maxY = Math.max(0, appListView.contentHeight - appListView.height);
+                            appListView.contentY = Math.max(0, Math.min(maxY, appListView.contentY + dy));
+                            event.accepted = true;
+                        }
+                    }
 
                     delegate: Item {
                         id: appRowItem
@@ -720,35 +745,50 @@ Item {
 
                     }
 
-                    // Windows 10 responsive scrollbar
                     ScrollBar.vertical: ScrollBar {
                         id: appListScrollBar
+
+                        readonly property bool expanded: hovered || pressed
 
                         policy: ScrollBar.AsNeeded
                         interactive: true
                         hoverEnabled: true
-                        active: hovered || pressed
-                        width: (hovered || pressed) ? 8 : 4
+                        padding: 0
+                        implicitWidth: 16
+                        minimumSize: 0.08
+                        active: hovered || pressed || size < 1.0
 
-                        Behavior on width {
-                            NumberAnimation {
-                                duration: 120
+                        contentItem: Item {
+                            implicitWidth: 16
+
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.right: parent.right
+                                anchors.rightMargin: 2
+                                width: appListScrollBar.expanded ? 10 : 3
+                                color: appListScrollBar.pressed ? "#d0d0d0" : (appListScrollBar.expanded ? "#a6a6a6" : "#6a6a6a")
+                                radius: 0
+
+                                Behavior on width {
+                                    NumberAnimation {
+                                        duration: 120
+                                        easing.type: Easing.OutQuad
+                                    }
+                                }
                             }
-
-                        }
-
-                        contentItem: Rectangle {
-                            implicitWidth: 6
-                            implicitHeight: 40
-                            color: appListScrollBar.pressed ? "#a0a0a0" : (appListScrollBar.hovered ? "#808080" : "#555555")
-                            radius: 0
                         }
 
                         background: Rectangle {
-                            implicitWidth: 8
-                            color: appListScrollBar.hovered ? "#181818" : "transparent"
-                        }
+                            implicitWidth: 16
+                            color: appListScrollBar.expanded ? "#1a1a1a" : "transparent"
 
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
+                        }
                     }
 
                 }
@@ -857,7 +897,31 @@ Item {
                     contentWidth: tileRow.implicitWidth + 32
                     contentHeight: Math.max(parent.height, tileRow.implicitHeight + 24)
                     boundsBehavior: Flickable.StopAtBounds
+                    boundsMovement: Flickable.StopAtBounds
+                    flickDeceleration: 2500
+                    maximumFlickVelocity: 4000
                     clip: true
+                    flickableDirection: Flickable.VerticalFlick
+
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: event => {
+                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
+                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
+                            let dy = 0;
+                            if (pixelY !== 0)
+                                dy = -pixelY * 2.4;
+                            else if (angleY !== 0)
+                                dy = -(angleY / 120) * 152;
+                            if (dy === 0)
+                                return;
+                            if (tileFlickable.flicking)
+                                tileFlickable.cancelFlick();
+                            const maxY = Math.max(0, tileFlickable.contentHeight - tileFlickable.height);
+                            tileFlickable.contentY = Math.max(0, Math.min(maxY, tileFlickable.contentY + dy));
+                            event.accepted = true;
+                        }
+                    }
 
                     Row {
                         id: tileRow
@@ -913,9 +977,8 @@ Item {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 height: 48
-                color: "#181818"
-                border.color: root.winBorder
-                border.width: 1
+                color: root.winPanel
+                border.width: 0
 
                 DankIcon {
                     id: searchBarIcon
@@ -1135,11 +1198,33 @@ Item {
                                 }
 
                                 ListView {
+                                    id: searchResultsView
                                     width: parent.width
                                     height: parent.height - 24
                                     clip: true
+                                    boundsBehavior: Flickable.StopAtBounds
                                     model: root.searchResults.slice(1, 8)
                                     spacing: 2
+
+                                    WheelHandler {
+                                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                        onWheel: event => {
+                                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
+                                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
+                                            let dy = 0;
+                                            if (pixelY !== 0)
+                                                dy = -pixelY * 2.4;
+                                            else if (angleY !== 0)
+                                                dy = -(angleY / 120) * 114;
+                                            if (dy === 0)
+                                                return;
+                                            if (searchResultsView.flicking)
+                                                searchResultsView.cancelFlick();
+                                            const maxY = Math.max(0, searchResultsView.contentHeight - searchResultsView.height);
+                                            searchResultsView.contentY = Math.max(0, Math.min(maxY, searchResultsView.contentY + dy));
+                                            event.accepted = true;
+                                        }
+                                    }
 
                                     delegate: Item {
                                         required property var modelData
@@ -1202,9 +1287,8 @@ Item {
                 Rectangle {
                     width: parent.width - 440
                     height: parent.height - 16
-                    color: "#181818"
-                    border.color: root.winBorder
-                    border.width: 1
+                    color: Qt.rgba(1, 1, 1, 0.04)
+                    border.width: 0
                     visible: root.bestMatchApp !== null
 
                     Column {
@@ -1286,8 +1370,7 @@ Item {
             anchors.bottom: parent.bottom
             width: 48
             color: root.winRail
-            border.color: root.winBorder
-            border.width: 1
+            border.width: 0
             z: 50
 
             // Bottom: User (Human), Settings, Power

@@ -11,6 +11,8 @@ DankPopout {
     property Component pluginContent: null
     property real contentWidth: 400
     property real contentHeight: 0
+    property bool flushContent: false
+    readonly property real contentPadding: flushContent ? 0 : Theme.spacingS
 
     popupWidth: contentWidth
     popupHeight: contentHeight
@@ -23,7 +25,7 @@ DankPopout {
         Rectangle {
             id: popoutContainer
 
-            implicitHeight: popoutColumn.implicitHeight + Theme.spacingL * 2
+            implicitHeight: popoutColumn.implicitHeight + (root.flushContent ? 0 : Theme.spacingL * 2)
             color: "transparent"
             focus: true
 
@@ -53,10 +55,10 @@ DankPopout {
 
             Column {
                 id: popoutColumn
-                width: parent.width - Theme.spacingS * 2
-                x: Theme.spacingS
-                y: Theme.spacingS
-                spacing: Theme.spacingS
+                width: parent.width - root.contentPadding * 2
+                x: root.contentPadding
+                y: root.contentPadding
+                spacing: root.flushContent ? 0 : Theme.spacingS
 
                 Loader {
                     id: popoutContentLoader
@@ -73,7 +75,7 @@ DankPopout {
                             item.parentPopout = root;
                         }
                         if (item) {
-                            root.contentHeight = Qt.binding(() => item.implicitHeight + Theme.spacingS * 2);
+                            root.contentHeight = Qt.binding(() => item.implicitHeight + root.contentPadding * 2);
                         }
                     }
                 }
