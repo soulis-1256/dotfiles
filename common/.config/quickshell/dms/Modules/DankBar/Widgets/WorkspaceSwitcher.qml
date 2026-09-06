@@ -1661,31 +1661,11 @@ Item {
                     Rectangle {
                         id: activeIndicator
                         anchors.bottom: parent.bottom
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: {
-                            const content = appIconsLoader.item?.contentWidth ?? 0;
-                            const minW = Math.round(root.appIconSize * 0.75);
-                            const target = content > 0 ? Math.max(minW, content) : minW;
-                            return Math.max(8, Math.min(target, parent.width - 6));
-                        }
-                        height: Math.max(2, Math.round(root.appIconSize * 0.12))
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 3
                         color: "#0078d7"
                         visible: root.isFullHeight && isActive
-                    }
-
-                    Rectangle {
-                        id: occupiedIndicator
-                        anchors.bottom: parent.bottom
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: {
-                            const content = appIconsLoader.item?.contentWidth ?? 0;
-                            const minW = Math.round(root.appIconSize * 0.55);
-                            const target = content > 0 ? Math.max(minW, content * 0.72) : minW;
-                            return Math.max(8, Math.min(target, parent.width - 6));
-                        }
-                        height: Math.max(2, Math.round(root.appIconSize * 0.08))
-                        color: "#767676"
-                        visible: root.isFullHeight && !isActive && isOccupied
                     }
 
                     border.width: dragHandler.dragging ? 2 : (isUrgent ? 2 : (isDropTarget ? 2 : 0))
