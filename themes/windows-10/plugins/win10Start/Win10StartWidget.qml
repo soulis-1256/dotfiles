@@ -36,13 +36,10 @@ PluginComponent {
             implicitWidth: 48
             implicitHeight: root.barThickness
 
-            IconImage {
+            LauncherLogo {
                 anchors.centerIn: parent
-                width: 22
-                height: 22
-                source: Qt.resolvedUrl("cachyos.svg")
-                smooth: true
-                asynchronous: true
+                barThickness: root.barThickness
+                barConfig: root.barConfig
             }
         }
     }
@@ -52,13 +49,10 @@ PluginComponent {
             implicitWidth: root.barThickness
             implicitHeight: 48
 
-            IconImage {
+            LauncherLogo {
                 anchors.centerIn: parent
-                width: 22
-                height: 22
-                source: Qt.resolvedUrl("cachyos.svg")
-                smooth: true
-                asynchronous: true
+                barThickness: root.barThickness
+                barConfig: root.barConfig
             }
         }
     }
