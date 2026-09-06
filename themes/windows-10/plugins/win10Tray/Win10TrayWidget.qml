@@ -10,7 +10,7 @@ import qs.Services
 import qs.Widgets
 
 // Fork of DMS SystemTrayBar (qs.Modules.DankBar.Widgets.SystemTrayBar).
-// Left-click opens the tray menu like Win10/11 (same path as right-click).
+// Left-click opens the app's native tray menu; right-click is hide/show only.
 BasePill {
     id: root
 
@@ -74,19 +74,31 @@ BasePill {
     }
 
     function activateInlineTrayItem(trayItem, anchorItem) {
-        root.openInlineTrayContextMenu(trayItem, anchorItem, { "x": (anchorItem ? anchorItem.width : 0) / 2, "y": (anchorItem ? anchorItem.height : 0) / 2 }, anchorItem);
+        root.openNativeTrayMenu(trayItem, anchorItem, { "x": (anchorItem ? anchorItem.width : 0) / 2, "y": (anchorItem ? anchorItem.height : 0) / 2 }, anchorItem);
     }
 
-    function openInlineTrayContextMenu(trayItem, areaItem, mouse, anchorItem) {
-        if (!trayItem) {
+    function openNativeTrayMenu(trayItem, areaItem, mouse, anchorItem) {
+        if (!trayItem)
             return;
-        }
+        if (root.useOverflowPopup)
+            root.menuOpen = false;
         if (!trayItem.hasMenu) {
-            const gp = areaItem.mapToGlobal(mouse.x, mouse.y);
-            root.callContextMenuFallback(trayItem.id, Math.round(gp.x), Math.round(gp.y));
+            root.closeTrayMenu();
+            if (areaItem && mouse) {
+                const gp = areaItem.mapToGlobal(mouse.x, mouse.y);
+                root.callContextMenuFallback(trayItem.id, Math.round(gp.x), Math.round(gp.y));
+            }
             return;
         }
-        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis, "native");
+    }
+
+    function openVisibilityTrayMenu(trayItem, anchorItem) {
+        if (!trayItem)
+            return;
+        if (root.useOverflowPopup)
+            root.menuOpen = false;
+        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis, "visibility");
     }
 
     function toggleIconName() {
@@ -575,9 +587,7 @@ BasePill {
 
                             if (!delegateRoot.trayItem)
                                 return;
-                            if (root.useOverflowPopup)
-                                root.menuOpen = false;
-                            root.openInlineTrayContextMenu(delegateRoot.trayItem, trayItemArea, mouse, visualContent);
+                            root.openNativeTrayMenu(delegateRoot.trayItem, trayItemArea, mouse, visualContent);
                         }
 
                         onPositionChanged: mouse => {
@@ -601,14 +611,7 @@ BasePill {
                                 return;
                             if (mouse.button !== Qt.RightButton)
                                 return;
-                            if (!delegateRoot.trayItem?.hasMenu) {
-                                const gp = trayItemArea.mapToGlobal(mouse.x, mouse.y);
-                                root.callContextMenuFallback(delegateRoot.trayItem.id, Math.round(gp.x), Math.round(gp.y));
-                                return;
-                            }
-                            if (root.useOverflowPopup)
-                                root.menuOpen = false;
-                            root.showForTrayItem(delegateRoot.trayItem, visualContent, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+                            root.openVisibilityTrayMenu(delegateRoot.trayItem, visualContent);
                         }
                     }
                 }
@@ -760,7 +763,7 @@ BasePill {
                     }
                     if (mouse.button !== Qt.RightButton)
                         return;
-                    root.openInlineTrayContextMenu(trayItem, inlineTrayItemArea, mouse, inlineVisualContent);
+                    root.openVisibilityTrayMenu(trayItem, inlineVisualContent);
                 }
             }
         }
@@ -888,9 +891,7 @@ BasePill {
 
                     if (!trayItem)
                         return;
-                    if (root.useOverflowPopup)
-                        root.menuOpen = false;
-                    root.openInlineTrayContextMenu(trayItem, trayItemArea, mouse, visualContent);
+                    root.openNativeTrayMenu(trayItem, trayItemArea, mouse, visualContent);
                 }
 
                 onPositionChanged: mouse => {
@@ -914,7 +915,7 @@ BasePill {
                         return;
                     if (mouse.button !== Qt.RightButton)
                         return;
-                    root.openInlineTrayContextMenu(trayItem, trayItemArea, mouse, visualContent);
+                    root.openVisibilityTrayMenu(trayItem, visualContent);
                 }
             }
         }
@@ -1422,9 +1423,10 @@ BasePill {
                                         return;
                                     if (!trayItem)
                                         return;
-                                    if (mouse.button === Qt.LeftButton || mouse.button === Qt.RightButton) {
-                                        root.openInlineTrayContextMenu(trayItem, itemArea, mouse, menuContainer);
-                                    }
+                                    if (mouse.button === Qt.LeftButton)
+                                        root.openNativeTrayMenu(trayItem, itemArea, mouse, menuContainer);
+                                    else if (mouse.button === Qt.RightButton)
+                                        root.openVisibilityTrayMenu(trayItem, menuContainer);
                                 }
                             }
                         }
@@ -1447,7 +1449,9 @@ BasePill {
             property bool isVertical: false
             property var axis: null
             property bool showMenu: false
+            property bool menuReady: false
             property var menuHandle: null
+            property string menuMode: "native"
 
             ListModel {
                 id: entryStack
@@ -1456,19 +1460,48 @@ BasePill {
                 return entryStack.count ? entryStack.get(entryStack.count - 1).handle : null;
             }
 
-            function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj) {
+            function nativeChildCount() {
+                const kids = rootOpener.children;
+                if (!kids)
+                    return 0;
+                if (kids.values && kids.values.length !== undefined)
+                    return kids.values.length;
+                if (typeof kids.rowCount === "function")
+                    return kids.rowCount();
+                if (typeof kids.count === "number")
+                    return kids.count;
+                return nativeMenuRepeater.count || 0;
+            }
+
+            function tryRevealNativeMenu() {
+                if (menuMode !== "native" || menuReady)
+                    return;
+                if (nativeChildCount() <= 0 && nativeMenuRepeater.count <= 0)
+                    return;
+                nativeSettleTimer.restart();
+            }
+
+            function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj, mode) {
                 trayItem = item;
                 anchorItem = anchor;
                 parentScreen = screen;
                 isAtBottom = atBottom;
                 isVertical = vertical;
                 axis = axisObj;
-                menuHandle = item?.menu;
-
+                menuMode = mode || "native";
+                menuHandle = menuMode === "native" ? item?.menu : null;
+                menuReady = menuMode === "visibility";
                 showMenu = true;
+                if (menuMode === "native") {
+                    nativeMenuReadyTimeout.restart();
+                    Qt.callLater(tryRevealNativeMenu);
+                }
             }
 
             function close() {
+                nativeSettleTimer.stop();
+                nativeMenuReadyTimeout.stop();
+                menuReady = false;
                 showMenu = false;
                 root._closedThisTick = true;
                 Qt.callLater(function() {
@@ -1510,6 +1543,30 @@ BasePill {
                 onTriggered: menuRoot.close()
             }
 
+            Timer {
+                id: nativeSettleTimer
+                interval: 16
+                repeat: false
+                onTriggered: {
+                    if (menuRoot.menuMode !== "native" || menuRoot.menuReady)
+                        return;
+                    if (menuRoot.nativeChildCount() > 0 || nativeMenuRepeater.count > 0)
+                        menuRoot.menuReady = true;
+                }
+            }
+
+            Timer {
+                id: nativeMenuReadyTimeout
+                interval: 600
+                repeat: false
+                onTriggered: {
+                    if (menuRoot.menuMode !== "native" || menuRoot.menuReady)
+                        return;
+                    if (menuRoot.nativeChildCount() > 0 || nativeMenuRepeater.count > 0)
+                        menuRoot.menuReady = true;
+                }
+            }
+
             function showSubMenu(entry) {
                 if (!entry || !entry.hasChildren)
                     return;
@@ -1544,22 +1601,22 @@ BasePill {
                     targetWindow: menuWindow
                     blurX: trayMenuContainer.x
                     blurY: trayMenuContainer.y
-                    blurWidth: menuRoot.showMenu ? trayMenuContainer.width : 0
-                    blurHeight: menuRoot.showMenu ? trayMenuContainer.height : 0
+                    blurWidth: menuRoot.showMenu && menuRoot.menuReady ? trayMenuContainer.width : 0
+                    blurHeight: menuRoot.showMenu && menuRoot.menuReady ? trayMenuContainer.height : 0
                     blurRadius: Theme.cornerRadius
                 }
 
                 WlrLayershell.namespace: "dms:tray-menu-window"
-                visible: menuRoot.showMenu && (menuRoot.trayItem?.hasMenu ?? false)
+                visible: menuRoot.showMenu && (menuRoot.menuMode === "visibility" || (menuRoot.trayItem?.hasMenu ?? false))
                 screen: menuRoot.parentScreen
                 WlrLayershell.layer: root.barUsesOverlayLayer ? WlrLayershell.Overlay : WlrLayershell.Top
                 WlrLayershell.exclusiveZone: -1
-                WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(menuRoot.showMenu, null)
+                WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(menuRoot.showMenu && menuRoot.menuReady, null)
                 color: "transparent"
 
                 DankFocusGrab {
                     windows: [menuWindow].concat(KeyboardFocus.barWindows)
-                    wanted: KeyboardFocus.wantsGrab(menuRoot.showMenu, null)
+                    wanted: KeyboardFocus.wantsGrab(menuRoot.showMenu && menuRoot.menuReady, null)
                 }
 
                 anchors {
@@ -1615,16 +1672,20 @@ BasePill {
                     adjacentBarInfo: menuWindow.adjacentBarInfo
                 }
 
+                Rectangle {
+                    id: dismissMaskRect
+                    x: menuWindow.maskX
+                    y: menuWindow.maskY
+                    width: menuWindow.maskWidth
+                    height: menuWindow.maskHeight
+                    visible: false
+                }
+
                 mask: Region {
-                    item: Rectangle {
-                        x: menuWindow.maskX
-                        y: menuWindow.maskY
-                        width: menuWindow.maskWidth
-                        height: menuWindow.maskHeight
-                    }
+                    item: menuRoot.showMenu && menuRoot.menuReady ? dismissMaskRect : null
 
                     Region {
-                        item: menuRoot.showMenu ? trayMenuContainer : null
+                        item: menuRoot.showMenu && menuRoot.menuReady ? trayMenuContainer : null
                     }
                 }
 
@@ -1644,7 +1705,7 @@ BasePill {
                     width: menuWindow.maskWidth
                     height: menuWindow.maskHeight
                     z: -1
-                    enabled: menuRoot.showMenu
+                    enabled: menuRoot.showMenu && menuRoot.menuReady
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                     onClicked: mouse => {
                         const clickX = mouse.x + menuWindow.maskX;
@@ -1713,7 +1774,10 @@ BasePill {
 
                     readonly property real rawWidth: Math.min(500, Math.max(250, menuColumn.implicitWidth + Theme.spacingS * 2))
                     readonly property real rawHeight: {
-                        const desiredHeight = Math.max(40, menuColumn.implicitHeight + Theme.spacingS * 2);
+                        const contentHeight = menuColumn.implicitHeight + Theme.spacingS * 2;
+                        if (menuRoot.menuMode === "native" && !menuRoot.menuReady)
+                            return contentHeight;
+                        const desiredHeight = Math.max(40, contentHeight);
                         const maxHeight = Math.max(40, menuWindow.maskHeight - 20);
                         return Math.min(desiredHeight, maxHeight);
                     }
@@ -1751,17 +1815,11 @@ BasePill {
                             }
                         })(), menuWindow.dpr)
 
-                    opacity: menuRoot.showMenu ? 1 : 0
-                    scale: menuRoot.showMenu ? 1 : 0.85
+                    opacity: menuRoot.showMenu && menuRoot.menuReady ? 1 : 0
+                    scale: 1
 
                     Behavior on opacity {
-                        NumberAnimation {
-                            duration: Theme.mediumDuration
-                            easing.type: Theme.emphasizedEasing
-                        }
-                    }
-
-                    Behavior on scale {
+                        enabled: menuRoot.menuReady
                         NumberAnimation {
                             duration: Theme.mediumDuration
                             easing.type: Theme.emphasizedEasing
@@ -1796,6 +1854,14 @@ BasePill {
                     QsMenuOpener {
                         id: rootOpener
                         menu: menuRoot.menuHandle
+                        onChildrenChanged: menuRoot.tryRevealNativeMenu()
+                    }
+
+                    Connections {
+                        target: rootOpener.children
+                        function onValuesChanged() {
+                            menuRoot.tryRevealNativeMenu();
+                        }
                     }
 
                     QsMenuOpener {
@@ -1820,9 +1886,10 @@ BasePill {
 
                             width: menuFlickable.width
                             spacing: 1
+                            onImplicitHeightChanged: menuRoot.tryRevealNativeMenu()
 
                             Rectangle {
-                                visible: entryStack.count === 0
+                                visible: entryStack.count === 0 && menuRoot.menuMode === "visibility"
                                 width: parent.width
                                 height: 28
                                 radius: Theme.cornerRadius
@@ -1879,14 +1946,7 @@ BasePill {
                             }
 
                             Rectangle {
-                                visible: entryStack.count === 0
-                                width: parent.width
-                                height: 1
-                                color: Theme.outlineHeavy
-                            }
-
-                            Rectangle {
-                                visible: entryStack.count > 0
+                                visible: entryStack.count > 0 && menuRoot.menuMode === "native"
                                 width: parent.width
                                 height: 28
                                 radius: Theme.cornerRadius
@@ -1923,14 +1983,16 @@ BasePill {
                             }
 
                             Rectangle {
-                                visible: entryStack.count > 0
+                                visible: entryStack.count > 0 && menuRoot.menuMode === "native"
                                 width: parent.width
                                 height: 1
                                 color: Theme.outlineHeavy
                             }
 
                             Repeater {
-                                model: entryStack.count ? (subOpener.children ? subOpener.children : (menuRoot.topEntry()?.children || [])) : rootOpener.children
+                                id: nativeMenuRepeater
+                                model: menuRoot.menuMode === "native" ? (entryStack.count ? (subOpener.children ? subOpener.children : (menuRoot.topEntry()?.children || [])) : rootOpener.children) : []
+                                onCountChanged: menuRoot.tryRevealNativeMenu()
 
                                 Rectangle {
                                     property var menuEntry: modelData
@@ -2055,6 +2117,7 @@ BasePill {
     }
 
     property string _openTrayItemId: ""
+    property string _openTrayMenuMode: ""
     property bool _closedThisTick: false
 
     function closeTrayMenu() {
@@ -2064,22 +2127,25 @@ BasePill {
             currentTrayMenu = null;
         }
         _openTrayItemId = "";
+        _openTrayMenuMode = "";
         _closedThisTick = true;
         Qt.callLater(function() {
             root._closedThisTick = false;
         });
     }
 
-    function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj) {
+    function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj, mode) {
         if (!screen)
             return;
+        const menuMode = mode || "native";
         const itemId = item ? (item.id || "") : "";
         const sameItem = itemId !== "" && itemId === root._openTrayItemId;
-        if (sameItem || (currentTrayMenu && currentTrayMenu.showMenu && currentTrayMenu.trayItem === item)) {
+        const sameMode = menuMode === root._openTrayMenuMode;
+        if ((sameItem && sameMode) || (currentTrayMenu && currentTrayMenu.showMenu && currentTrayMenu.trayItem === item && currentTrayMenu.menuMode === menuMode)) {
             root.closeTrayMenu();
             return;
         }
-        if (root._closedThisTick && sameItem)
+        if (root._closedThisTick && sameItem && sameMode)
             return;
 
         root.closeTrayMenu();
@@ -2092,7 +2158,8 @@ BasePill {
         if (!currentTrayMenu)
             return;
         root._openTrayItemId = itemId;
-        currentTrayMenu.showForTrayItem(item, anchor, screen, atBottom, vertical ?? false, axisObj);
+        root._openTrayMenuMode = menuMode;
+        currentTrayMenu.showForTrayItem(item, anchor, screen, atBottom, vertical ?? false, axisObj, menuMode);
     }
 
     function _trayLayoutRoot() {
@@ -2140,7 +2207,7 @@ BasePill {
         if (!hit?.trayItem?.hasMenu)
             return false;
         const anchor = hit.children?.length > 0 ? hit.children[0] : hit;
-        showForTrayItem(hit.trayItem, anchor, parentScreen, isAtBottom, isVerticalOrientation, axis);
+        showForTrayItem(hit.trayItem, anchor, parentScreen, isAtBottom, isVerticalOrientation, axis, "native");
         return true;
     }
 }

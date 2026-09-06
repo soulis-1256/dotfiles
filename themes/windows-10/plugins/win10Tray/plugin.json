@@ -1,7 +1,7 @@
 {
     "id": "win10Tray",
     "name": "Windows 10 System Tray",
-    "description": "Stock DMS tray icons with Windows-style left-click menus",
+    "description": "Stock DMS tray icons: left-click native menu, right-click hide/show",
     "version": "1.0.0",
     "author": "soulis",
     "type": "widget",
