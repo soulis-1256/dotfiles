@@ -2494,6 +2494,9 @@ Singleton {
 
         if (positionChanged) {
             NotificationService.dismissAllPopups();
+            // Layer-shell anchors cannot rotate from side to top/bottom on a
+            // live surface; destroy and rebuild or the bar vanishes until restart.
+            forceDankBarLayoutRefresh();
         }
     }
 

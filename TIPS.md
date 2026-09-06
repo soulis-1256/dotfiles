@@ -6,6 +6,16 @@ A curated collection of system configurations, hardware quirks, and workflow ref
 
 ## 1. Hyprland & Wayland
 
+### Steam notification toasts vs the Dank bar
+
+Steam still draws XWayland `notificationtoasts_*` windows, which ignore
+layer-shell exclusive zones, so they sit under (or against) the bar.
+`~/.config/hypr/dms/steam-toasts.lua` clamps them into each monitor's
+reserved work area. A right-edge bar can still twitch because Steam
+re-pins to the X11 screen edge. Revisit this when Steam's **client** is
+native Wayland; `steam --ozone-platform=wayland` is not that (it stays
+XWayland unless Gamescope is in the path).
+
 ### Window Rules & Keybind Debugging
 * **Find Window Class / Title:**
   ```bash

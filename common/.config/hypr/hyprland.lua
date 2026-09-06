@@ -129,11 +129,6 @@ hl.window_rule({ match = { class = "^(blueman-manager)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.gnome\\.Nautilus)$" }, float = true })
 hl.window_rule({ match = { class = "^(xdg-desktop-portal)$" }, float = true })
 hl.window_rule({
-	match = { class = "^(steam)$", title = "^(notificationtoasts)" },
-	no_initial_focus = true,
-	pin = true,
-})
-hl.window_rule({
 	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
 	float = true,
 	pin = true,
@@ -155,6 +150,7 @@ require("dms.cursor")
 require("dms.binds")
 require("dms.binds-user")
 require("dms.windowrules")
+require("dms.steam-toasts")
 
 -- Inactive color is fully transparent; border is drawn outside the window.
 hl.config({

@@ -1309,7 +1309,7 @@ Item {
                     return Math.max(baseWidth + iconsExtraWidth, contentImplicitWidth + padding);
                 }
                 readonly property real visualHeight: {
-                    if (root.isFullHeight)
+                    if (root.isFullHeight && !root.isVertical)
                         return root.barThickness;
                     if (contentImplicitHeight <= 0)
                         return baseHeight + iconsExtraHeight;
@@ -1676,7 +1676,7 @@ Item {
                 Rectangle {
                     id: visualContent
                     width: delegateRoot.visualWidth
-                    height: root.isFullHeight ? root.barThickness : delegateRoot.visualHeight
+                    height: (root.isFullHeight && !root.isVertical) ? root.barThickness : delegateRoot.visualHeight
                     x: root.isFullHeight ? 0 : (root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2)
                     y: root.isFullHeight ? 0 : (root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2)
                     radius: root.isFullHeight ? 0 : Theme.cornerRadius
@@ -1685,12 +1685,14 @@ Item {
 
                     Rectangle {
                         id: activeIndicator
-                        anchors.bottom: parent.bottom
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        height: 3
-                        color: Theme.primary
                         visible: root.isFullHeight && isActive
+                        color: Theme.primary
+                        width: root.isVertical ? 3 : undefined
+                        height: root.isVertical ? undefined : 3
+                        anchors.top: root.isVertical ? parent.top : undefined
+                        anchors.bottom: parent.bottom
+                        anchors.left: root.isVertical ? (root.axis?.edge === "right" ? parent.left : undefined) : parent.left
+                        anchors.right: root.isVertical ? (root.axis?.edge === "left" ? parent.right : undefined) : parent.right
                     }
 
                     border.width: dragHandler.dragging ? 2 : (isDropTarget ? 2 : 0)
