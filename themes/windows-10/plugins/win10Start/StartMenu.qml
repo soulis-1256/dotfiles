@@ -4924,58 +4924,14 @@ Item {
                 return {};
             }
 
-            var isSameGroup = (root.draggedFromGroupId === tg.groupId && !root.draggedFromFolderId && root.draggedTileData);
-            var srcCol = (isSameGroup && typeof root.draggedTileData.col === "number") ? root.draggedTileData.col : -1;
-            var srcRow = (isSameGroup && typeof root.draggedTileData.row === "number") ? root.draggedTileData.row : -1;
-
-            // 1. Same-row internal drag to the right: tiles between srcCol and targetCol slide left
-            if (isSameGroup && srcRow >= 0 && srcRow === targetRow && targetCol > srcCol) {
-                var shiftResult = {};
-                var canShiftLeft = true;
-                var rowTiles = [];
-
-                for (var si = 0; si < other.length; si++) {
-                    var sit = other[si];
-                    var sc = (typeof sit.col === "number") ? sit.col : 0;
-                    var sr = (typeof sit.row === "number") ? sit.row : 0;
-                    if (sr === targetRow && sc >= srcCol && sc <= targetCol + dw - 1) {
-                        rowTiles.push(sit);
-                    } else {
-                        shiftResult[sit.id] = Qt.point(sc, sr);
-                    }
-                }
-
-                rowTiles.sort(function(a, b) {
-                    var ca = (typeof a.col === "number") ? a.col : 0;
-                    var cb = (typeof b.col === "number") ? b.col : 0;
-                    return ca - cb;
-                });
-
-                var currC = srcCol;
-                for (var rti = 0; rti < rowTiles.length; rti++) {
-                    var rTile = rowTiles[rti];
-                    if (currC < targetCol + dw && currC + rTile.wCells > targetCol) {
-                        currC = targetCol + dw;
-                    }
-                    if (currC + rTile.wCells > 6) {
-                        canShiftLeft = false;
-                        break;
-                    }
-                    shiftResult[rTile.id] = Qt.point(currC, targetRow);
-                    currC += rTile.wCells;
-                }
-
-                if (canShiftLeft) {
-                    return shiftResult;
-                }
+            function cellNum(v) {
+                var n = Number(v);
+                return isFinite(n) ? n : 0;
             }
 
-            // 2. All other cases: Push right along reading order flow (never up or down directly).
-            // The dragged tile claims [targetCol, targetRow, dw, dh].
-            // Existing tiles preserve their relative reading order and pack into the immediate next available slots.
             var occupied = {};
             function isCellOccupied(r, c, w, h) {
-                if (c + w > 6) return true;
+                if (c < 0 || r < 0 || c + w > 6) return true;
                 for (var dr = 0; dr < h; dr++) {
                     for (var dc = 0; dc < w; dc++) {
                         if (occupied[(r + dr) + "," + (c + dc)]) return true;
@@ -4990,32 +4946,63 @@ Item {
                     }
                 }
             }
+            function readingKey(row, col) {
+                return cellNum(row) * 6 + cellNum(col);
+            }
+
+            var overlapped = [];
+            for (var oi = 0; oi < other.length; oi++) {
+                var oItem = other[oi];
+                var oCol = cellNum(oItem.col);
+                var oRow = cellNum(oItem.row);
+                if (rectsOverlap(oCol, oRow, oItem.wCells, oItem.hCells, targetCol, targetRow, dw, dh))
+                    overlapped.push(oItem);
+            }
+
+            var pushLeft = false;
+            if (overlapped.length > 0) {
+                var ghostPos = tileFlowItem.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
+                var probeX = ghostPos.x + dragW / 2;
+                var primary = overlapped[0];
+                var bestDist = Infinity;
+                for (var pi = 0; pi < overlapped.length; pi++) {
+                    var pItem = overlapped[pi];
+                    var pPx = tg.cellToPixel(cellNum(pItem.col), cellNum(pItem.row));
+                    var dist = Math.abs(probeX - (pPx.x + pItem.width / 2));
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        primary = pItem;
+                    }
+                }
+                var primPx = tg.cellToPixel(cellNum(primary.col), cellNum(primary.row));
+                pushLeft = probeX >= (primPx.x + primary.width / 2);
+            }
 
             markOccupied(targetRow, targetCol, dw, dh);
 
             var sortedOther = other.slice().sort(function(a, b) {
-                var ra = (typeof a.row === "number") ? a.row : 0;
-                var ca = (typeof a.col === "number") ? a.col : 0;
-                var rb = (typeof b.row === "number") ? b.row : 0;
-                var cb = (typeof b.col === "number") ? b.col : 0;
-                return (ra * 6 + ca) - (rb * 6 + cb);
+                return readingKey(a.row, a.col) - readingKey(b.row, b.col);
             });
 
             var res = {};
             var remaining = [];
 
-            // Tiles strictly before target that do not overlap stay in place
             for (var m = 0; m < sortedOther.length; m++) {
                 var itm = sortedOther[m];
-                var ic = (typeof itm.col === "number") ? itm.col : 0;
-                var ir = (typeof itm.row === "number") ? itm.row : 0;
+                var ic = cellNum(itm.col);
+                var ir = cellNum(itm.row);
                 var iw = itm.wCells;
                 var ih = itm.hCells;
-
-                var isBeforeTarget = (ir < targetRow) || (ir === targetRow && ic + iw <= targetCol);
                 var overlapsTarget = rectsOverlap(ic, ir, iw, ih, targetCol, targetRow, dw, dh);
+                var stays;
+                if (pushLeft) {
+                    // Only the tiles we landed on move. Never vacuum tiles from other rows.
+                    stays = !overlapsTarget;
+                } else {
+                    stays = !overlapsTarget && ((ir < targetRow) || (ir === targetRow && ic + iw <= targetCol));
+                }
 
-                if (isBeforeTarget && !overlapsTarget && !isCellOccupied(ir, ic, iw, ih)) {
+                if (stays && !isCellOccupied(ir, ic, iw, ih)) {
                     markOccupied(ir, ic, iw, ih);
                     res[itm.id] = Qt.point(ic, ir);
                 } else {
@@ -5028,31 +5015,52 @@ Item {
                 var stepR = (h === 1) ? 1 : 2;
                 var startR = Math.floor(fromRow / stepR) * stepR;
                 var startC = Math.floor(fromCol / stepC) * stepC;
+                if (startR < fromRow)
+                    startR += stepR;
 
                 for (var r = startR; r < 200; r += stepR) {
                     var cMin = (r === startR) ? startC : 0;
                     for (var c = cMin; c <= 6 - w; c += stepC) {
-                        if (!isCellOccupied(r, c, w, h)) {
+                        if (!isCellOccupied(r, c, w, h))
                             return Qt.point(c, r);
-                        }
                     }
                 }
                 return Qt.point(fromCol, fromRow);
             }
 
-            // Pack remaining tiles in strict ascending reading order so earlier tiles
-            // (e.g. Dolphin) always get the immediate next slot, preserving order without inverting.
+            function findPrevSlot(fromRow, fromCol, w, h) {
+                var stepC = (w === 1) ? 1 : 2;
+                var r = fromRow;
+                var startC = Math.floor(fromCol / stepC) * stepC;
+                for (var c = startC - stepC; c >= 0; c -= stepC) {
+                    if (!isCellOccupied(r, c, w, h))
+                        return Qt.point(c, r);
+                }
+                return null;
+            }
+
+            remaining.sort(function(a, b) {
+                return readingKey(a.row, a.col) - readingKey(b.row, b.col);
+            });
+
             for (var j = 0; j < remaining.length; j++) {
                 var remIt = remaining[j];
                 var rw = remIt.wCells;
                 var rh = remIt.hCells;
-                var origC = (typeof remIt.col === "number") ? remIt.col : 0;
-                var origR = (typeof remIt.row === "number") ? remIt.row : 0;
-
-                var scanR = Math.max(targetRow, origR);
-                var scanC = (scanR === targetRow) ? targetCol : 0;
-
-                var slot = findNextSlot(scanR, scanC, rw, rh);
+                var origC = cellNum(remIt.col);
+                var origR = cellNum(remIt.row);
+                var slot = null;
+                if (pushLeft)
+                    slot = findPrevSlot(origR, origR === targetRow ? targetCol : origC, rw, rh);
+                if (slot && slot.y < origR)
+                    slot = null;
+                if (!slot) {
+                    var scanR = Math.max(targetRow, origR);
+                    var scanC = (scanR === targetRow) ? targetCol : 0;
+                    slot = findNextSlot(scanR, scanC, rw, rh);
+                }
+                if (slot.y < origR)
+                    slot = findNextSlot(origR, 0, rw, rh);
                 markOccupied(slot.y, slot.x, rw, rh);
                 res[remIt.id] = Qt.point(slot.x, slot.y);
             }
