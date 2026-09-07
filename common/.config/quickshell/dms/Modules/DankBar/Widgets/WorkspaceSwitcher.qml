@@ -267,7 +267,61 @@ Item {
     function hyprlandWorkspaceSelector(ws) {
         if (!ws)
             return 1;
+        if (typeof ws === "number")
+            return ws;
         return ws.id > 0 ? ws.id : "name:" + (ws.name ?? "");
+    }
+
+    function showAppContextMenu(item, modelData) {
+        if (!item || !modelData)
+            return;
+
+        const moddedId = Paths.moddedAppId(modelData.appId || modelData.fallbackText || "");
+        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+            const currentAppId = appContextMenuLoader.item.appData?.appId;
+            if (currentAppId === moddedId) {
+                appContextMenuLoader.item.close();
+                return;
+            }
+        }
+
+        appContextMenuLoader.active = true;
+        if (!appContextMenuLoader.item)
+            return;
+
+        const isBarVertical = root.axis?.isVertical ?? false;
+        const barEdge = root.axis?.edge ?? (root.isFullHeight ? (isBarVertical ? "left" : "bottom") : "bottom");
+        const localPos = item.mapToItem(null, item.width / 2, item.height / 2);
+
+        let x = localPos.x;
+        let y = localPos.y;
+        const screenHeight = root.parentScreen?.height ?? Screen.height;
+        const screenWidth = root.parentScreen?.width ?? Screen.width;
+
+        switch (barEdge) {
+        case "bottom":
+            y = screenHeight - root.barThickness - (root.barSpacing || 0);
+            break;
+        case "top":
+            y = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "left":
+            x = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "right":
+            x = screenWidth - root.barThickness - (root.barSpacing || 0);
+            break;
+        }
+
+        const shouldHidePin = true;
+        const desktopEntry = moddedId ? DesktopEntries.heuristicLookup(moddedId) : null;
+        const appData = {
+            appId: moddedId,
+            type: "grouped",
+            windowCount: modelData.count || (modelData.windows ? modelData.windows.length : 1)
+        };
+
+        appContextMenuLoader.item.showAt(x, y, isBarVertical, barEdge, appData, shouldHidePin, desktopEntry, root.parentScreen);
     }
 
     function getHyprlandWorkspaces() {
@@ -419,6 +473,14 @@ Item {
             const groupThisWs = SettingsData.groupWorkspaceApps && (!isActiveWs || SettingsData.groupActiveWorkspaceApps);
             const key = groupThisWs ? moddedId : `${moddedId}_${i}`;
 
+            let targetWindow = w;
+            if (CompositorService.isHyprland) {
+                const hyprlandToplevels = Array.from(Hyprland.toplevels?.values || []);
+                const hyprToplevel = hyprlandToplevels.find(ht => ht.wayland === w || ht.address === w.address || ht === w);
+                if (hyprToplevel)
+                    targetWindow = hyprToplevel;
+            }
+
             if (!byApp[key]) {
                 const isQuickshell = keyBase === "org.quickshell" || keyBase === "com.danklinux.dms";
                 const isSteamApp = Paths.isSteamApp(moddedId);
@@ -427,16 +489,21 @@ Item {
                 const appName = Paths.getAppName(moddedId, desktopEntry);
                 byApp[key] = {
                     "type": "icon",
+                    "appId": moddedId,
                     "icon": icon,
                     "isQuickshell": isQuickshell,
                     "isSteamApp": isSteamApp,
                     "active": !!((w.activated || w.is_focused) || (CompositorService.isNiri && w.is_focused)),
                     "count": 1,
                     "windowId": w.address || w.id,
-                    "fallbackText": appName || ""
+                    "fallbackText": appName || "",
+                    "windows": [targetWindow]
                 };
             } else {
                 byApp[key].count++;
+                if (byApp[key].windows) {
+                    byApp[key].windows.push(targetWindow);
+                }
                 if ((w.activated || w.is_focused) || (CompositorService.isNiri && w.is_focused)) {
                     byApp[key].active = true;
                 }
@@ -978,20 +1045,13 @@ Item {
         }
 
         onClicked: mouse => {
+            if (appContextMenuLoader.item && appContextMenuLoader.item.visible)
+                appContextMenuLoader.item.close();
             const rootPos = edgeMouseArea.mapToItem(root, mouse.x, mouse.y);
-            switch (mouse.button) {
-            case Qt.RightButton:
-                if (CompositorService.isNiri) {
-                    NiriService.toggleOverview();
-                } else if (CompositorService.isHyprland && root.hyprlandOverviewLoader?.item) {
-                    root.hyprlandOverviewLoader.item.overviewOpen = !root.hyprlandOverviewLoader.item.overviewOpen;
-                }
-                break;
-            case Qt.LeftButton:
+            if (mouse.button === Qt.LeftButton) {
                 const idx = root.findClosestWorkspaceIndex(rootPos.x, rootPos.y);
                 if (idx >= 0)
                     root.switchToWorkspaceByModelData(root.workspaceList[idx]);
-                break;
             }
         }
 
@@ -1422,10 +1482,10 @@ Item {
                     if (root.isFullHeight) {
                         if (mouseArea.pressed)
                             return "#1a1a1a";
-                        if (delegateRoot.isHovered)
-                            return isUrgent ? Qt.lighter(urgentColor, 1.15) : "#323232";
                         if (isActive)
                             return "#2a2a2a";
+                        if (delegateRoot.isHovered)
+                            return isUrgent ? Qt.lighter(urgentColor, 1.15) : "#323232";
                         if (isUrgent)
                             return urgentColor;
                         return "transparent";
@@ -1535,6 +1595,9 @@ Item {
                         if (wasDragging || isPlaceholder)
                             return;
 
+                        if (appContextMenuLoader.item && appContextMenuLoader.item.visible)
+                            appContextMenuLoader.item.close();
+
                         if (mouse.button === Qt.LeftButton) {
                             if (root.useExtWorkspace) {
                                 if (typeof modelData?.activate === "function")
@@ -1549,14 +1612,6 @@ Item {
                                 MangoService.switchToTag(root.screenName, modelData.tag);
                             } else if ((CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) && modelData?.num !== undefined) {
                                 root.dispatchSwayWorkspace(modelData);
-                            }
-                        } else if (mouse.button === Qt.RightButton) {
-                            if (CompositorService.isNiri) {
-                                NiriService.toggleOverview();
-                            } else if (CompositorService.isHyprland && root.hyprlandOverviewLoader?.item) {
-                                root.hyprlandOverviewLoader.item.overviewOpen = !root.hyprlandOverviewLoader.item.overviewOpen;
-                            } else if (root.isMango && modelData?.tag !== undefined) {
-                                MangoService.toggleTag(root.screenName, modelData.tag);
                             }
                         }
                     }
@@ -1894,10 +1949,10 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: (rowAppIcon.visible || rowSteamIcon.visible || rowQsIcon.visible) && appHighlightActive
-                                                color: "transparent"
+                                                visible: (rowAppIcon.visible || rowSteamIcon.visible || rowQsIcon.visible) && (appHighlightActive || (isActive && !modelData.active && rowAppMouseArea.containsMouse))
+                                                color: (isActive && !modelData.active && rowAppMouseArea.containsMouse) ? Theme.withAlpha(Theme.surfaceText, 0.12) : "transparent"
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
-                                                border.width: 1
+                                                border.width: appHighlightActive ? 1 : 0
                                                 border.color: focusedBorderColor
                                                 z: 1
                                             }
@@ -1906,15 +1961,25 @@ Item {
                                                 id: rowAppMouseArea
                                                 anchors.fill: parent
                                                 enabled: isActive
+                                                hoverEnabled: isActive
                                                 cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    const winId = modelData.windowId;
-                                                    if (!winId)
-                                                        return;
-                                                    if (CompositorService.isHyprland) {
-                                                        HyprlandService.focusWindow(winId);
-                                                    } else if (CompositorService.isNiri) {
-                                                        NiriService.focusWindow(winId);
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onClicked: mouse => {
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        root.showAppContextMenu(rowAppMouseArea.parent, modelData);
+                                                    } else if (mouse.button === Qt.LeftButton) {
+                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+                                                            appContextMenuLoader.item.close();
+                                                            return;
+                                                        }
+                                                        const winId = modelData.windowId;
+                                                        if (!winId)
+                                                            return;
+                                                        if (CompositorService.isHyprland) {
+                                                            HyprlandService.focusWindow(winId);
+                                                        } else if (CompositorService.isNiri) {
+                                                            NiriService.focusWindow(winId);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -2066,10 +2131,10 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: (colAppIcon.visible || colSteamIcon.visible || colQsIcon.visible) && appHighlightActive
-                                                color: "transparent"
+                                                visible: (colAppIcon.visible || colSteamIcon.visible || colQsIcon.visible) && (appHighlightActive || (isActive && !modelData.active && colAppMouseArea.containsMouse))
+                                                color: (isActive && !modelData.active && colAppMouseArea.containsMouse) ? Theme.withAlpha(Theme.surfaceText, 0.12) : "transparent"
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
-                                                border.width: 1
+                                                border.width: appHighlightActive ? 1 : 0
                                                 border.color: focusedBorderColor
                                                 z: 1
                                             }
@@ -2078,15 +2143,25 @@ Item {
                                                 id: colAppMouseArea
                                                 anchors.fill: parent
                                                 enabled: isActive
+                                                hoverEnabled: isActive
                                                 cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    const winId = modelData.windowId;
-                                                    if (!winId)
-                                                        return;
-                                                    if (CompositorService.isHyprland) {
-                                                        HyprlandService.focusWindow(winId);
-                                                    } else if (CompositorService.isNiri) {
-                                                        NiriService.focusWindow(winId);
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onClicked: mouse => {
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        root.showAppContextMenu(colAppMouseArea.parent, modelData);
+                                                    } else if (mouse.button === Qt.LeftButton) {
+                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+                                                            appContextMenuLoader.item.close();
+                                                            return;
+                                                        }
+                                                        const winId = modelData.windowId;
+                                                        if (!winId)
+                                                            return;
+                                                        if (CompositorService.isHyprland) {
+                                                            HyprlandService.focusWindow(winId);
+                                                        } else if (CompositorService.isNiri) {
+                                                            NiriService.focusWindow(winId);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -2205,6 +2280,13 @@ Item {
             }
         }
     }
+
+    Loader {
+        id: appContextMenuLoader
+        active: false
+        source: "AppsDockContextMenu.qml"
+    }
+
 
     Component.onCompleted: {
         _updateBlurRegistration();

@@ -1,11 +1,24 @@
 import QtQuick
+import Quickshell
 import Quickshell.Widgets
 import qs.Common
 import qs.Modules.Plugins
+import qs.Services
 import qs.Widgets
 
 PluginComponent {
     id: root
+
+    pillRightClickAction: () => {
+        if (CompositorService.isNiri) {
+            NiriService.toggleOverview();
+        } else if (root.blurBarWindow?.hyprlandOverviewLoader?.item) {
+            const ov = root.blurBarWindow.hyprlandOverviewLoader.item;
+            ov.overviewOpen = !ov.overviewOpen;
+        } else {
+            Quickshell.process(["dms", "ipc", "call", "hypr", "toggleOverview"]);
+        }
+    }
 
     function registerAsLauncher() {
         if (root.blurBarWindow)
