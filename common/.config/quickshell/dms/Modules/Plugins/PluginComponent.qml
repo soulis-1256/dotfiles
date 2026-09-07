@@ -46,6 +46,7 @@ Item {
     property real popoutWidth: 400
     property real popoutHeight: 0
     property bool popoutFlush: false
+    property real pillHorizontalPadding: -1
     property var pillClickAction: null
     property var pillRightClickAction: null
 
@@ -216,6 +217,7 @@ Item {
         isRightBarEdge: root.isRightBarEdge
         isTopBarEdge: root.isTopBarEdge
         isBottomBarEdge: root.isBottomBarEdge
+        horizontalPadding: root.pillHorizontalPadding >= 0 ? root.pillHorizontalPadding : ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr))
         content: root.horizontalBarPill
 
         states: State {
@@ -275,6 +277,7 @@ Item {
         isRightBarEdge: root.isRightBarEdge
         isTopBarEdge: root.isTopBarEdge
         isBottomBarEdge: root.isBottomBarEdge
+        horizontalPadding: root.pillHorizontalPadding >= 0 ? root.pillHorizontalPadding : ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr))
         content: root.verticalBarPill
         isVerticalOrientation: true
 

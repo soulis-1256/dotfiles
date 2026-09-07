@@ -28,7 +28,7 @@ Singleton {
         const useAuto = defaultBar.popupGapsAuto ?? true;
         const manualValue = defaultBar.popupGapsManual ?? 4;
         const spacing = defaultBar.spacing ?? 4;
-        return useAuto ? Math.max(4, spacing) : manualValue;
+        return useAuto ? (spacing === 0 ? 0 : Math.max(4, spacing)) : manualValue;
     }
 
     property string currentTheme: "purple"

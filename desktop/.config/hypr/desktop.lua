@@ -12,8 +12,6 @@ hl.window_rule({
 	match = { class = "^(vesktop)$" },
 	workspace = "10 silent",
 	no_initial_focus = true,
-	border_size = 0,
-	rounding = 0,
 	opaque = true,
 	opacity = "1.0 1.0",
 	no_blur = true,

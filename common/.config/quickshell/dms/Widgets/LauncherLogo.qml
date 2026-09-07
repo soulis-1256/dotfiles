@@ -18,6 +18,8 @@ Item {
 
     implicitWidth: effectiveSize
     implicitHeight: effectiveSize
+    width: implicitWidth
+    height: implicitHeight
 
     DankIcon {
         visible: SettingsData.launcherLogoMode === "apps"

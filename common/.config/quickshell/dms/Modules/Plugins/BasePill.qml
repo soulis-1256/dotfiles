@@ -29,7 +29,7 @@ Item {
     property bool isBottomBarEdge: false
     readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
     readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
-    readonly property real horizontalPadding: (barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr)
+    property real horizontalPadding: (barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), dpr)
     readonly property real visualWidth: Theme.snap(isVerticalOrientation ? (isFullHeight ? barThickness : widgetThickness) : (contentLoader.item ? (contentLoader.item.implicitWidth + horizontalPadding * 2) : 0), dpr)
     readonly property real visualHeight: Theme.snap(isVerticalOrientation ? (contentLoader.item ? (contentLoader.item.implicitHeight + horizontalPadding * 2) : 0) : (isFullHeight ? barThickness : widgetThickness), dpr)
     readonly property alias visualContent: visualContent

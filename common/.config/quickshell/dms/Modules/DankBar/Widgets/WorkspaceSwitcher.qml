@@ -665,8 +665,8 @@ Item {
 
     readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
     readonly property real padding: (root.isFullHeight || (root.barConfig?.removeWidgetPadding ?? false)) ? 0 : Theme.snap((root.barConfig?.widgetPadding ?? 12) * (widgetHeight / 30), dpr)
-    readonly property real visualWidth: isVertical ? widgetHeight : (workspaceRow.implicitWidth + (root.isFullHeight ? 0 : padding * 2))
-    readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + (root.isFullHeight ? 0 : padding * 2)) : widgetHeight
+    readonly property real visualWidth: isVertical ? (root.isFullHeight ? root.barThickness : widgetHeight) : (workspaceRow.implicitWidth + (root.isFullHeight ? 0 : padding * 2))
+    readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + (root.isFullHeight ? 0 : padding * 2)) : (root.isFullHeight ? root.barThickness : widgetHeight)
     readonly property real appIconSize: {
         if (root.isFullHeight)
             return Math.max(20, Math.round(root.barThickness * 0.54 + SettingsData.workspaceAppIconSizeOffset));
@@ -912,7 +912,7 @@ Item {
                 const borderWidth = (barConfig?.widgetOutlineEnabled ?? false) ? (barConfig?.widgetOutlineThickness ?? 1) : 0;
                 return parent.height + borderWidth * 2;
             }
-            radius: (barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius
+            radius: (root.isFullHeight || (barConfig?.noBackground ?? false)) ? 0 : Theme.cornerRadius
             color: "transparent"
             border.width: {
                 if (barConfig?.widgetOutlineEnabled ?? false) {
@@ -1046,8 +1046,8 @@ Item {
     Flow {
         id: workspaceRow
 
-        x: isVertical ? visualBackground.x : (root.isFullHeight ? 0 : (parent.width - implicitWidth) / 2)
-        y: isVertical ? (root.isFullHeight ? 0 : (parent.height - implicitHeight) / 2) : visualBackground.y
+        x: root.isFullHeight ? 0 : (isVertical ? visualBackground.x : (parent.width - implicitWidth) / 2)
+        y: root.isFullHeight ? 0 : (isVertical ? (parent.height - implicitHeight) / 2 : visualBackground.y)
         spacing: root.isFullHeight ? (root.barConfig?.spacing ?? 0) : Theme.spacingS
         flow: isVertical ? Flow.TopToBottom : Flow.LeftToRight
 
@@ -1303,6 +1303,8 @@ Item {
                 }
 
                 readonly property real visualWidth: {
+                    if (root.isFullHeight && root.isVertical)
+                        return root.barThickness;
                     if (contentImplicitWidth <= 0)
                         return baseWidth + iconsExtraWidth;
                     const padding = root.isFullHeight ? 8 : (root.isVertical ? Theme.spacingXS : Theme.spacingS);
@@ -1675,7 +1677,7 @@ Item {
 
                 Rectangle {
                     id: visualContent
-                    width: delegateRoot.visualWidth
+                    width: (root.isFullHeight && root.isVertical) ? root.barThickness : delegateRoot.visualWidth
                     height: (root.isFullHeight && !root.isVertical) ? root.barThickness : delegateRoot.visualHeight
                     x: root.isFullHeight ? 0 : (root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2)
                     y: root.isFullHeight ? 0 : (root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2)

@@ -21,6 +21,7 @@ PluginComponent {
     }
 
     layerNamespacePlugin: "win10-start"
+    pillHorizontalPadding: 0
     popoutWidth: 948
     popoutHeight: 620
     popoutFlush: true
@@ -33,8 +34,10 @@ PluginComponent {
 
     horizontalBarPill: Component {
         Item {
-            implicitWidth: 48
+            implicitWidth: root.barThickness
             implicitHeight: root.barThickness
+            width: implicitWidth
+            height: implicitHeight
 
             LauncherLogo {
                 anchors.centerIn: parent
@@ -47,7 +50,9 @@ PluginComponent {
     verticalBarPill: Component {
         Item {
             implicitWidth: root.barThickness
-            implicitHeight: 48
+            implicitHeight: root.barThickness
+            width: implicitWidth
+            height: implicitHeight
 
             LauncherLogo {
                 anchors.centerIn: parent

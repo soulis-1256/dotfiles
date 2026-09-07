@@ -505,7 +505,7 @@ Item {
     readonly property real alignedX: Theme.snap((() => {
             const useAutoGaps = storedBarConfig?.popupGapsAuto !== undefined ? storedBarConfig.popupGapsAuto : true;
             const manualGapValue = storedBarConfig?.popupGapsManual !== undefined ? storedBarConfig.popupGapsManual : 4;
-            const popupGap = useAutoGaps ? Math.max(4, storedBarSpacing) : manualGapValue;
+            const popupGap = useAutoGaps ? (storedBarSpacing === 0 ? 0 : Math.max(4, storedBarSpacing)) : manualGapValue;
             const leftGap = _edgeClearance("left", popupGap, adjacentBarInfo.leftBar > 0 ? adjacentBarInfo.leftBar : 0);
             const rightGap = _edgeClearance("right", popupGap, adjacentBarInfo.rightBar > 0 ? adjacentBarInfo.rightBar : 0);
 
@@ -525,7 +525,7 @@ Item {
     readonly property real alignedY: Theme.snap((() => {
             const useAutoGaps = storedBarConfig?.popupGapsAuto !== undefined ? storedBarConfig.popupGapsAuto : true;
             const manualGapValue = storedBarConfig?.popupGapsManual !== undefined ? storedBarConfig.popupGapsManual : 4;
-            const popupGap = useAutoGaps ? Math.max(4, storedBarSpacing) : manualGapValue;
+            const popupGap = useAutoGaps ? (storedBarSpacing === 0 ? 0 : Math.max(4, storedBarSpacing)) : manualGapValue;
             const topGap = _edgeClearance("top", popupGap, adjacentBarInfo.topBar > 0 ? adjacentBarInfo.topBar : 0);
             const bottomGap = _edgeClearance("bottom", popupGap, adjacentBarInfo.bottomBar > 0 ? adjacentBarInfo.bottomBar : 0);
 

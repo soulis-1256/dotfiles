@@ -35,8 +35,8 @@ Item {
         id: rowComp
         Row {
             readonly property real widgetSpacing: {
-                if (barConfig && barConfig.fullHeightWidgets && barConfig.spacing !== undefined)
-                    return barConfig.spacing;
+                if (barConfig && barConfig.fullHeightWidgets)
+                    return barConfig.spacing !== undefined ? barConfig.spacing : 0;
                 const baseSpacing = noBackground ? 2 : Theme.spacingXS;
                 const outlineThickness = (barConfig?.widgetOutlineEnabled ?? false) ? (barConfig?.widgetOutlineThickness ?? 1) : 0;
                 return baseSpacing + (outlineThickness * 2);
@@ -85,8 +85,8 @@ Item {
         Column {
             width: parent.width
             readonly property real widgetSpacing: {
-                if (barConfig && barConfig.fullHeightWidgets && barConfig.spacing !== undefined)
-                    return barConfig.spacing;
+                if (barConfig && barConfig.fullHeightWidgets)
+                    return barConfig.spacing !== undefined ? barConfig.spacing : 0;
                 const baseSpacing = noBackground ? 2 : Theme.spacingXS;
                 const outlineThickness = (barConfig?.widgetOutlineEnabled ?? false) ? (barConfig?.widgetOutlineThickness ?? 1) : 0;
                 return baseSpacing + (outlineThickness * 2);

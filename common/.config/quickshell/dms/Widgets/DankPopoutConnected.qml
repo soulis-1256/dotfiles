@@ -580,7 +580,7 @@ Item {
     function _popupGapValue() {
         const useAutoGaps = storedBarConfig?.popupGapsAuto !== undefined ? storedBarConfig.popupGapsAuto : true;
         const manualGapValue = storedBarConfig?.popupGapsManual !== undefined ? storedBarConfig.popupGapsManual : 4;
-        const rawPopupGap = useAutoGaps ? Math.max(4, storedBarSpacing) : manualGapValue;
+        const rawPopupGap = useAutoGaps ? (storedBarSpacing === 0 ? 0 : Math.max(4, storedBarSpacing)) : manualGapValue;
         return root.usesConnectedSurfaceChrome ? 0 : rawPopupGap;
     }
 

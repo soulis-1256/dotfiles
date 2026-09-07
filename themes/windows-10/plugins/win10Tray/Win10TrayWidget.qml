@@ -16,6 +16,7 @@ BasePill {
 
     enableBackgroundHover: false
     enableCursor: false
+    horizontalPadding: 0
 
     property var parentWindow: null
     property var widgetData: null

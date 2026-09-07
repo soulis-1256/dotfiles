@@ -56,6 +56,12 @@ BasePill {
                 spacing: Theme.spacingM
                 visible: !root.isVerticalOrientation
 
+                StyledTextMetrics {
+                    id: speedBaseline
+                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                    text: "999 Mbps"
+                }
+
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Theme.spacingXXS
@@ -66,11 +72,21 @@ BasePill {
                         color: Theme.info
                     }
 
-                    StyledText {
-                        id: rxText
-                        text: root.formatNetworkSpeed(DgopService.networkRxRate)
-                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                        color: Theme.widgetTextColor
+                    Item {
+                        implicitWidth: root.minimumWidth ? Math.max(speedBaseline.width, rxText.paintedWidth) : rxText.paintedWidth
+                        implicitHeight: rxText.implicitHeight
+                        width: implicitWidth
+                        height: implicitHeight
+
+                        StyledText {
+                            id: rxText
+                            text: root.formatNetworkSpeed(DgopService.networkRxRate)
+                            font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                            color: Theme.widgetTextColor
+                            anchors.fill: parent
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
 
@@ -84,11 +100,21 @@ BasePill {
                         color: Theme.error
                     }
 
-                    StyledText {
-                        id: txText
-                        text: root.formatNetworkSpeed(DgopService.networkTxRate)
-                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                        color: Theme.widgetTextColor
+                    Item {
+                        implicitWidth: root.minimumWidth ? Math.max(speedBaseline.width, txText.paintedWidth) : txText.paintedWidth
+                        implicitHeight: txText.implicitHeight
+                        width: implicitWidth
+                        height: implicitHeight
+
+                        StyledText {
+                            id: txText
+                            text: root.formatNetworkSpeed(DgopService.networkTxRate)
+                            font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                            color: Theme.widgetTextColor
+                            anchors.fill: parent
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
             }

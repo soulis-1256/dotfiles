@@ -2212,7 +2212,7 @@ Singleton {
 
         const useAutoGaps = (barConfig && barConfig.popupGapsAuto !== undefined) ? barConfig.popupGapsAuto : (defaultBar?.popupGapsAuto ?? true);
         const manualGapValue = (barConfig && barConfig.popupGapsManual !== undefined) ? barConfig.popupGapsManual : (defaultBar?.popupGapsManual ?? 4);
-        const popupGap = isConnected ? 0 : (useAutoGaps ? Math.max(4, spacing) : manualGapValue);
+        const popupGap = isConnected ? 0 : (useAutoGaps ? (spacing === 0 ? 0 : Math.max(4, spacing)) : manualGapValue);
         const edgeSpacing = isConnected ? 0 : spacing;
 
         switch (position) {
@@ -2288,7 +2288,7 @@ Singleton {
 
             const useAutoGaps = other.popupGapsAuto !== undefined ? other.popupGapsAuto : (defaultBar?.popupGapsAuto ?? true);
             const manualGap = other.popupGapsManual !== undefined ? other.popupGapsManual : (defaultBar?.popupGapsManual ?? 4);
-            const popupGap = useAutoGaps ? Math.max(4, otherSpacing) : manualGap;
+            const popupGap = useAutoGaps ? (otherSpacing === 0 ? 0 : Math.max(4, otherSpacing)) : manualGap;
 
             switch (other.position) {
             case SettingsData.Position.Top:

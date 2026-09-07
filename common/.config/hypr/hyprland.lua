@@ -169,14 +169,18 @@ hl.config({
 	},
 })
 
--- Smart borders: disable border when only one tiled window is present
+-- Smart borders & gaps: disable gaps, borders, and rounding when only one tiled window is present
+hl.workspace_rule({ workspace = "w[tv1]", gaps_in = 0, gaps_out = 0 })
+hl.workspace_rule({ workspace = "f[1]", gaps_in = 0, gaps_out = 0 })
 hl.window_rule({
 	match = { float = false, workspace = "w[tv1]" },
 	border_size = 0,
+	rounding = 0,
 })
 hl.window_rule({
 	match = { float = false, workspace = "f[1]" },
 	border_size = 0,
+	rounding = 0,
 })
 
 -- ThinkPad Lid Switch (blanks eDP-1 screen on lid close; dormant on desktop)

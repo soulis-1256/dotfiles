@@ -44,6 +44,8 @@ Item {
     readonly property real _frameInsetExtra: Math.max(0, _frameInsetResolved - SettingsData.frameThickness)
 
     readonly property real _leftMargin: {
+        if (barConfig?.fullHeightWidgets && (barConfig?.innerPadding ?? 0) <= 0 && _barInsetPaddingRaw <= 0)
+            return 0;
         if (_barIsVertical)
             return _edgeBaseMargin;
         if (_usesFrameBarChrome)
@@ -51,6 +53,8 @@ Item {
         return Math.max(0, _barInsetPadding);
     }
     readonly property real _rightMargin: {
+        if (barConfig?.fullHeightWidgets && (barConfig?.innerPadding ?? 0) <= 0 && _barInsetPaddingRaw <= 0)
+            return 0;
         if (_barIsVertical)
             return _edgeBaseMargin;
         if (_usesFrameBarChrome)
@@ -58,6 +62,8 @@ Item {
         return Math.max(0, _barInsetPadding);
     }
     readonly property real _topMargin: {
+        if (barConfig?.fullHeightWidgets && (barConfig?.innerPadding ?? 0) <= 0 && _barInsetPaddingRaw <= 0)
+            return 0;
         if (!_barIsVertical)
             return 0;
         if (_usesFrameBarChrome)
@@ -65,6 +71,8 @@ Item {
         return Math.max(0, _barInsetPadding);
     }
     readonly property real _bottomMargin: {
+        if (barConfig?.fullHeightWidgets && (barConfig?.innerPadding ?? 0) <= 0 && _barInsetPaddingRaw <= 0)
+            return 0;
         if (!_barIsVertical)
             return 0;
         if (_usesFrameBarChrome)
@@ -725,6 +733,7 @@ Item {
                 widgetThickness: barWindow.widgetThickness
                 barThickness: barWindow.effectiveBarThickness
                 barSpacing: barConfig?.spacing ?? 4
+                barConfig: topBarContent.barConfig
                 sectionAvailablePrimarySize: Math.max(1, hCenterSection.x > 0 ? parent.width - (hCenterSection.x + hCenterSection.width) : parent.width / 3)
             }
 
@@ -758,6 +767,7 @@ Item {
                 widgetThickness: barWindow.widgetThickness
                 barThickness: barWindow.effectiveBarThickness
                 barSpacing: barConfig?.spacing ?? 4
+                barConfig: topBarContent.barConfig
                 sectionAvailablePrimarySize: Math.max(1, hRightSection.x > 0 ? hRightSection.x - (hLeftSection.x + hLeftSection.width) : parent.width / 3)
             }
 
@@ -833,6 +843,7 @@ Item {
                 widgetThickness: barWindow.widgetThickness
                 barThickness: barWindow.effectiveBarThickness
                 barSpacing: barConfig?.spacing ?? 4
+                barConfig: topBarContent.barConfig
                 sectionAvailablePrimarySize: Math.max(1, vRightSection.y > 0 ? vRightSection.y - (vLeftSection.y + vLeftSection.height) : parent.height / 3)
             }
 
@@ -868,6 +879,7 @@ Item {
                 widgetThickness: barWindow.widgetThickness
                 barThickness: barWindow.effectiveBarThickness
                 barSpacing: barConfig?.spacing ?? 4
+                barConfig: topBarContent.barConfig
                 sectionAvailablePrimarySize: Math.max(1, vCenterSection.y > 0 ? parent.height - (vCenterSection.y + vCenterSection.height) : parent.height / 3)
             }
 
@@ -969,6 +981,7 @@ Item {
             isActive: false
             widgetThickness: barWindow.widgetThickness
             barThickness: barWindow.effectiveBarThickness
+            barConfig: topBarContent.barConfig
             section: topBarContent.getWidgetSection(parent)
             popoutTarget: PopoutService.appDrawerLoader?.item
             parentScreen: barWindow.screen

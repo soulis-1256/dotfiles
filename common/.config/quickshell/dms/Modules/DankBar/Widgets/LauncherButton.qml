@@ -1,6 +1,4 @@
 import QtQuick
-import QtQuick.Effects
-import Quickshell.Widgets
 import qs.Common
 import qs.Modules.Plugins
 import qs.Services
@@ -14,10 +12,13 @@ BasePill {
 
     content: Component {
         Item {
-            implicitWidth: root.widgetThickness - root.horizontalPadding * 2
+            implicitWidth: logo.implicitWidth
             implicitHeight: root.widgetThickness - root.horizontalPadding * 2
+            width: implicitWidth
+            height: implicitHeight
 
             LauncherLogo {
+                id: logo
                 anchors.centerIn: parent
                 barThickness: root.barThickness
                 barConfig: root.barConfig
