@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Hyprland
+import Quickshell.I3
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -105,6 +107,11 @@ Item {
     property var contextMenuParentFolder: null
     property real contextMenuX: 0
     property real contextMenuY: 0
+    onContextMenuVisibleChanged: {
+        if (root.contextMenuVisible)
+            root.refreshAvailableWorkspaces();
+    }
+    property var availableWorkspaces: []
 
     // Windows 10 Open Folder Overlay State
     property string openFolderId: ""
@@ -690,13 +697,28 @@ Item {
             if (!placed) {
                 var stepC = (w === 1) ? 1 : 2;
                 var stepR = (h === 1) ? 1 : 2;
-                for (var r = 0; r < 200 && !placed; r += stepR) {
-                    for (var c = 0; c <= 6 - w && !placed; c += stepC) {
+                var startR = Math.floor(Math.max(0, it.row || 0) / stepR) * stepR;
+                var startC = Math.floor(Math.max(0, it.col || 0) / stepC) * stepC;
+                for (var r = startR; r < 200 && !placed; r += stepR) {
+                    var cMin = (r === startR) ? startC : 0;
+                    for (var c = cMin; c <= 6 - w && !placed; c += stepC) {
                         if (canFit(r, c, w, h)) {
                             it.col = c;
                             it.row = r;
                             occupy(r, c, w, h);
                             placed = true;
+                        }
+                    }
+                }
+                if (!placed) {
+                    for (var r2 = 0; r2 < startR && !placed; r2 += stepR) {
+                        for (var c2 = 0; c2 <= 6 - w && !placed; c2 += stepC) {
+                            if (canFit(r2, c2, w, h)) {
+                                it.col = c2;
+                                it.row = r2;
+                                occupy(r2, c2, w, h);
+                                placed = true;
+                            }
                         }
                     }
                 }
@@ -1181,7 +1203,7 @@ Item {
             }
         }
 
-        if (!centerHit && !root.dragReorderLive) {
+        if (!centerHit) {
             if (typeof targetTg.checkCenterDropTarget === "function")
                 centerHit = targetTg.checkCenterDropTarget(lp.x, lp.y);
             if (centerHit)
@@ -1222,6 +1244,29 @@ Item {
         } else {
             root.dragFolderStickyId = "";
             root.dragFolderStickyGroupId = 0;
+        }
+
+        // Live reorder gating:
+        // Over empty space: immediately active with NO delay.
+        // Over apps and folders: only delay when moving fast to allow folder creation/passing through without displacing prematurely.
+        const dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
+        const dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
+        const isSmall = (dragW <= 45 && dragH <= 45);
+        const isWide = (dragW > 100 && dragH <= 100);
+        const isLarge = (dragW > 100 && dragH > 100);
+        const dw = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
+        const dh = isSmall ? 1 : (isLarge ? 4 : 2);
+
+        const hasTileUnderTarget = (targetTg && typeof targetTg.hasTileAt === "function")
+            ? targetTg.hasTileAt(root.dropTargetCol, root.dropTargetRow, dw, dh)
+            : false;
+
+        if (!hasTileUnderTarget && !centerHit) {
+            root.dragReorderLive = true;
+        } else if (hasTileUnderTarget || centerHit) {
+            if (root.dragPointerSpeed > root.dragSlowEnterSpeed) {
+                root.dragReorderLive = false;
+            }
         }
     }
 
@@ -1569,6 +1614,167 @@ Item {
         SessionService.launchDesktopEntry(entry);
         AppUsageHistoryData.addAppUsage(entry);
         root.closeMenu();
+    }
+
+    function refreshAvailableWorkspaces() {
+        const list = [];
+        const seen = {};
+        let focusedWsId = 1;
+
+        if (typeof CompositorService !== "undefined" && CompositorService.isHyprland) {
+            if (typeof Hyprland !== "undefined") {
+                focusedWsId = (Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.id !== undefined) ? Hyprland.focusedWorkspace.id : 1;
+                const raw = (Hyprland.workspaces && Hyprland.workspaces.values) ? Hyprland.workspaces.values : [];
+                const hyprlandToplevels = (Hyprland.toplevels && Hyprland.toplevels.values) ? Array.from(Hyprland.toplevels.values) : [];
+                for (let i = 0; i < raw.length; i++) {
+                    const ws = raw[i];
+                    if (!ws) continue;
+                    const name = ws.name || "";
+                    if (name === "special" || name.startsWith("special:")) continue;
+
+                    const id = ws.id;
+                    seen[id] = true;
+                    const hasWindows = hyprlandToplevels.some(function(tl) {
+                        return tl.workspace && tl.workspace.id === id;
+                    });
+                    list.push({
+                        "id": id,
+                        "name": (name && name !== String(id)) ? name : ("Workspace " + id),
+                        "rawName": name,
+                        "monitor": ws.monitor ? ws.monitor.name : "",
+                        "isFocused": id === focusedWsId,
+                        "hasWindows": hasWindows,
+                        "exists": true
+                    });
+                }
+            }
+        } else if (typeof CompositorService !== "undefined" && CompositorService.isNiri) {
+            if (typeof NiriService !== "undefined" && NiriService.workspaces) {
+                const niriMap = NiriService.workspaces;
+                for (const k in niriMap) {
+                    const ws = niriMap[k];
+                    if (!ws) continue;
+                    seen[ws.id] = true;
+                    list.push({
+                        "id": ws.id,
+                        "name": ws.name ? ("Workspace: " + ws.name) : ("Workspace " + (ws.idx !== undefined ? (ws.idx + 1) : ws.id)),
+                        "rawName": ws.name || String(ws.id),
+                        "monitor": ws.output || "",
+                        "isFocused": !!ws.is_focused,
+                        "hasWindows": true,
+                        "exists": true
+                    });
+                }
+            }
+        }
+
+        // Always ensure standard numeric workspaces 1 through 10 are available
+        for (let num = 1; num <= 10; num++) {
+            if (!seen[num]) {
+                list.push({
+                    "id": num,
+                    "name": "Workspace " + num,
+                    "rawName": String(num),
+                    "monitor": "",
+                    "isFocused": num === focusedWsId,
+                    "hasWindows": false,
+                    "exists": false
+                });
+            }
+        }
+
+        list.sort(function(a, b) {
+            const aNum = (typeof a.id === "number" && a.id > 0) ? a.id : 9999;
+            const bNum = (typeof b.id === "number" && b.id > 0) ? b.id : 9999;
+            if (aNum !== bNum) return aNum - bNum;
+            return (a.name || "").localeCompare(b.name || "");
+        });
+
+        root.availableWorkspaces = list;
+    }
+
+    function launchInWorkspace(item, workspaceId) {
+        if (!item)
+            return;
+
+        root.contextMenuVisible = false;
+
+        const appId = item.id || "";
+        const entry = appId ? lookupEntry(appId) : null;
+
+        if (typeof CompositorService !== "undefined" && CompositorService.isHyprland) {
+            let cmdParts = [];
+            if (entry && entry.command && entry.command.length > 0) {
+                cmdParts = Array.from(entry.command);
+            } else if (entry && entry.exec) {
+                cmdParts = [entry.exec];
+            } else if (appId) {
+                cmdParts = [appId];
+            } else if (item.isWeb && item.url) {
+                cmdParts = ["xdg-open", item.url];
+            }
+
+            if (cmdParts.length > 0) {
+                if (typeof SessionData !== "undefined" && SessionData.getAppOverride && appId) {
+                    const override = SessionData.getAppOverride(appId);
+                    if (override && override.extraFlags) {
+                        const extraArgs = override.extraFlags.trim().split(/\s+/).filter(function(arg) { return arg.length > 0; });
+                        cmdParts = cmdParts.concat(extraArgs);
+                    }
+                }
+
+                if (entry && entry.runInTerminal) {
+                    const term = (typeof SessionData !== "undefined" && SessionData.resolveTerminal)
+                        ? (SessionData.resolveTerminal() || "ghostty")
+                        : "ghostty";
+                    cmdParts = [term, "-e"].concat(cmdParts);
+                }
+
+                const escaped = cmdParts.map(function(arg) {
+                    return "'" + String(arg).replace(/'/g, "'\\''") + "'";
+                }).join(" ");
+
+                const execCmd = `[workspace ${workspaceId}] ${escaped}`;
+                if (typeof HyprlandService !== "undefined" && HyprlandService.luaConfigActive) {
+                    Hyprland.dispatch(`hl.dsp.exec_cmd(${JSON.stringify(execCmd)})`);
+                    Hyprland.dispatch(`hl.dsp.focus({ workspace = ${JSON.stringify(String(workspaceId))} })`);
+                } else if (typeof Hyprland !== "undefined") {
+                    Hyprland.dispatch(`exec ${execCmd}`);
+                    Hyprland.dispatch(`workspace ${workspaceId}`);
+                }
+
+                if (entry && typeof AppUsageHistoryData !== "undefined") {
+                    AppUsageHistoryData.addAppUsage(entry);
+                }
+                root.closeMenu();
+                return;
+            }
+        }
+
+        // Shift focus to workspace for non-Hyprland compositors
+        if (typeof CompositorService !== "undefined" && CompositorService.isHyprland) {
+            if (typeof HyprlandService !== "undefined") {
+                HyprlandService.focusWorkspace(workspaceId);
+            }
+        } else if (typeof CompositorService !== "undefined" && CompositorService.isNiri) {
+            if (typeof NiriService !== "undefined") {
+                NiriService.switchToWorkspace(workspaceId);
+            }
+        } else if (typeof CompositorService !== "undefined" && CompositorService.isMango && typeof MangoService !== "undefined") {
+            MangoService.switchToTag("", workspaceId);
+        } else if (typeof CompositorService !== "undefined" && (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)) {
+            try {
+                if (typeof I3 !== "undefined") {
+                    I3.dispatch(`workspace number ${workspaceId}`);
+                }
+            } catch (_) {}
+        }
+
+        if (appId) {
+            root.launchById(appId);
+        } else {
+            root.launchItem(item);
+        }
     }
 
     function launchItem(item) {
@@ -2584,13 +2790,13 @@ Item {
                                             onPressed: function(mouse) {
                                                 pressPos = Qt.point(mouse.x, mouse.y);
                                                 draggingStarted = false;
-                                                preventStealing = false;
+                                                preventStealing = true;
                                             }
 
                                             onPositionChanged: function(mouse) {
                                                 if (pressed) {
                                                     var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                                    if (!root.isDraggingTile && !draggingStarted && dist > 7) {
+                                                    if (!root.isDraggingTile && !draggingStarted && dist > 3) {
                                                         draggingStarted = true;
                                                         preventStealing = true;
                                                         var gp = mapToItem(menuBackground, mouse.x, mouse.y);
@@ -3195,13 +3401,25 @@ Item {
 
                                                 anchors.fill: parent
                                                 hoverEnabled: true
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                 cursorShape: Qt.PointingHandCursor
                                                 onEntered: root.hoveredSearchItem = root.bestMatchApp
                                                 onExited: {
                                                     if (root.hoveredSearchItem === root.bestMatchApp)
                                                         root.hoveredSearchItem = null;
                                                 }
-                                                onClicked: root.launchItem(root.bestMatchApp)
+                                                onClicked: function(mouse) {
+                                                    if (mouse.button === Qt.RightButton && root.bestMatchApp && !root.bestMatchApp.isWeb) {
+                                                        const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                        root.contextMenuItem = root.bestMatchApp;
+                                                        root.contextMenuType = "app";
+                                                        root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                                        root.contextMenuY = Math.min(gp.y, menuBackground.height - 180);
+                                                        root.contextMenuVisible = true;
+                                                        return;
+                                                    }
+                                                    root.launchItem(root.bestMatchApp);
+                                                }
                                             }
                                         }
                                     }
@@ -3318,13 +3536,25 @@ Item {
 
                                                     anchors.fill: parent
                                                     hoverEnabled: true
+                                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                     cursorShape: Qt.PointingHandCursor
                                                     onEntered: root.hoveredSearchItem = modelData
                                                     onExited: {
                                                         if (root.hoveredSearchItem === modelData)
                                                             root.hoveredSearchItem = null;
                                                     }
-                                                    onClicked: root.launchItem(modelData)
+                                                    onClicked: function(mouse) {
+                                                        if (mouse.button === Qt.RightButton && !modelData.isWeb) {
+                                                            const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                            root.contextMenuItem = modelData;
+                                                            root.contextMenuType = "app";
+                                                            root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                                            root.contextMenuY = Math.min(gp.y, menuBackground.height - 180);
+                                                            root.contextMenuVisible = true;
+                                                            return;
+                                                        }
+                                                        root.launchItem(modelData);
+                                                    }
                                                 }
                                             }
                                         }
@@ -3403,8 +3633,24 @@ Item {
                                     }
 
                                     SearchActionButton {
+                                        id: previewOpenInWsBtn
                                         visible: root.currentPreviewItem && !root.currentPreviewItem.isWeb && root.currentPreviewItem.id
-                                        iconName: "push_pin"
+                                        iconName: "workspaces"
+                                        label: "Open in workspace"
+                                        onClicked: {
+                                            root.contextMenuItem = root.currentPreviewItem;
+                                            root.contextMenuType = "app";
+                                            const gp = previewOpenInWsBtn.mapToItem(menuBackground, 0, 0);
+                                            root.contextMenuX = Math.max(8, Math.min(gp.x - 204, menuBackground.width - 210));
+                                            root.contextMenuY = Math.max(8, Math.min(gp.y, menuBackground.height - 200));
+                                            root.contextMenuVisible = true;
+                                            root.openWorkspaceSubmenu(null);
+                                        }
+                                    }
+
+                                    SearchActionButton {
+                                        visible: root.currentPreviewItem && !root.currentPreviewItem.isWeb && root.currentPreviewItem.id
+                                        iconName: root.isAppPinned(root.currentPreviewItem) ? "remove_circle_outline" : "push_pin"
                                         label: root.isAppPinned(root.currentPreviewItem) ? "Unpin from Start" : "Pin to Start"
                                         onClicked: {
                                             root.togglePinApp(root.currentPreviewItem);
@@ -3817,14 +4063,14 @@ Item {
                 spacing: 0
 
                 // ----------------------------------------------------
-                // 1. APP IN ALL-APPS LIST
+                // 1. APP IN ALL-APPS LIST / SEARCH
                 // ----------------------------------------------------
                 PowerRow {
                     visible: root.contextMenuType === "app"
-                    iconName: "push_pin"
-                    label: "Pin to Start"
+                    iconName: root.isAppPinned(root.contextMenuItem) ? "remove_circle_outline" : "push_pin"
+                    label: root.isAppPinned(root.contextMenuItem) ? "Unpin from Start" : "Pin to Start"
                     onClicked: {
-                        root.pinAppToStart(root.contextMenuItem);
+                        root.togglePinApp(root.contextMenuItem);
                         root.contextMenuVisible = false;
                     }
                 }
@@ -3850,6 +4096,135 @@ Item {
                         root.launchById(root.contextMenuItem ? root.contextMenuItem.id : "");
                         root.contextMenuVisible = false;
                     }
+                }
+
+                // ----------------------------------------------------
+                // SHARED: OPEN IN WORKSPACE (Inline 2x5 Grid)
+                // ----------------------------------------------------
+                Rectangle {
+                    visible: (root.contextMenuType === "app" || root.contextMenuType === "tile" || root.contextMenuType === "folderTile") && (!root.contextMenuItem || !root.contextMenuItem.isFolder)
+                    width: parent.width - 16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: 1
+                    color: Qt.rgba(255, 255, 255, 0.08)
+                }
+
+                Item {
+                    id: wsSection
+                    visible: (root.contextMenuType === "app" || root.contextMenuType === "tile" || root.contextMenuType === "folderTile") && (!root.contextMenuItem || !root.contextMenuItem.isFolder)
+                    width: parent.width
+                    implicitHeight: wsSectionCol.implicitHeight + 8
+                    height: implicitHeight
+
+                    Column {
+                        id: wsSectionCol
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.topMargin: 4
+                        spacing: 2
+
+                        Row {
+                            spacing: 6
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            height: 20
+
+                            DankIcon {
+                                name: "workspaces"
+                                size: 12
+                                color: root.winMuted
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            StyledText {
+                                text: "Open in workspace"
+                                font.pixelSize: 11
+                                color: root.winMuted
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Repeater {
+                            model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+                            Rectangle {
+                                id: wsRow
+                                required property int modelData
+                                readonly property bool isCurrent: {
+                                    for (var i = 0; i < root.availableWorkspaces.length; i++) {
+                                        if (root.availableWorkspaces[i].id === modelData)
+                                            return root.availableWorkspaces[i].isFocused;
+                                    }
+                                    return false;
+                                }
+                                readonly property bool wsExists: {
+                                    for (var i = 0; i < root.availableWorkspaces.length; i++) {
+                                        if (root.availableWorkspaces[i].id === modelData)
+                                            return root.availableWorkspaces[i].exists;
+                                    }
+                                    return false;
+                                }
+
+                                width: parent.width
+                                height: 24
+                                color: isCurrent ? root.winAccent : (wsRowHover.containsMouse ? root.winHover : "transparent")
+
+                                DankIcon {
+                                    id: wsRowIcon
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: "desktop_windows"
+                                    size: 13
+                                    color: wsRow.isCurrent ? Theme.primaryText : root.winText
+                                }
+
+                                StyledText {
+                                    anchors.left: wsRowIcon.right
+                                    anchors.leftMargin: 8
+                                    anchors.right: wsDot.left
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Workspace " + wsRow.modelData
+                                    font.pixelSize: 11
+                                    font.weight: wsRow.isCurrent ? Font.DemiBold : Font.Normal
+                                    color: wsRow.isCurrent ? Theme.primaryText : root.winText
+                                    elide: Text.ElideRight
+                                }
+
+                                Rectangle {
+                                    id: wsDot
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: wsRow.wsExists && !wsRow.isCurrent
+                                    width: 6
+                                    height: 6
+                                    radius: 3
+                                    color: root.winAccent
+                                }
+
+                                MouseArea {
+                                    id: wsRowHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.launchInWorkspace(root.contextMenuItem, wsRow.modelData);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folderTile"
+                    width: parent.width - 16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: 1
+                    color: Qt.rgba(255, 255, 255, 0.08)
                 }
 
                 // Resize section for top-level tile
@@ -4386,7 +4761,6 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: pr.clicked()
         }
-
     }
 
     component TileGroup: Item {
@@ -4456,6 +4830,22 @@ Item {
             return list;
         }
 
+        function hasTileAt(c, r, w, h) {
+            var items = tg.getOtherItems();
+            if (!items || items.length === 0) return false;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var ic = (typeof it.col === "number") ? it.col : 0;
+                var ir = (typeof it.row === "number") ? it.row : 0;
+                var iw = it.wCells;
+                var ih = it.hCells;
+                if (ic < c + w && ic + iw > c && ir < r + h && ir + ih > r) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         function calculateTargetCell(globalX, globalY) {
             var lp = tileFlowItem.mapFromItem(menuBackground, globalX, globalY);
             var lx = Math.max(0, lp.x);
@@ -4487,11 +4877,36 @@ Item {
                 r = Math.floor(r / 2) * 2;
             }
 
+            // Canvas bottom boundary:
+            // Tiles can be placed anywhere across the visible canvas height.
+            // Rows are capped so the bottom of the placed tile stays within the reachable canvas,
+            // leaving the remaining bottom margin (where a full item doesn't fit even on "small" size) unreachable.
+            var maxVisibleY = 572;
+            if (typeof menuBackground !== "undefined" && menuBackground) {
+                var p = tileFlowItem.mapFromItem(menuBackground, 0, menuBackground.height);
+                if (p && p.y > 0)
+                    maxVisibleY = p.y;
+            }
+            var canvasBottom = Math.max(maxVisibleY, tg.contentHeight);
+            var stepR = isSmall ? 1 : 2;
+            var maxRow = 0;
+            for (var testR = 0; testR <= 100; testR += stepR) {
+                var testPy = Math.floor(testR / 2) * 98 + (testR % 2) * 49;
+                if (testPy + dragH <= canvasBottom + 2) {
+                    maxRow = testR;
+                } else {
+                    break;
+                }
+            }
+            if (r > maxRow) {
+                r = maxRow;
+            }
+
             return Qt.point(c, r);
         }
 
         function getDisplacedMap(targetCol, targetRow) {
-            if (!root.isDraggingTile || !root.dragReorderLive || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId)
+            if (!root.isDraggingTile || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId)
                 return {};
 
             var dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
@@ -4502,33 +4917,271 @@ Item {
             var dw = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
             var dh = isSmall ? 1 : (isLarge ? 4 : 2);
 
-            var occupied = {};
-            for (var dr = 0; dr < dh; dr++) {
-                for (var dc = 0; dc < dw; dc++) {
-                    occupied[(targetRow + dr) + "," + (targetCol + dc)] = true;
-                }
-            }
-
-            function canFit(r, c, w, h) {
-                if (c + w > 6) return false;
-                for (var ddr = 0; ddr < h; ddr++) {
-                    for (var ddc = 0; ddc < w; ddc++) {
-                        if (occupied[(r + ddr) + "," + (c + ddc)]) return false;
-                    }
-                }
-                return true;
-            }
-
-            function occupy(r, c, w, h) {
-                for (var ddr = 0; ddr < h; ddr++) {
-                    for (var ddc = 0; ddc < w; ddc++) {
-                        occupied[(r + ddr) + "," + (c + ddc)] = true;
-                    }
-                }
-            }
-
             var other = getOtherItems();
-            other.sort(function(a, b) {
+            if (!other || other.length === 0)
+                return {};
+
+            function rectsOverlap(c1, r1, w1, h1, c2, r2, w2, h2) {
+                return (c1 < c2 + w2 && c1 + w1 > c2 && r1 < r2 + h2 && r1 + h1 > r2);
+            }
+
+            var hasOverlap = false;
+            for (var k = 0; k < other.length; k++) {
+                var oit = other[k];
+                var oc = (typeof oit.col === "number") ? oit.col : 0;
+                var or = (typeof oit.row === "number") ? oit.row : 0;
+                if (rectsOverlap(oc, or, oit.wCells, oit.hCells, targetCol, targetRow, dw, dh)) {
+                    hasOverlap = true;
+                    break;
+                }
+            }
+            if (!hasOverlap) {
+                return {};
+            }
+
+            var slotPx = tg.cellToPixel(targetCol, targetRow);
+            var slotCx = slotPx.x + ((dw === 1) ? 21.5 : (dw === 4 ? 95 : 46));
+            var slotCy = slotPx.y + ((dh === 1) ? 21.5 : (dh === 4 ? 95 : 46));
+
+            var ghostPos = (typeof tileFlowItem !== "undefined" && tileFlowItem)
+                ? tileFlowItem.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY)
+                : tg.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
+            var ghostCx = ghostPos.x + dragW / 2;
+            var ghostCy = ghostPos.y + dragH / 2;
+
+            var diffX = ghostCx - slotCx;
+            var diffY = ghostCy - slotCy;
+
+            var pushDir = "right";
+            if (Math.abs(diffX) >= Math.abs(diffY)) {
+                if (diffX > 8) {
+                    pushDir = "left";
+                } else if (diffX < -8) {
+                    pushDir = "right";
+                } else if (root.draggedTileData && typeof root.draggedTileData.col === "number") {
+                    var srcC = root.draggedTileData.col;
+                    if (srcC > targetCol) pushDir = "left";
+                    else if (srcC < targetCol) pushDir = "right";
+                    else pushDir = "right";
+                }
+            } else {
+                if (diffY > 8) {
+                    pushDir = "up";
+                } else if (diffY < -8) {
+                    pushDir = "down";
+                } else if (root.draggedTileData && typeof root.draggedTileData.row === "number") {
+                    var srcR = root.draggedTileData.row;
+                    if (srcR > targetRow) pushDir = "up";
+                    else if (srcR < targetRow) pushDir = "down";
+                    else pushDir = "down";
+                }
+            }
+
+            function simulatePush(primaryDir) {
+                var pos = {};
+                for (var i = 0; i < other.length; i++) {
+                    var it = other[i];
+                    pos[it.id] = {
+                        id: it.id,
+                        col: (typeof it.col === "number") ? it.col : 0,
+                        row: (typeof it.row === "number") ? it.row : 0,
+                        w: it.wCells,
+                        h: it.hCells
+                    };
+                }
+
+                var queue = [];
+                var inQueue = {};
+
+                for (var id in pos) {
+                    var p = pos[id];
+                    if (rectsOverlap(p.col, p.row, p.w, p.h, targetCol, targetRow, dw, dh)) {
+                        queue.push(id);
+                        inQueue[id] = true;
+                    }
+                }
+
+                if (queue.length === 0) {
+                    return pos;
+                }
+
+                var maxSteps = other.length * 8;
+                var steps = 0;
+
+                while (queue.length > 0) {
+                    steps++;
+                    if (steps > maxSteps) {
+                        return null;
+                    }
+
+                    var currId = queue.shift();
+                    inQueue[currId] = false;
+                    var curr = pos[currId];
+
+                    var stepC = (curr.w === 1) ? 1 : 2;
+                    var stepR = (curr.h === 1) ? 1 : 2;
+
+                    var nextCol = curr.col;
+                    var nextRow = curr.row;
+
+                    if (primaryDir === "left") {
+                        nextCol = curr.col - stepC;
+                        if (nextCol < 0) {
+                            if (curr.row - stepR >= 0) {
+                                nextCol = Math.floor((6 - curr.w) / stepC) * stepC;
+                                nextRow = curr.row - stepR;
+                            } else {
+                                return null;
+                            }
+                        }
+                    } else if (primaryDir === "right") {
+                        nextCol = curr.col + stepC;
+                        if (nextCol + curr.w > 6) {
+                            nextCol = 0;
+                            nextRow = curr.row + stepR;
+                        }
+                    } else if (primaryDir === "up") {
+                        nextRow = curr.row - stepR;
+                        if (nextRow < 0) {
+                            return null;
+                        }
+                    } else if (primaryDir === "down") {
+                        nextRow = curr.row + stepR;
+                    }
+
+                    var loopGuard = 0;
+                    while (rectsOverlap(nextCol, nextRow, curr.w, curr.h, targetCol, targetRow, dw, dh)) {
+                        loopGuard++;
+                        if (loopGuard > 10) return null;
+
+                        if (primaryDir === "left") {
+                            nextCol -= stepC;
+                            if (nextCol < 0) {
+                                if (nextRow - stepR >= 0) {
+                                    nextCol = Math.floor((6 - curr.w) / stepC) * stepC;
+                                    nextRow -= stepR;
+                                } else {
+                                    return null;
+                                }
+                            }
+                        } else if (primaryDir === "right") {
+                            nextCol += stepC;
+                            if (nextCol + curr.w > 6) {
+                                nextCol = 0;
+                                nextRow += stepR;
+                            }
+                        } else if (primaryDir === "up") {
+                            nextRow -= stepR;
+                            if (nextRow < 0) return null;
+                        } else if (primaryDir === "down") {
+                            nextRow += stepR;
+                        }
+                    }
+
+                    if (nextCol < 0 || nextCol + curr.w > 6 || nextRow < 0) {
+                        return null;
+                    }
+
+                    curr.col = nextCol;
+                    curr.row = nextRow;
+
+                    for (var oid in pos) {
+                        if (oid === currId) continue;
+                        var o = pos[oid];
+                        if (rectsOverlap(curr.col, curr.row, curr.w, curr.h, o.col, o.row, o.w, o.h)) {
+                            if (!inQueue[oid]) {
+                                queue.push(oid);
+                                inQueue[oid] = true;
+                            }
+                        }
+                    }
+                }
+
+                // Final verification
+                for (var aId in pos) {
+                    var ta = pos[aId];
+                    if (rectsOverlap(ta.col, ta.row, ta.w, ta.h, targetCol, targetRow, dw, dh)) {
+                        return null;
+                    }
+                    for (var bId in pos) {
+                        if (aId === bId) continue;
+                        var tb = pos[bId];
+                        if (rectsOverlap(ta.col, ta.row, ta.w, ta.h, tb.col, tb.row, tb.w, tb.h)) {
+                            return null;
+                        }
+                    }
+                }
+
+                return pos;
+            }
+
+            var tryDirs = [];
+            if (pushDir === "left") {
+                tryDirs = ["left", "right", "down"];
+            } else if (pushDir === "right") {
+                tryDirs = ["right", "down", "left"];
+            } else if (pushDir === "up") {
+                tryDirs = ["up", (diffX > 8 ? "left" : "right"), "down"];
+            } else if (pushDir === "down") {
+                tryDirs = ["down", (diffX > 8 ? "left" : "right")];
+            } else {
+                tryDirs = ["right", "down"];
+            }
+
+            var simulatedPos = null;
+            for (var d = 0; d < tryDirs.length; d++) {
+                simulatedPos = simulatePush(tryDirs[d]);
+                if (simulatedPos !== null) {
+                    break;
+                }
+            }
+
+            if (simulatedPos !== null) {
+                var res = {};
+                for (var sid in simulatedPos) {
+                    res[sid] = Qt.point(simulatedPos[sid].col, simulatedPos[sid].row);
+                }
+                return res;
+            }
+
+            // Fallback: standard forward packing
+            var occupied = {};
+            function isCellOccupied(r, c, w, h) {
+                if (c + w > 6) return true;
+                for (var dr = 0; dr < h; dr++) {
+                    for (var dc = 0; dc < w; dc++) {
+                        if (occupied[(r + dr) + "," + (c + dc)]) return true;
+                    }
+                }
+                return false;
+            }
+            function markOccupied(r, c, w, h) {
+                for (var dr = 0; dr < h; dr++) {
+                    for (var dc = 0; dc < w; dc++) {
+                        occupied[(r + dr) + "," + (c + dc)] = true;
+                    }
+                }
+            }
+            markOccupied(targetRow, targetCol, dw, dh);
+
+            function findNextForwardSlot(fromCol, fromRow, w, h) {
+                var stepC = (w === 1) ? 1 : 2;
+                var stepR = (h === 1) ? 1 : 2;
+                var startC = Math.floor(fromCol / stepC) * stepC;
+                var startR = Math.floor(fromRow / stepR) * stepR;
+                for (var r = startR; r < 200; r += stepR) {
+                    var cMin = (r === startR) ? startC : 0;
+                    for (var c = cMin; c <= 6 - w; c += stepC) {
+                        if (!isCellOccupied(r, c, w, h)) {
+                            return Qt.point(c, r);
+                        }
+                    }
+                }
+                return Qt.point(fromCol, fromRow);
+            }
+
+            var fbResult = {};
+            var sortedOther = other.slice().sort(function(a, b) {
                 var ra = (typeof a.row === "number") ? a.row : 0;
                 var ca = (typeof a.col === "number") ? a.col : 0;
                 var rb = (typeof b.row === "number") ? b.row : 0;
@@ -4536,36 +5189,22 @@ Item {
                 return (ra * 6 + ca) - (rb * 6 + cb);
             });
 
-            var result = {};
-            for (var i = 0; i < other.length; i++) {
-                var it = other[i];
-                var c = (typeof it.col === "number") ? it.col : -1;
-                var r = (typeof it.row === "number") ? it.row : -1;
-                var w = it.wCells;
-                var h = it.hCells;
-                var stepC = (w === 1) ? 1 : 2;
-                var stepR = (h === 1) ? 1 : 2;
-
-                if (c >= 0 && r >= 0 && canFit(r, c, w, h)) {
-                    occupy(r, c, w, h);
-                    result[it.id] = Qt.point(c, r);
+            for (var m = 0; m < sortedOther.length; m++) {
+                var itm = sortedOther[m];
+                var ic = (typeof itm.col === "number") ? itm.col : 0;
+                var ir = (typeof itm.row === "number") ? itm.row : 0;
+                var iw = itm.wCells;
+                var ih = itm.hCells;
+                if (!rectsOverlap(ic, ir, iw, ih, targetCol, targetRow, dw, dh) && !isCellOccupied(ir, ic, iw, ih)) {
+                    markOccupied(ir, ic, iw, ih);
+                    fbResult[itm.id] = Qt.point(ic, ir);
                 } else {
-                    var placed = false;
-                    var startR = Math.min(r >= 0 ? r : targetRow, targetRow);
-                    startR = Math.floor(startR / stepR) * stepR;
-                    for (var sr = startR; sr < 200 && !placed; sr += stepR) {
-                        for (var sc = 0; sc <= 6 - w && !placed; sc += stepC) {
-                            if (canFit(sr, sc, w, h)) {
-                                occupy(sr, sc, w, h);
-                                result[it.id] = Qt.point(sc, sr);
-                                placed = true;
-                            }
-                        }
-                    }
+                    var fSlot = findNextForwardSlot(ic, ir, iw, ih);
+                    markOccupied(fSlot.y, fSlot.x, iw, ih);
+                    fbResult[itm.id] = Qt.point(fSlot.x, fSlot.y);
                 }
             }
-
-            return result;
+            return fbResult;
         }
 
         function folderHitFromItem(item, i) {
@@ -5046,13 +5685,13 @@ Item {
                                     onPressed: function(mouse) {
                                         pressPos = Qt.point(mouse.x, mouse.y);
                                         draggingStarted = false;
-                                        preventStealing = false;
+                                        preventStealing = true;
                                     }
 
                                     onPositionChanged: function(mouse) {
                                         if (pressed) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                            if (!root.isDraggingTile && !draggingStarted && dist > 7) {
+                                            if (!root.isDraggingTile && !draggingStarted && dist > 3) {
                                                 draggingStarted = true;
                                                 preventStealing = true;
                                                 var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
@@ -5229,13 +5868,13 @@ Item {
                                     onPressed: function(mouse) {
                                         pressPos = Qt.point(mouse.x, mouse.y);
                                         draggingStarted = false;
-                                        preventStealing = false;
+                                        preventStealing = true;
                                     }
 
                                     onPositionChanged: function(mouse) {
                                         if (pressed) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                            if (!root.isDraggingTile && !draggingStarted && dist > 7) {
+                                            if (!root.isDraggingTile && !draggingStarted && dist > 3) {
                                                 draggingStarted = true;
                                                 preventStealing = true;
                                                 var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
