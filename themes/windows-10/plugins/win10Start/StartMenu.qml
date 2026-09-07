@@ -2680,7 +2680,7 @@ Item {
                                         border.color: foTileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent"
                                         border.width: 1
                                         opacity: isBeingDragged ? 0.0 : 1.0
-                                        scale: foTileMouse.pressed && !foTileMouse.draggingStarted ? 0.96 : 1
+                                        scale: foTileMouse.pressed && (foTileMouse.pressedButtons & Qt.LeftButton) && !foTileMouse.draggingStarted ? 0.96 : 1
 
                                         Behavior on scale {
                                             NumberAnimation { duration: 80 }
@@ -2788,13 +2788,33 @@ Item {
                                             enabled: root.renamingItemId !== modelData.id && (!root.isDraggingTile || draggingStarted)
 
                                             onPressed: function(mouse) {
+                                                if (root.isDraggingTile) {
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        root.cancelDraggingTile();
+                                                        return;
+                                                    }
+                                                }
+                                                if (mouse.button === Qt.RightButton) {
+                                                    const gp = mapToItem(menuBackground, mouse.x, mouse.y);
+                                                    root.contextMenuItem = modelData;
+                                                    root.contextMenuGroupId = root.openFolderGroupId;
+                                                    root.contextMenuType = "folderTile";
+                                                    root.contextMenuParentFolder = folderOverlayContainer.folderData;
+                                                    root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
+                                                    root.contextMenuY = Math.min(gp.y, menuBackground.height - 240);
+                                                    root.contextMenuVisible = true;
+                                                    return;
+                                                }
+                                                if (mouse.button !== Qt.LeftButton) {
+                                                    return;
+                                                }
                                                 pressPos = Qt.point(mouse.x, mouse.y);
                                                 draggingStarted = false;
                                                 preventStealing = true;
                                             }
 
                                             onPositionChanged: function(mouse) {
-                                                if (pressed) {
+                                                if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                                     var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
                                                     if (!root.isDraggingTile && !draggingStarted && dist > 3) {
                                                         draggingStarted = true;
@@ -2811,21 +2831,19 @@ Item {
                                             onReleased: function(mouse) {
                                                 preventStealing = false;
                                                 if (root.isDraggingTile) {
-                                                    root.endDraggingTile();
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        root.cancelDraggingTile();
+                                                    } else {
+                                                        root.endDraggingTile();
+                                                    }
                                                 } else if (!draggingStarted) {
                                                     if (mouse.button === Qt.RightButton) {
-                                                        const gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                                        root.contextMenuItem = modelData;
-                                                        root.contextMenuGroupId = root.openFolderGroupId;
-                                                        root.contextMenuType = "folderTile";
-                                                        root.contextMenuParentFolder = folderOverlayContainer.folderData;
-                                                        root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
-                                                        root.contextMenuY = Math.min(gp.y, menuBackground.height - 240);
-                                                        root.contextMenuVisible = true;
                                                         return;
                                                     }
-                                                    root.launchById(modelData.id);
-                                                    root.closeMenu();
+                                                    if (containsMouse) {
+                                                        root.launchById(modelData.id);
+                                                        root.closeMenu();
+                                                    }
                                                 }
                                                 draggingStarted = false;
                                             }
@@ -3208,7 +3226,7 @@ Item {
                                         title: "Settings"
                                         subtitle: "Adjust system and desktop preferences"
                                         onClicked: {
-                                            PopoutService.openSettings();
+                                            PopoutService.openSettingsWithTab("theme");
                                             root.closeMenu();
                                         }
                                     }
@@ -3831,7 +3849,7 @@ Item {
                     iconName: "settings"
                     labelText: "Settings"
                     onClicked: {
-                        PopoutService.openSettings();
+                        PopoutService.openSettingsWithTab("theme");
                         root.closeMenu();
                     }
                 }
@@ -4075,34 +4093,11 @@ Item {
                     }
                 }
 
-                PowerRow {
-                    visible: root.contextMenuType === "app"
-                    iconName: "launch"
-                    label: "Launch"
-                    onClicked: {
-                        root.launchById(root.contextMenuItem ? root.contextMenuItem.id : "");
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // ----------------------------------------------------
-                // 2. TILE IN PIN AREA
-                // ----------------------------------------------------
-                PowerRow {
-                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folderTile"
-                    iconName: "launch"
-                    label: "Launch"
-                    onClicked: {
-                        root.launchById(root.contextMenuItem ? root.contextMenuItem.id : "");
-                        root.contextMenuVisible = false;
-                    }
-                }
-
                 // ----------------------------------------------------
                 // SHARED: OPEN IN WORKSPACE (Inline 2x5 Grid)
                 // ----------------------------------------------------
                 Rectangle {
-                    visible: (root.contextMenuType === "app" || root.contextMenuType === "tile" || root.contextMenuType === "folderTile") && (!root.contextMenuItem || !root.contextMenuItem.isFolder)
+                    visible: root.contextMenuType === "app" && (!root.contextMenuItem || !root.contextMenuItem.isFolder)
                     width: parent.width - 16
                     anchors.horizontalCenter: parent.horizontalCenter
                     height: 1
@@ -4168,28 +4163,18 @@ Item {
 
                                 width: parent.width
                                 height: 24
-                                color: isCurrent ? root.winAccent : (wsRowHover.containsMouse ? root.winHover : "transparent")
-
-                                DankIcon {
-                                    id: wsRowIcon
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    name: "desktop_windows"
-                                    size: 13
-                                    color: wsRow.isCurrent ? Theme.primaryText : root.winText
-                                }
+                                color: wsRowHover.containsMouse ? root.winHover : "transparent"
 
                                 StyledText {
-                                    anchors.left: wsRowIcon.right
-                                    anchors.leftMargin: 8
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
                                     anchors.right: wsDot.left
                                     anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "Workspace " + wsRow.modelData
+                                    text: "Workspace " + wsRow.modelData + (wsRow.isCurrent ? " (active)" : "")
                                     font.pixelSize: 11
                                     font.weight: wsRow.isCurrent ? Font.DemiBold : Font.Normal
-                                    color: wsRow.isCurrent ? Theme.primaryText : root.winText
+                                    color: root.winText
                                     elide: Text.ElideRight
                                 }
 
@@ -4198,7 +4183,7 @@ Item {
                                     anchors.right: parent.right
                                     anchors.rightMargin: 12
                                     anchors.verticalCenter: parent.verticalCenter
-                                    visible: wsRow.wsExists && !wsRow.isCurrent
+                                    visible: wsRow.wsExists
                                     width: 6
                                     height: 6
                                     radius: 3
@@ -4939,212 +4924,55 @@ Item {
                 return {};
             }
 
-            var slotPx = tg.cellToPixel(targetCol, targetRow);
-            var slotCx = slotPx.x + ((dw === 1) ? 21.5 : (dw === 4 ? 95 : 46));
-            var slotCy = slotPx.y + ((dh === 1) ? 21.5 : (dh === 4 ? 95 : 46));
+            var isSameGroup = (root.draggedFromGroupId === tg.groupId && !root.draggedFromFolderId && root.draggedTileData);
+            var srcCol = (isSameGroup && typeof root.draggedTileData.col === "number") ? root.draggedTileData.col : -1;
+            var srcRow = (isSameGroup && typeof root.draggedTileData.row === "number") ? root.draggedTileData.row : -1;
 
-            var ghostPos = (typeof tileFlowItem !== "undefined" && tileFlowItem)
-                ? tileFlowItem.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY)
-                : tg.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
-            var ghostCx = ghostPos.x + dragW / 2;
-            var ghostCy = ghostPos.y + dragH / 2;
+            // 1. Same-row internal drag to the right: tiles between srcCol and targetCol slide left
+            if (isSameGroup && srcRow >= 0 && srcRow === targetRow && targetCol > srcCol) {
+                var shiftResult = {};
+                var canShiftLeft = true;
+                var rowTiles = [];
 
-            var diffX = ghostCx - slotCx;
-            var diffY = ghostCy - slotCy;
-
-            var pushDir = "right";
-            if (Math.abs(diffX) >= Math.abs(diffY)) {
-                if (diffX > 8) {
-                    pushDir = "left";
-                } else if (diffX < -8) {
-                    pushDir = "right";
-                } else if (root.draggedTileData && typeof root.draggedTileData.col === "number") {
-                    var srcC = root.draggedTileData.col;
-                    if (srcC > targetCol) pushDir = "left";
-                    else if (srcC < targetCol) pushDir = "right";
-                    else pushDir = "right";
+                for (var si = 0; si < other.length; si++) {
+                    var sit = other[si];
+                    var sc = (typeof sit.col === "number") ? sit.col : 0;
+                    var sr = (typeof sit.row === "number") ? sit.row : 0;
+                    if (sr === targetRow && sc >= srcCol && sc <= targetCol + dw - 1) {
+                        rowTiles.push(sit);
+                    } else {
+                        shiftResult[sit.id] = Qt.point(sc, sr);
+                    }
                 }
-            } else {
-                if (diffY > 8) {
-                    pushDir = "up";
-                } else if (diffY < -8) {
-                    pushDir = "down";
-                } else if (root.draggedTileData && typeof root.draggedTileData.row === "number") {
-                    var srcR = root.draggedTileData.row;
-                    if (srcR > targetRow) pushDir = "up";
-                    else if (srcR < targetRow) pushDir = "down";
-                    else pushDir = "down";
+
+                rowTiles.sort(function(a, b) {
+                    var ca = (typeof a.col === "number") ? a.col : 0;
+                    var cb = (typeof b.col === "number") ? b.col : 0;
+                    return ca - cb;
+                });
+
+                var currC = srcCol;
+                for (var rti = 0; rti < rowTiles.length; rti++) {
+                    var rTile = rowTiles[rti];
+                    if (currC < targetCol + dw && currC + rTile.wCells > targetCol) {
+                        currC = targetCol + dw;
+                    }
+                    if (currC + rTile.wCells > 6) {
+                        canShiftLeft = false;
+                        break;
+                    }
+                    shiftResult[rTile.id] = Qt.point(currC, targetRow);
+                    currC += rTile.wCells;
+                }
+
+                if (canShiftLeft) {
+                    return shiftResult;
                 }
             }
 
-            function simulatePush(primaryDir) {
-                var pos = {};
-                for (var i = 0; i < other.length; i++) {
-                    var it = other[i];
-                    pos[it.id] = {
-                        id: it.id,
-                        col: (typeof it.col === "number") ? it.col : 0,
-                        row: (typeof it.row === "number") ? it.row : 0,
-                        w: it.wCells,
-                        h: it.hCells
-                    };
-                }
-
-                var queue = [];
-                var inQueue = {};
-
-                for (var id in pos) {
-                    var p = pos[id];
-                    if (rectsOverlap(p.col, p.row, p.w, p.h, targetCol, targetRow, dw, dh)) {
-                        queue.push(id);
-                        inQueue[id] = true;
-                    }
-                }
-
-                if (queue.length === 0) {
-                    return pos;
-                }
-
-                var maxSteps = other.length * 8;
-                var steps = 0;
-
-                while (queue.length > 0) {
-                    steps++;
-                    if (steps > maxSteps) {
-                        return null;
-                    }
-
-                    var currId = queue.shift();
-                    inQueue[currId] = false;
-                    var curr = pos[currId];
-
-                    var stepC = (curr.w === 1) ? 1 : 2;
-                    var stepR = (curr.h === 1) ? 1 : 2;
-
-                    var nextCol = curr.col;
-                    var nextRow = curr.row;
-
-                    if (primaryDir === "left") {
-                        nextCol = curr.col - stepC;
-                        if (nextCol < 0) {
-                            if (curr.row - stepR >= 0) {
-                                nextCol = Math.floor((6 - curr.w) / stepC) * stepC;
-                                nextRow = curr.row - stepR;
-                            } else {
-                                return null;
-                            }
-                        }
-                    } else if (primaryDir === "right") {
-                        nextCol = curr.col + stepC;
-                        if (nextCol + curr.w > 6) {
-                            nextCol = 0;
-                            nextRow = curr.row + stepR;
-                        }
-                    } else if (primaryDir === "up") {
-                        nextRow = curr.row - stepR;
-                        if (nextRow < 0) {
-                            return null;
-                        }
-                    } else if (primaryDir === "down") {
-                        nextRow = curr.row + stepR;
-                    }
-
-                    var loopGuard = 0;
-                    while (rectsOverlap(nextCol, nextRow, curr.w, curr.h, targetCol, targetRow, dw, dh)) {
-                        loopGuard++;
-                        if (loopGuard > 10) return null;
-
-                        if (primaryDir === "left") {
-                            nextCol -= stepC;
-                            if (nextCol < 0) {
-                                if (nextRow - stepR >= 0) {
-                                    nextCol = Math.floor((6 - curr.w) / stepC) * stepC;
-                                    nextRow -= stepR;
-                                } else {
-                                    return null;
-                                }
-                            }
-                        } else if (primaryDir === "right") {
-                            nextCol += stepC;
-                            if (nextCol + curr.w > 6) {
-                                nextCol = 0;
-                                nextRow += stepR;
-                            }
-                        } else if (primaryDir === "up") {
-                            nextRow -= stepR;
-                            if (nextRow < 0) return null;
-                        } else if (primaryDir === "down") {
-                            nextRow += stepR;
-                        }
-                    }
-
-                    if (nextCol < 0 || nextCol + curr.w > 6 || nextRow < 0) {
-                        return null;
-                    }
-
-                    curr.col = nextCol;
-                    curr.row = nextRow;
-
-                    for (var oid in pos) {
-                        if (oid === currId) continue;
-                        var o = pos[oid];
-                        if (rectsOverlap(curr.col, curr.row, curr.w, curr.h, o.col, o.row, o.w, o.h)) {
-                            if (!inQueue[oid]) {
-                                queue.push(oid);
-                                inQueue[oid] = true;
-                            }
-                        }
-                    }
-                }
-
-                // Final verification
-                for (var aId in pos) {
-                    var ta = pos[aId];
-                    if (rectsOverlap(ta.col, ta.row, ta.w, ta.h, targetCol, targetRow, dw, dh)) {
-                        return null;
-                    }
-                    for (var bId in pos) {
-                        if (aId === bId) continue;
-                        var tb = pos[bId];
-                        if (rectsOverlap(ta.col, ta.row, ta.w, ta.h, tb.col, tb.row, tb.w, tb.h)) {
-                            return null;
-                        }
-                    }
-                }
-
-                return pos;
-            }
-
-            var tryDirs = [];
-            if (pushDir === "left") {
-                tryDirs = ["left", "right", "down"];
-            } else if (pushDir === "right") {
-                tryDirs = ["right", "down", "left"];
-            } else if (pushDir === "up") {
-                tryDirs = ["up", (diffX > 8 ? "left" : "right"), "down"];
-            } else if (pushDir === "down") {
-                tryDirs = ["down", (diffX > 8 ? "left" : "right")];
-            } else {
-                tryDirs = ["right", "down"];
-            }
-
-            var simulatedPos = null;
-            for (var d = 0; d < tryDirs.length; d++) {
-                simulatedPos = simulatePush(tryDirs[d]);
-                if (simulatedPos !== null) {
-                    break;
-                }
-            }
-
-            if (simulatedPos !== null) {
-                var res = {};
-                for (var sid in simulatedPos) {
-                    res[sid] = Qt.point(simulatedPos[sid].col, simulatedPos[sid].row);
-                }
-                return res;
-            }
-
-            // Fallback: standard forward packing
+            // 2. All other cases: Push right along reading order flow (never up or down directly).
+            // The dragged tile claims [targetCol, targetRow, dw, dh].
+            // Existing tiles preserve their relative reading order and pack into the immediate next available slots.
             var occupied = {};
             function isCellOccupied(r, c, w, h) {
                 if (c + w > 6) return true;
@@ -5162,13 +4990,45 @@ Item {
                     }
                 }
             }
+
             markOccupied(targetRow, targetCol, dw, dh);
 
-            function findNextForwardSlot(fromCol, fromRow, w, h) {
+            var sortedOther = other.slice().sort(function(a, b) {
+                var ra = (typeof a.row === "number") ? a.row : 0;
+                var ca = (typeof a.col === "number") ? a.col : 0;
+                var rb = (typeof b.row === "number") ? b.row : 0;
+                var cb = (typeof b.col === "number") ? b.col : 0;
+                return (ra * 6 + ca) - (rb * 6 + cb);
+            });
+
+            var res = {};
+            var remaining = [];
+
+            // Tiles strictly before target that do not overlap stay in place
+            for (var m = 0; m < sortedOther.length; m++) {
+                var itm = sortedOther[m];
+                var ic = (typeof itm.col === "number") ? itm.col : 0;
+                var ir = (typeof itm.row === "number") ? itm.row : 0;
+                var iw = itm.wCells;
+                var ih = itm.hCells;
+
+                var isBeforeTarget = (ir < targetRow) || (ir === targetRow && ic + iw <= targetCol);
+                var overlapsTarget = rectsOverlap(ic, ir, iw, ih, targetCol, targetRow, dw, dh);
+
+                if (isBeforeTarget && !overlapsTarget && !isCellOccupied(ir, ic, iw, ih)) {
+                    markOccupied(ir, ic, iw, ih);
+                    res[itm.id] = Qt.point(ic, ir);
+                } else {
+                    remaining.push(itm);
+                }
+            }
+
+            function findNextSlot(fromRow, fromCol, w, h) {
                 var stepC = (w === 1) ? 1 : 2;
                 var stepR = (h === 1) ? 1 : 2;
-                var startC = Math.floor(fromCol / stepC) * stepC;
                 var startR = Math.floor(fromRow / stepR) * stepR;
+                var startC = Math.floor(fromCol / stepC) * stepC;
+
                 for (var r = startR; r < 200; r += stepR) {
                     var cMin = (r === startR) ? startC : 0;
                     for (var c = cMin; c <= 6 - w; c += stepC) {
@@ -5180,31 +5040,24 @@ Item {
                 return Qt.point(fromCol, fromRow);
             }
 
-            var fbResult = {};
-            var sortedOther = other.slice().sort(function(a, b) {
-                var ra = (typeof a.row === "number") ? a.row : 0;
-                var ca = (typeof a.col === "number") ? a.col : 0;
-                var rb = (typeof b.row === "number") ? b.row : 0;
-                var cb = (typeof b.col === "number") ? b.col : 0;
-                return (ra * 6 + ca) - (rb * 6 + cb);
-            });
+            // Pack remaining tiles in strict ascending reading order so earlier tiles
+            // (e.g. Dolphin) always get the immediate next slot, preserving order without inverting.
+            for (var j = 0; j < remaining.length; j++) {
+                var remIt = remaining[j];
+                var rw = remIt.wCells;
+                var rh = remIt.hCells;
+                var origC = (typeof remIt.col === "number") ? remIt.col : 0;
+                var origR = (typeof remIt.row === "number") ? remIt.row : 0;
 
-            for (var m = 0; m < sortedOther.length; m++) {
-                var itm = sortedOther[m];
-                var ic = (typeof itm.col === "number") ? itm.col : 0;
-                var ir = (typeof itm.row === "number") ? itm.row : 0;
-                var iw = itm.wCells;
-                var ih = itm.hCells;
-                if (!rectsOverlap(ic, ir, iw, ih, targetCol, targetRow, dw, dh) && !isCellOccupied(ir, ic, iw, ih)) {
-                    markOccupied(ir, ic, iw, ih);
-                    fbResult[itm.id] = Qt.point(ic, ir);
-                } else {
-                    var fSlot = findNextForwardSlot(ic, ir, iw, ih);
-                    markOccupied(fSlot.y, fSlot.x, iw, ih);
-                    fbResult[itm.id] = Qt.point(fSlot.x, fSlot.y);
-                }
+                var scanR = Math.max(targetRow, origR);
+                var scanC = (scanR === targetRow) ? targetCol : 0;
+
+                var slot = findNextSlot(scanR, scanC, rw, rh);
+                markOccupied(slot.y, slot.x, rw, rh);
+                res[remIt.id] = Qt.point(slot.x, slot.y);
             }
-            return fbResult;
+
+            return res;
         }
 
         function folderHitFromItem(item, i) {
@@ -5532,7 +5385,7 @@ Item {
                                 color: folderTileMouse.containsMouse ? root.winTileHoverBg : root.winTileBg
                                 border.color: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? root.winAccent : (folderTileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent")
                                 border.width: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? 2 : 1
-                                scale: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? 0.96 : (folderTileMouse.pressed && !folderTileMouse.draggingStarted ? 0.96 : 1)
+                                scale: (root.isDraggingTile && root.dropTargetType === "add-to-folder" && root.dropTargetFolderId === modelData.id) ? 0.96 : (folderTileMouse.pressed && (folderTileMouse.pressedButtons & Qt.LeftButton) && !folderTileMouse.draggingStarted ? 0.96 : 1)
 
                                 Behavior on scale {
                                     NumberAnimation {
@@ -5683,13 +5536,36 @@ Item {
                                     property bool draggingStarted: false
 
                                     onPressed: function(mouse) {
+                                        if (root.isDraggingTile) {
+                                            if (mouse.button === Qt.RightButton) {
+                                                root.cancelDraggingTile();
+                                                return;
+                                            }
+                                        }
+                                        if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
+                                            root.closeSidebarAndPopovers();
+                                            return;
+                                        }
+                                        if (mouse.button === Qt.RightButton) {
+                                            const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                            root.contextMenuItem = modelData;
+                                            root.contextMenuGroupId = tg.groupId;
+                                            root.contextMenuType = "folder";
+                                            root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 210);
+                                            root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 180);
+                                            root.contextMenuVisible = true;
+                                            return;
+                                        }
+                                        if (mouse.button !== Qt.LeftButton) {
+                                            return;
+                                        }
                                         pressPos = Qt.point(mouse.x, mouse.y);
                                         draggingStarted = false;
                                         preventStealing = true;
                                     }
 
                                     onPositionChanged: function(mouse) {
-                                        if (pressed) {
+                                        if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
                                             if (!root.isDraggingTile && !draggingStarted && dist > 3) {
                                                 draggingStarted = true;
@@ -5706,23 +5582,18 @@ Item {
                                     onReleased: function(mouse) {
                                         preventStealing = false;
                                         if (root.isDraggingTile) {
-                                            root.endDraggingTile();
-                                        } else if (!draggingStarted) {
-                                            if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
-                                                root.closeSidebarAndPopovers();
-                                                return;
-                                            }
                                             if (mouse.button === Qt.RightButton) {
-                                                const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
-                                                root.contextMenuItem = modelData;
-                                                root.contextMenuGroupId = tg.groupId;
-                                                root.contextMenuType = "folder";
-                                                root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 210);
-                                                root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 180);
-                                                root.contextMenuVisible = true;
+                                                root.cancelDraggingTile();
+                                            } else {
+                                                root.endDraggingTile();
+                                            }
+                                        } else if (!draggingStarted) {
+                                            if (mouse.button === Qt.RightButton) {
                                                 return;
                                             }
-                                            root.openFolder(modelData.id, tg.groupId, tileDelegateRoot);
+                                            if (containsMouse) {
+                                                root.openFolder(modelData.id, tg.groupId, tileDelegateRoot);
+                                            }
                                         }
                                         draggingStarted = false;
                                     }
@@ -5746,7 +5617,7 @@ Item {
                                 color: tileMouse.containsMouse ? root.winTileHoverBg : root.winTileBg
                                 border.color: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? root.winAccent : (tileMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.4) : "transparent")
                                 border.width: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? 2 : 1
-                                scale: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? 0.96 : (tileMouse.pressed && !tileMouse.draggingStarted ? 0.96 : 1)
+                                scale: (root.isDraggingTile && root.dropTargetType === "create-folder" && root.dropTargetTileId === modelData.id) ? 0.96 : (tileMouse.pressed && (tileMouse.pressedButtons & Qt.LeftButton) && !tileMouse.draggingStarted ? 0.96 : 1)
 
                                 Behavior on scale {
                                     NumberAnimation {
@@ -5866,13 +5737,36 @@ Item {
                                     property bool draggingStarted: false
 
                                     onPressed: function(mouse) {
+                                        if (root.isDraggingTile) {
+                                            if (mouse.button === Qt.RightButton) {
+                                                root.cancelDraggingTile();
+                                                return;
+                                            }
+                                        }
+                                        if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
+                                            root.closeSidebarAndPopovers();
+                                            return;
+                                        }
+                                        if (mouse.button === Qt.RightButton) {
+                                            const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
+                                            root.contextMenuItem = modelData;
+                                            root.contextMenuGroupId = tg.groupId;
+                                            root.contextMenuType = "tile";
+                                            root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 210);
+                                            root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 240);
+                                            root.contextMenuVisible = true;
+                                            return;
+                                        }
+                                        if (mouse.button !== Qt.LeftButton) {
+                                            return;
+                                        }
                                         pressPos = Qt.point(mouse.x, mouse.y);
                                         draggingStarted = false;
                                         preventStealing = true;
                                     }
 
                                     onPositionChanged: function(mouse) {
-                                        if (pressed) {
+                                        if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
                                             if (!root.isDraggingTile && !draggingStarted && dist > 3) {
                                                 draggingStarted = true;
@@ -5889,23 +5783,18 @@ Item {
                                     onReleased: function(mouse) {
                                         preventStealing = false;
                                         if (root.isDraggingTile) {
-                                            root.endDraggingTile();
-                                        } else if (!draggingStarted) {
-                                            if (root.powerMenuOpen || root.userMenuOpen || (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded && !railDrawer.railHovered)) {
-                                                root.closeSidebarAndPopovers();
-                                                return;
-                                            }
                                             if (mouse.button === Qt.RightButton) {
-                                                const globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
-                                                root.contextMenuItem = modelData;
-                                                root.contextMenuGroupId = tg.groupId;
-                                                root.contextMenuType = "tile";
-                                                root.contextMenuX = Math.min(globalPos.x, menuBackground.width - 210);
-                                                root.contextMenuY = Math.min(globalPos.y, menuBackground.height - 240);
-                                                root.contextMenuVisible = true;
+                                                root.cancelDraggingTile();
+                                            } else {
+                                                root.endDraggingTile();
+                                            }
+                                        } else if (!draggingStarted) {
+                                            if (mouse.button === Qt.RightButton) {
                                                 return;
                                             }
-                                            root.launchById(modelData.id);
+                                            if (containsMouse) {
+                                                root.launchById(modelData.id);
+                                            }
                                         }
                                         draggingStarted = false;
                                     }

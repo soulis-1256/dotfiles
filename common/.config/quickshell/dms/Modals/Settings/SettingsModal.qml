@@ -29,7 +29,7 @@ FloatingWindow {
         wallpaperBrowserLoader.item.open();
     }
     property alias sidebar: sidebar
-    property int currentTabIndex: 0
+    property int currentTabIndex: 10
     property bool shouldHaveFocus: visible
     property bool allowFocusOverride: false
     property alias shouldBeVisible: settingsModal.visible

@@ -664,9 +664,9 @@ Item {
     }
 
     readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
-    readonly property real padding: (root.barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((root.barConfig?.widgetPadding ?? 12) * (widgetHeight / 30), dpr)
-    readonly property real visualWidth: isVertical ? widgetHeight : (workspaceRow.implicitWidth + padding * 2)
-    readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + padding * 2) : widgetHeight
+    readonly property real padding: (root.isFullHeight || (root.barConfig?.removeWidgetPadding ?? false)) ? 0 : Theme.snap((root.barConfig?.widgetPadding ?? 12) * (widgetHeight / 30), dpr)
+    readonly property real visualWidth: isVertical ? widgetHeight : (workspaceRow.implicitWidth + (root.isFullHeight ? 0 : padding * 2))
+    readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + (root.isFullHeight ? 0 : padding * 2)) : widgetHeight
     readonly property real appIconSize: {
         if (root.isFullHeight)
             return Math.max(20, Math.round(root.barThickness * 0.54 + SettingsData.workspaceAppIconSizeOffset));
@@ -1046,8 +1046,8 @@ Item {
     Flow {
         id: workspaceRow
 
-        x: isVertical ? visualBackground.x : (parent.width - implicitWidth) / 2
-        y: isVertical ? (parent.height - implicitHeight) / 2 : visualBackground.y
+        x: isVertical ? visualBackground.x : (root.isFullHeight ? 0 : (parent.width - implicitWidth) / 2)
+        y: isVertical ? (root.isFullHeight ? 0 : (parent.height - implicitHeight) / 2) : visualBackground.y
         spacing: root.isFullHeight ? (root.barConfig?.spacing ?? 0) : Theme.spacingS
         flow: isVertical ? Flow.TopToBottom : Flow.LeftToRight
 

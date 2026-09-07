@@ -691,6 +691,7 @@ Item {
                 widgetThickness: barWindow.widgetThickness
                 barThickness: barWindow.effectiveBarThickness
                 barSpacing: barConfig?.spacing ?? 4
+                barConfig: topBarContent.barConfig
                 sectionAvailablePrimarySize: Math.max(1, hCenterSection.x > 0 ? hCenterSection.x : parent.width / 3)
             }
 
@@ -797,6 +798,7 @@ Item {
                 widgetThickness: barWindow.widgetThickness
                 barThickness: barWindow.effectiveBarThickness
                 barSpacing: barConfig?.spacing ?? 4
+                barConfig: topBarContent.barConfig
                 sectionAvailablePrimarySize: Math.max(1, vCenterSection.y > 0 ? vCenterSection.y : parent.height / 3)
             }
 

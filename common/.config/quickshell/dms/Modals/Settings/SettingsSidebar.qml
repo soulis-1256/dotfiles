@@ -13,7 +13,7 @@ Rectangle {
     LayoutMirroring.enabled: I18n.isRtl
     LayoutMirroring.childrenInherit: true
 
-    property int currentIndex: 0
+    property int currentIndex: 10
     property var parentModal: null
 
     signal tabChangeRequested(int tabIndex)

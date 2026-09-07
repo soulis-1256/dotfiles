@@ -403,13 +403,7 @@ Singleton {
     property int _settingsPendingTabIndex: -1
 
     function openSettings() {
-        if (settingsModal) {
-            settingsModal.show();
-        } else if (settingsModalLoader) {
-            _settingsWantsOpen = true;
-            _settingsWantsToggle = false;
-            settingsModalLoader.activeAsync = true;
-        }
+        openSettingsWithTab("theme");
     }
 
     function openSettingsWithTab(tabName: string) {
@@ -443,13 +437,7 @@ Singleton {
     }
 
     function toggleSettings() {
-        if (settingsModal) {
-            settingsModal.toggle();
-        } else if (settingsModalLoader) {
-            _settingsWantsToggle = true;
-            _settingsWantsOpen = false;
-            settingsModalLoader.activeAsync = true;
-        }
+        toggleSettingsWithTab("theme");
     }
 
     function toggleSettingsWithTab(tabName: string) {
@@ -468,20 +456,7 @@ Singleton {
     }
 
     function focusOrToggleSettings() {
-        if (settingsModal?.visible) {
-            const settingsTitle = I18n.tr("Settings", "settings window title");
-            for (const toplevel of ToplevelManager.toplevels.values) {
-                if (toplevel.title !== "Settings" && toplevel.title !== settingsTitle)
-                    continue;
-                if (toplevel.activated) {
-                    settingsModal.hide();
-                    return;
-                }
-                toplevel.activate();
-                return;
-            }
-        }
-        openSettings();
+        focusOrToggleSettingsWithTab("theme");
     }
 
     function focusOrToggleSettingsWithTab(tabName: string) {
@@ -526,7 +501,7 @@ Singleton {
                 settingsModal?.showWithTabName(_settingsPendingTab);
                 _settingsPendingTab = "";
             } else {
-                settingsModal?.show();
+                settingsModal?.showWithTabName("theme");
             }
             return;
         }
@@ -539,6 +514,9 @@ Singleton {
                 var idx = settingsModal?.resolveTabIndex(_settingsPendingTab) ?? -1;
                 settingsModal?.setTabIndex(idx);
                 _settingsPendingTab = "";
+            } else {
+                var defaultIdx = settingsModal?.resolveTabIndex("theme") ?? 10;
+                settingsModal?.setTabIndex(defaultIdx);
             }
             settingsModal?.toggle();
         }
