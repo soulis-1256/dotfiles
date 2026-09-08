@@ -851,6 +851,7 @@ Singleton {
         }
 
         required property Notification notification
+        readonly property var hints: notification?.hints ?? ({})
         readonly property string summary: (notification?.summary ?? "").replace(/<img\b[^>]*>/gi, "")
         readonly property string body: (notification?.body ?? "").replace(/<img\b[^>]*>/gi, "")
         readonly property string htmlBody: root._resolveHtmlBody(body)

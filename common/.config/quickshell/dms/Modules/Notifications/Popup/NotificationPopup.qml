@@ -115,13 +115,40 @@ PanelWindow {
     }
 
     readonly property bool compactMode: SettingsData.notificationCompactMode
+    readonly property real hintFontSize: {
+        const h = notificationData?.hints || notificationData?.notification?.hints;
+        if (!h)
+            return 0;
+        const raw = h["summary-font-size"] ?? h["font-size"] ?? h["font_size"] ?? h["fontSize"] ?? 0;
+        const parsed = parseInt(raw, 10);
+        return (!isNaN(parsed) && parsed > 0) ? parsed : 0;
+    }
+    readonly property var hintFontWeight: {
+        const h = notificationData?.hints || notificationData?.notification?.hints;
+        if (!h)
+            return undefined;
+        const raw = h["summary-font-weight"] ?? h["font-weight"] ?? h["font_weight"] ?? h["fontWeight"];
+        if (typeof raw === "number")
+            return raw;
+        if (typeof raw === "string") {
+            switch (raw.toLowerCase()) {
+            case "bold": return Font.Bold;
+            case "semibold": return Font.SemiBold;
+            case "medium": return Font.Medium;
+            case "normal": return Font.Normal;
+            case "light": return Font.Light;
+            }
+        }
+        return undefined;
+    }
     readonly property real cardPadding: compactMode ? Theme.notificationCardPaddingCompact : Theme.notificationCardPadding
     readonly property real popupIconSize: compactMode ? Theme.notificationIconSizeCompact : Theme.notificationIconSizeNormal
     readonly property real contentSpacing: compactMode ? Theme.spacingXS : Theme.spacingS
     readonly property real contentBottomClearance: 8
     readonly property real actionButtonHeight: compactMode ? 20 : 24
-    readonly property real collapsedContentHeight: Math.max(popupIconSize, Theme.fontSizeSmall * 1.2 + Theme.fontSizeMedium * 1.2 + Theme.fontSizeSmall * 1.2 * (compactMode ? 1 : 2)) + contentBottomClearance
-    readonly property real privacyCollapsedContentHeight: Math.max(popupIconSize, Theme.fontSizeSmall * 1.2 + Theme.fontSizeMedium * 1.2) + contentBottomClearance
+    readonly property real summaryFontSize: hintFontSize > 0 ? hintFontSize : (SettingsData.notificationSummaryFontSize || Theme.fontSizeMedium)
+    readonly property real collapsedContentHeight: Math.max(popupIconSize, Theme.fontSizeSmall * 1.2 + summaryFontSize * 1.2 + Theme.fontSizeSmall * 1.2 * (compactMode ? 1 : 2)) + contentBottomClearance
+    readonly property real privacyCollapsedContentHeight: Math.max(popupIconSize, Theme.fontSizeSmall * 1.2 + summaryFontSize * 1.2) + contentBottomClearance
     readonly property real basePopupHeight: cardPadding * 2 + collapsedContentHeight + actionButtonHeight + contentSpacing
     readonly property real basePopupHeightPrivacy: cardPadding * 2 + privacyCollapsedContentHeight + actionButtonHeight + contentSpacing
 
@@ -860,11 +887,11 @@ PanelWindow {
                     anchors.top: parent.top
                     anchors.topMargin: {
                         if (SettingsData.notificationPopupPrivacyMode && !descriptionExpanded) {
-                            const headerSummary = Theme.fontSizeSmall * 1.2 + Theme.fontSizeMedium * 1.2;
+                            const headerSummary = Theme.fontSizeSmall * 1.2 + summaryFontSize * 1.2;
                             return Math.max(0, headerSummary / 2 - popupIconSize / 2);
                         }
                         if (descriptionExpanded)
-                            return Math.max(0, Theme.fontSizeSmall * 1.2 + (Theme.fontSizeMedium * 1.2 + Theme.fontSizeSmall * 1.2 * (compactMode ? 1 : 2)) / 2 - popupIconSize / 2);
+                            return Math.max(0, Theme.fontSizeSmall * 1.2 + (summaryFontSize * 1.2 + Theme.fontSizeSmall * 1.2 * (compactMode ? 1 : 2)) / 2 - popupIconSize / 2);
                         return Math.max(0, Theme.fontSizeSmall * 1.2 + (textContainer.height - Theme.fontSizeSmall * 1.2) / 2 - popupIconSize / 2);
                     }
 
@@ -957,8 +984,8 @@ PanelWindow {
                     StyledText {
                         text: notificationData ? (notificationData.summary || "") : ""
                         color: Theme.surfaceText
-                        font.pixelSize: SettingsData.notificationSummaryFontSize || Theme.fontSizeMedium
-                        font.weight: Font.Medium
+                        font.pixelSize: summaryFontSize
+                        font.weight: hintFontWeight !== undefined ? hintFontWeight : (hintFontSize > 0 ? Font.SemiBold : Font.Medium)
                         width: parent.width
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignLeft

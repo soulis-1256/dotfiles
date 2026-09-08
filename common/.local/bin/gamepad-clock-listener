@@ -29,17 +29,16 @@ def show_clock():
     invisible_suffix = '\u200b' * _nonce
 
     now_time = time.strftime('%H:%M') + invisible_suffix
-    now_date = time.strftime('%A, %d %B')
     try:
         subprocess.Popen([
             'notify-send',
             '-h', 'boolean:suppress-sound:true',
             '-h', 'boolean:transient:true',
+            '-h', 'int:font-size:24',
             '-t', '2500',
             '-a', 'Clock',
             '-i', 'clock',
-            now_time,
-            now_date
+            now_time
         ])
     except Exception as e:
         print(f"Failed to send clock notification: {e}", file=sys.stderr)
