@@ -135,87 +135,28 @@ Item {
     }
     property var availableWorkspaces: []
 
-    // Windows 10 Open Folder Overlay State
     property string openFolderId: ""
     property int openFolderGroupId: 0
-    property real openFolderX: 16
-    property real openFolderY: 12
     property real openFolderWidth: 300
 
-    function placeFolderOverlay(folderId, groupId) {
-        let col = 0;
-        let row = 0;
-        let tileCount = 0;
-        const lists = [root.group1Tiles || [], root.group2Tiles || []];
-        for (let li = 0; li < lists.length; li++) {
-            const list = lists[li];
-            for (let i = 0; i < list.length; i++) {
-                const it = list[i];
-                if (it && it.id === folderId && it.isFolder) {
-                    col = (typeof it.col === "number") ? it.col : 0;
-                    row = (typeof it.row === "number") ? it.row : 0;
-                    tileCount = (it.tiles && it.tiles.length) ? it.tiles.length : 0;
-                    li = lists.length;
-                    break;
-                }
-            }
-        }
-
-        let marginLeft = PinGrid.FLOW_PAD_LEFT;
-        let marginTop = PinGrid.FLOW_PAD_TOP;
-        if (typeof tileRow !== "undefined" && tileRow) {
-            marginLeft = tileRow.anchors.leftMargin;
-            marginTop = tileRow.anchors.topMargin;
-        }
-        if ((groupId === 2) && typeof tileGroup2 !== "undefined" && tileGroup2 && tileGroup2.visible && typeof tileGroup1 !== "undefined" && tileGroup1)
-            marginLeft += tileGroup1.width + ((typeof tileRow !== "undefined" && tileRow) ? tileRow.spacing : 16);
-
-        const pos = PinGrid.folderOverlayPos(
-            col, row, root.openFolderWidth, PinGrid.folderOverlayHeight(tileCount),
-            (typeof tileArea !== "undefined" && tileArea && tileArea.width > 1) ? tileArea.width : (root.pinnedGridWidth + 32),
-            (typeof tileArea !== "undefined" && tileArea && tileArea.height > 1) ? tileArea.height : root.pinnedPaneHeight,
-            (typeof tileFlickable !== "undefined" && tileFlickable) ? tileFlickable.contentX : 0,
-            (typeof tileFlickable !== "undefined" && tileFlickable) ? tileFlickable.contentY : 0,
-            marginLeft, marginTop
-        );
-        root.openFolderX = pos.x;
-        root.openFolderY = pos.y;
-    }
-
     function openFolder(folderId, groupId, sourceItem) {
-        root.powerMenuOpen = false;
-        root.userMenuOpen = false;
-        root.contextMenuVisible = false;
-        root.contextMenuItem = null;
-        root.contextMenuParentFolder = null;
-        root.renamingItemId = "";
-        root.activeRenameInput = null;
-        root.openFolderGroupId = groupId || 1;
-        root.openFolderWidth = 300;
-        root.placeFolderOverlay(folderId, root.openFolderGroupId);
-        root.openFolderId = folderId;
-        Qt.callLater(function() {
-            if (root.openFolderId === folderId)
-                root.placeFolderOverlay(folderId, root.openFolderGroupId);
-        });
+        if (typeof folderOverlayContainer !== "undefined" && folderOverlayContainer)
+            folderOverlayContainer.open(folderId, groupId, sourceItem);
     }
 
-    function closeActiveFolder() {
-        root.openFolderId = "";
-        root.openFolderGroupId = 0;
-        root.renamingItemId = "";
-        root.activeRenameInput = null;
+    function closeActiveFolder(immediate) {
+        if (typeof folderOverlayContainer !== "undefined" && folderOverlayContainer)
+            folderOverlayContainer.close(!!immediate);
+        else {
+            root.openFolderId = "";
+            root.openFolderGroupId = 0;
+            root.renamingItemId = "";
+            root.activeRenameInput = null;
+        }
     }
 
     function getOpenFolderData() {
-        if (!root.openFolderId) return null;
-        const findIn = function(list) {
-            for (let i = 0; i < (list || []).length; i++) {
-                if (list[i].id === root.openFolderId && list[i].isFolder) return list[i];
-            }
-            return null;
-        };
-        return findIn(root.group1Tiles) || findIn(root.group2Tiles);
+        return PinGrid.findFolder([root.group1Tiles, root.group2Tiles], root.openFolderId);
     }
 
     // Drag & Drop State
@@ -264,16 +205,7 @@ Item {
     property var dragLiveDisplacedMap: ({})
 
     function toFolderChild(tile) {
-        if (!tile)
-            return null;
-        return {
-            "id": tile.id,
-            "name": tile.name,
-            "icon": tile.icon || "",
-            "size": "medium",
-            "wide": false,
-            "isFolder": false
-        };
+        return PinGrid.toFolderChild(tile);
     }
 
     function sampleDragMotion(globalX, globalY) {
@@ -310,7 +242,7 @@ Item {
 
     function resetMenuState() {
         // 1. Folders
-        root.closeActiveFolder();
+        root.closeActiveFolder(true);
 
         // 2. All apps / sidebar
         allAppsAnim.stop();
@@ -867,27 +799,10 @@ Item {
         if (!tile || !tile.id)
             return ;
 
-        const fName = (folderName && folderName.trim()) ? folderName.trim() : "New folder";
-        const newFolder = {
-            "id": "folder_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
-            "isFolder": true,
-            "name": fName,
-            "size": "medium",
-            "wide": false,
-            "isExpanded": true,
-            "tiles": [root.toFolderChild(tile)]
-        };
-        const replaceIn = function(list) {
-            const idx = list.findIndex(function(t) { return t.id === tile.id; });
-            if (idx !== -1) {
-                const c = list.slice();
-                c[idx] = newFolder;
-                return c;
-            }
-            return list;
-        };
-        root.group1Tiles = replaceIn(root.group1Tiles);
-        root.group2Tiles = replaceIn(root.group2Tiles);
+        const r1 = PinGrid.replaceTileWithFolder(root.group1Tiles, tile, folderName);
+        const r2 = PinGrid.replaceTileWithFolder(root.group2Tiles, tile, folderName);
+        root.group1Tiles = r1.list;
+        root.group2Tiles = r2.list;
         saveTilesState();
     }
 
@@ -895,26 +810,8 @@ Item {
         if (!tile || !tile.id || !folderId)
             return ;
 
-        const remove = function(list) {
-            return (list || []).filter(function(t) { return t.id !== tile.id; });
-        };
-        const g1 = remove(root.group1Tiles);
-        const g2 = remove(root.group2Tiles);
-
-        const addIn = function(list) {
-            return (list || []).map(function(item) {
-                if (item.id === folderId && item.isFolder) {
-                    const sub = (item.tiles || []).slice();
-                    if (!sub.some(function(t) { return t.id === tile.id; })) {
-                        sub.push(root.toFolderChild(tile));
-                    }
-                    return Object.assign({}, item, { tiles: sub, isExpanded: true });
-                }
-                return item;
-            });
-        };
-        root.group1Tiles = addIn(g1);
-        root.group2Tiles = addIn(g2);
+        root.group1Tiles = PinGrid.addTileToFolder(root.group1Tiles, tile, folderId);
+        root.group2Tiles = PinGrid.addTileToFolder(root.group2Tiles, tile, folderId);
         saveTilesState();
     }
 
@@ -922,29 +819,16 @@ Item {
         if (!tile || !tile.id)
             return ;
 
-        let targetGroup = 1;
-        const extract = function(list, gNum) {
-            return (list || []).map(function(item) {
-                if (item.id === folderId && item.isFolder && item.tiles) {
-                    targetGroup = gNum;
-                    const sub = item.tiles.filter(function(t) { return t.id !== tile.id; });
-                    return Object.assign({}, item, { tiles: sub });
-                }
-                return item;
-            });
-        };
-        root.group1Tiles = extract(root.group1Tiles, 1);
-        root.group2Tiles = extract(root.group2Tiles, 2);
-
+        const r1 = PinGrid.removeTileFromFolder(root.group1Tiles, tile.id, folderId);
+        const r2 = PinGrid.removeTileFromFolder(root.group2Tiles, tile.id, folderId);
         const extractedTile = Object.assign({}, root.toFolderChild(tile), {
             "size": "medium",
             "wide": false
         });
-        if (targetGroup === 1) {
-            root.group1Tiles = packTilesGrid(root.group1Tiles.concat([extractedTile]));
-        } else {
-            root.group2Tiles = packTilesGrid(root.group2Tiles.concat([extractedTile]));
-        }
+        if (r1.found)
+            root.group1Tiles = packTilesGrid(r1.list.concat([extractedTile]));
+        else
+            root.group2Tiles = packTilesGrid(r2.list.concat([extractedTile]));
         saveTilesState();
     }
 
@@ -952,23 +836,8 @@ Item {
         if (!folder || !folder.id)
             return ;
 
-        const unpack = function(list) {
-            const out = [];
-            for (let i = 0; i < (list || []).length; i++) {
-                const item = list[i];
-                if (item.id === folder.id && item.isFolder) {
-                    const children = item.tiles || [];
-                    for (let c = 0; c < children.length; c++) {
-                        out.push(children[c]);
-                    }
-                } else {
-                    out.push(item);
-                }
-            }
-            return out;
-        };
-        root.group1Tiles = packTilesGrid(unpack(root.group1Tiles));
-        root.group2Tiles = packTilesGrid(unpack(root.group2Tiles));
+        root.group1Tiles = packTilesGrid(PinGrid.ungroupFolder(root.group1Tiles, folder.id));
+        root.group2Tiles = packTilesGrid(PinGrid.ungroupFolder(root.group2Tiles, folder.id));
         saveTilesState();
     }
 
@@ -1055,25 +924,22 @@ Item {
             return;
 
         // Inside an open folder: always live-reorder. Leaving the overlay is the only "mode" change.
-        if (root.openFolderId !== "" && typeof folderOverlayContainer !== "undefined" && folderOverlayContainer.visible) {
-            const foPt = folderOverlayContainer.mapFromItem(menuBackground, globalX, globalY);
-            const padX = 40;
-            const padY = 48;
-            if (foPt.x >= -padX && foPt.x <= folderOverlayContainer.width + padX && foPt.y >= -padY && foPt.y <= folderOverlayContainer.height + padY) {
-                root.dragReorderLive = true;
-                root.dragFolderStickyId = "";
-                root.dragFolderStickyGroupId = 0;
-                root.dragFolderHoverId = "";
-                root.dragFolderHoverSinceMs = 0;
-                root.dragLiveDisplacedMap = ({});
-                root.dropTargetType = "reorder-folder";
-                root.dropTargetGroupId = root.openFolderGroupId;
-                root.dropTargetFolderId = root.openFolderId;
-                root.dropTargetTileId = "";
-                root.dropTargetIndex = (typeof folderOverlayContainer.calculateFolderSlot === "function") ? folderOverlayContainer.calculateFolderSlot(foPt.x, foPt.y) : 0;
-                root.dropActionBadge = "Reorder in folder";
-                return;
-            }
+        if (root.openFolderId !== "" && typeof folderOverlayContainer !== "undefined" && folderOverlayContainer
+                && typeof folderOverlayContainer.hitTest === "function"
+                && folderOverlayContainer.hitTest(menuBackground, globalX, globalY)) {
+            root.dragReorderLive = true;
+            root.dragFolderStickyId = "";
+            root.dragFolderStickyGroupId = 0;
+            root.dragFolderHoverId = "";
+            root.dragFolderHoverSinceMs = 0;
+            root.dragLiveDisplacedMap = ({});
+            root.dropTargetType = "reorder-folder";
+            root.dropTargetGroupId = root.openFolderGroupId;
+            root.dropTargetFolderId = root.openFolderId;
+            root.dropTargetTileId = "";
+            root.dropTargetIndex = folderOverlayContainer.slotAt(menuBackground, globalX, globalY);
+            root.dropActionBadge = "Reorder in folder";
+            return;
         }
 
         let targetTg = tileGroup1;
@@ -1216,20 +1082,14 @@ Item {
             const createF = function(list) {
                 return (list || []).map(function(item) {
                     if (item.id === root.dropTargetTileId) {
-                        return {
-                            "id": "folder_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
-                            "isFolder": true,
-                            "name": "New folder",
-                            "size": "medium",
-                            "wide": false,
+                        return Object.assign(PinGrid.makeFolder("New folder", [
+                            root.toFolderChild(item),
+                            root.toFolderChild(tile)
+                        ]), {
                             "isExpanded": false,
                             "col": (typeof item.col === "number") ? item.col : 0,
-                            "row": (typeof item.row === "number") ? item.row : 0,
-                            "tiles": [
-                                root.toFolderChild(item),
-                                root.toFolderChild(tile)
-                            ]
-                        };
+                            "row": (typeof item.row === "number") ? item.row : 0
+                        });
                     }
                     return item;
                 });
@@ -1292,7 +1152,7 @@ Item {
                 return it.id === root.openFolderId && it.isFolder && it.tiles && it.tiles.length > 0;
             });
             if (!openFolderExists)
-                root.closeActiveFolder();
+                root.closeActiveFolder(true);
         }
 
         saveTilesState();
@@ -2405,465 +2265,29 @@ Item {
 
                 }
 
-                // ==========================================
-                // FOLDER DISMISS BACKDROP (Clicks on empty space in pinned area close folder)
-                // ==========================================
-                MouseArea {
-                    id: folderDismissBackdrop
-
-                    anchors.fill: parent
-                    z: 70
-                    visible: root.openFolderId !== "" && !root.isDraggingTile
-                    enabled: !root.isDraggingTile
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: {
-                        root.closeActiveFolder();
-                    }
-                }
-
-                // ==========================================
-                // WINDOWS 10 FOLDER OVERLAY (Draws over pinned area items)
-                // ==========================================
-                Item {
+                StartFolderOverlay {
                     id: folderOverlayContainer
 
-                    readonly property var folderData: root.getOpenFolderData()
-                    readonly property real calculatedHeight: {
-                        var fD = folderData;
-                        if (!fD || !fD.tiles || fD.tiles.length === 0) return 60;
-                        var count = fD.tiles.length;
-                        if (root.isDraggingTile && root.dropTargetType === "reorder-folder" && root.draggedFromFolderId !== fD.id) {
-                            count += 1;
-                        }
-                        return PinGrid.folderOverlayHeight(count);
-                    }
-                    visible: root.openFolderId !== "" && folderData !== null
-                    z: 75
-
-                    x: root.openFolderX
-                    y: root.openFolderY
-                    width: root.openFolderWidth
-                    height: Math.min(tileArea.height - y - 16, calculatedHeight)
-
-                    function folderSlotToPixel(slot) {
-                        var c = slot % 3;
-                        var r = Math.floor(slot / 3);
-                        return Qt.point(c * 98, r * 98);
-                    }
-
-                    function calculateFolderSlot(mx, my) {
-                        var totalCount = folderData ? (folderData.tiles ? folderData.tiles.length : 0) : 0;
-                        if (totalCount === 0) return 0;
-
-                        var isDragFromThisFolder = (root.draggedFromFolderId === folderData.id);
-                        var maxSlot = isDragFromThisFolder ? Math.max(0, totalCount - 1) : totalCount;
-
-                        var lx = Math.max(0, mx - 6);
-                        var ly = Math.max(0, my - 36);
-
-                        var col = Math.max(0, Math.min(2, Math.floor(lx / 98)));
-                        var row = Math.max(0, Math.floor(ly / 98));
-                        var slot = row * 3 + col;
-
-                        return Math.max(0, Math.min(maxSlot, slot));
-                    }
-
-                    function getFolderTileDisplacement(itemIndex) {
-                        if (root.dragCommitting || !root.isDraggingTile || root.dropTargetType !== "reorder-folder" || !folderData || root.dropTargetFolderId !== folderData.id) {
-                            return Qt.point(0, 0);
-                        }
-                        var targetSlot = root.dropTargetIndex;
-                        var draggedIdx = (root.draggedFromFolderId === folderData.id) ? root.draggedSourceIndex : -1;
-
-                        if (itemIndex === draggedIdx) {
-                            return Qt.point(0, 0);
-                        }
-
-                        var visSlot = itemIndex;
-                        if (draggedIdx !== -1) {
-                            if (draggedIdx < targetSlot) {
-                                if (itemIndex > draggedIdx && itemIndex <= targetSlot) {
-                                    visSlot = itemIndex - 1;
-                                }
-                            } else if (draggedIdx > targetSlot) {
-                                if (itemIndex >= targetSlot && itemIndex < draggedIdx) {
-                                    visSlot = itemIndex + 1;
-                                }
-                            }
-                        } else {
-                            if (itemIndex >= targetSlot) {
-                                visSlot = itemIndex + 1;
-                            }
-                        }
-
-                        var normalPos = folderSlotToPixel(itemIndex);
-                        var visPos = folderSlotToPixel(visSlot);
-                        return Qt.point(visPos.x - normalPos.x, visPos.y - normalPos.y);
-                    }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: root.winRadius
-                        color: Theme.surfaceContainerHigh
-                        border.width: 1
-                        border.color: root.winBorder
-                        clip: true
-
-                        // Absorb clicks on folder background so it doesn't dismiss
-                        MouseArea {
-                            anchors.fill: parent
-                            z: -1
-                            enabled: !root.isDraggingTile
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: function(mouse) {
-                                if (mouse.button === Qt.RightButton && folderOverlayContainer.folderData) {
-                                    root.contextMenuItem = folderOverlayContainer.folderData;
-                                    root.contextMenuGroupId = root.openFolderGroupId;
-                                    root.contextMenuType = "folder";
-                                    const gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                    root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
-                                    root.contextMenuY = Math.min(gp.y, menuBackground.height - 180);
-                                    root.contextMenuVisible = true;
-                                }
-                            }
-                        }
-
-                        Column {
-                            id: folderInnerCol
-
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 6
-                            spacing: 6
-
-                            // Folder Header — click the title to rename in place
-                            Item {
-                                width: parent.width
-                                height: 24
-
-                                readonly property bool foRenaming: folderOverlayContainer.folderData && root.renamingItemId === folderOverlayContainer.folderData.id
-
-                                StyledText {
-                                    id: foTitleText
-
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 4
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: Math.min(implicitWidth, parent.width - 12)
-                                    visible: !parent.foRenaming
-                                    text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "Folder") : "Folder"
-                                    color: foTitleMouse.containsMouse ? "#ffffff" : root.winText
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                    elide: Text.ElideRight
-                                }
-
-                                MouseArea {
-                                    id: foTitleMouse
-
-                                    anchors.fill: foTitleText
-                                    anchors.margins: -4
-                                    enabled: foTitleText.visible
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                    onClicked: function(mouse) {
-                                        if (!folderOverlayContainer.folderData)
-                                            return;
-                                        if (mouse.button === Qt.RightButton) {
-                                            root.contextMenuItem = folderOverlayContainer.folderData;
-                                            root.contextMenuGroupId = root.openFolderGroupId;
-                                            root.contextMenuType = "folder";
-                                            const gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                            root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
-                                            root.contextMenuY = Math.min(gp.y, menuBackground.height - 180);
-                                            root.contextMenuVisible = true;
-                                            return;
-                                        }
-                                        root.beginItemRename(folderOverlayContainer.folderData.id);
-                                    }
-                                }
-
-                                TextInput {
-                                    id: foRenameInput
-
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 4
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width - 12)
-                                    visible: parent.foRenaming
-                                    z: 2
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                    color: root.winText
-                                    selectByMouse: true
-                                    selectionColor: root.winAccent
-                                    selectedTextColor: "#ffffff"
-                                    clip: true
-                                    text: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : ""
-
-                                    onVisibleChanged: {
-                                        if (visible) {
-                                            text = folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.name || "") : "";
-                                            root.bindRenameInput(foRenameInput);
-                                        } else if (root.activeRenameInput === foRenameInput) {
-                                            root.activeRenameInput = null;
-                                        }
-                                    }
-
-                                    onAccepted: {
-                                        if (folderOverlayContainer.folderData)
-                                            root.renameTileOrFolder(folderOverlayContainer.folderData.id, text);
-                                        root.dismissInlineRename();
-                                    }
-
-                                    Keys.onEscapePressed: function(event) {
-                                        root.dismissInlineRename();
-                                        event.accepted = true;
-                                    }
-                                }
-
-                                Rectangle {
-                                    visible: foRenameInput.visible
-                                    anchors.left: foRenameInput.left
-                                    width: foRenameInput.width
-                                    anchors.top: foRenameInput.bottom
-                                    anchors.topMargin: 1
-                                    height: 1
-                                    color: root.winAccent
-                                }
-                            }
-
-                            // Child Tiles Grid Area (Exact same visual placeholder & displacement as TileGroup)
-                            Item {
-                                id: folderTileArea
-                                width: 288
-                                implicitHeight: PinGrid.folderGridHeight((folderOverlayContainer.folderData && folderOverlayContainer.folderData.tiles) ? folderOverlayContainer.folderData.tiles.length : 0)
-                                height: implicitHeight
-
-                                // Animated Slot Placeholder inside folder (Windows 10 accent outline - identical to TileGroup)
-                                Rectangle {
-                                    id: foSlotPlaceholder
-                                    z: 10
-                                    visible: root.isDraggingTile && root.dropTargetType === "reorder-folder" && root.dropTargetFolderId === (folderOverlayContainer.folderData ? folderOverlayContainer.folderData.id : "")
-                                    width: 92
-                                    height: 92
-                                    radius: root.winRadius
-                                    color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.2)
-                                    border.color: root.winAccent
-                                    border.width: 2
-
-                                    readonly property point slotPos: folderOverlayContainer.folderSlotToPixel(root.dropTargetIndex)
-                                    x: slotPos.x
-                                    y: slotPos.y
-                                }
-
-                                Repeater {
-                                    id: foRepeater
-                                    model: folderOverlayContainer.folderData ? (folderOverlayContainer.folderData.tiles || []) : []
-
-                                    Rectangle {
-                                        id: foTileRect
-
-                                        required property var modelData
-                                        required property int index
-
-                                        readonly property bool isBeingDragged: root.isDraggingTile && root.draggedTileData && root.draggedTileData.id === modelData.id
-
-                                        readonly property point normalPos: folderOverlayContainer.folderSlotToPixel(index)
-                                        x: normalPos.x
-                                        y: normalPos.y
-
-                                        width: 92
-                                        height: 92
-                                        radius: root.winRadius
-                                        color: foTileMouse.containsMouse ? root.winTileHoverBg : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.04)
-                                        border.color: foTileMouse.containsMouse ? Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.12) : "transparent"
-                                        border.width: 1
-                                        opacity: isBeingDragged ? 0.0 : 1.0
-                                        scale: foTileMouse.pressed && (foTileMouse.pressedButtons & Qt.LeftButton) && !foTileMouse.draggingStarted ? 0.96 : 1
-
-                                        Behavior on scale {
-                                            NumberAnimation { duration: 80 }
-                                        }
-
-                                        // Dynamic displacement to make room for dragged item
-                                        readonly property point displacement: folderOverlayContainer.getFolderTileDisplacement(index)
-
-                                        transform: Translate {
-                                            x: foTileRect.displacement.x
-                                            y: foTileRect.displacement.y
-
-                                            Behavior on x {
-                                                enabled: root.isDraggingTile && !root.dragCommitting
-                                                NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
-                                            }
-                                            Behavior on y {
-                                                enabled: root.isDraggingTile && !root.dragCommitting
-                                                NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
-                                            }
-                                        }
-
-                                        Column {
-                                            anchors.horizontalCenter: parent.horizontalCenter
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            spacing: root.pinIconGap
-                                            width: parent.width - 8
-
-                                            AppIconRenderer {
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                                width: root.pinIconSize
-                                                height: root.pinIconSize
-                                                iconValue: modelData.icon || ""
-                                                iconSize: root.pinIconSize
-                                                fallbackText: (modelData.name || "?").charAt(0)
-                                            }
-
-                                            StyledText {
-                                                visible: root.renamingItemId !== modelData.id
-                                                width: parent.width
-                                                text: modelData.name || ""
-                                                color: root.winText
-                                                font.pixelSize: root.pinLabelSize
-                                                horizontalAlignment: Text.AlignHCenter
-                                                elide: Text.ElideRight
-                                                wrapMode: Text.Wrap
-                                                maximumLineCount: 2
-                                            }
-
-                                            TextInput {
-                                                id: foTileRenameInput
-
-                                                visible: root.renamingItemId === modelData.id
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                                width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width)
-                                                font.pixelSize: root.pinLabelSize
-                                                color: root.winText
-                                            selectByMouse: true
-                                            selectionColor: root.winAccent
-                                            selectedTextColor: "#ffffff"
-                                            clip: true
-                                            text: modelData.name || ""
-                                            z: 2
-
-                                            onVisibleChanged: {
-                                                if (visible) {
-                                                    text = modelData.name || "";
-                                                    root.bindRenameInput(foTileRenameInput);
-                                                } else if (root.activeRenameInput === foTileRenameInput) {
-                                                    root.activeRenameInput = null;
-                                                }
-                                            }
-
-                                            onAccepted: {
-                                                root.renameTileOrFolder(modelData.id, text);
-                                                root.dismissInlineRename();
-                                            }
-
-                                            Keys.onEscapePressed: function(event) {
-                                                root.dismissInlineRename();
-                                                event.accepted = true;
-                                            }
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            visible: foTileRenameInput.visible
-                                            anchors.left: foTileRenameInput.left
-                                            width: foTileRenameInput.width
-                                            anchors.top: foTileRenameInput.bottom
-                                            anchors.topMargin: 1
-                                            height: 1
-                                            color: root.winAccent
-                                            z: 2
-                                        }
-
-                                        MouseArea {
-                                            id: foTileMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                            cursorShape: Qt.PointingHandCursor
-                                            property point pressPos: Qt.point(0, 0)
-                                            property bool draggingStarted: false
-                                            enabled: root.renamingItemId !== modelData.id && (!root.isDraggingTile || draggingStarted)
-
-                                            onPressed: function(mouse) {
-                                                if (root.isDraggingTile) {
-                                                    if (mouse.button === Qt.RightButton) {
-                                                        root.cancelDraggingTile();
-                                                        return;
-                                                    }
-                                                }
-                                                if (mouse.button === Qt.RightButton) {
-                                                    const gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                                    root.contextMenuItem = modelData;
-                                                    root.contextMenuGroupId = root.openFolderGroupId;
-                                                    root.contextMenuType = "folderTile";
-                                                    root.contextMenuParentFolder = folderOverlayContainer.folderData;
-                                                    root.contextMenuX = Math.min(gp.x, menuBackground.width - 210);
-                                                    root.contextMenuY = Math.min(gp.y, menuBackground.height - 240);
-                                                    root.contextMenuVisible = true;
-                                                    return;
-                                                }
-                                                if (mouse.button !== Qt.LeftButton) {
-                                                    return;
-                                                }
-                                                pressPos = Qt.point(mouse.x, mouse.y);
-                                                draggingStarted = false;
-                                                preventStealing = true;
-                                            }
-
-                                            onPositionChanged: function(mouse) {
-                                                if (pressed && (mouse.buttons & Qt.LeftButton)) {
-                                                    var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                                    if (!root.isDraggingTile && !draggingStarted && dist > 3) {
-                                                        draggingStarted = true;
-                                                        preventStealing = true;
-                                                        var gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                                        root.startDraggingTile(modelData, root.openFolderGroupId, root.openFolderId, index, width, height, mouse.x, mouse.y, gp.x, gp.y);
-                                                    } else if (root.isDraggingTile) {
-                                                        var gp = mapToItem(menuBackground, mouse.x, mouse.y);
-                                                        root.updateDragPosition(gp.x, gp.y);
-                                                    }
-                                                }
-                                            }
-
-                                            onReleased: function(mouse) {
-                                                preventStealing = false;
-                                                if (root.isDraggingTile) {
-                                                    if (mouse.button === Qt.RightButton) {
-                                                        root.cancelDraggingTile();
-                                                    } else {
-                                                        root.endDraggingTile();
-                                                    }
-                                                } else if (!draggingStarted) {
-                                                    if (mouse.button === Qt.RightButton) {
-                                                        return;
-                                                    }
-                                                    if (containsMouse) {
-                                                        root.launchById(modelData.id);
-                                                        root.closeMenu();
-                                                    }
-                                                }
-                                                draggingStarted = false;
-                                            }
-
-                                            onCanceled: {
-                                                preventStealing = false;
-                                                if (root.isDraggingTile) {
-                                                    root.cancelDraggingTile();
-                                                }
-                                                draggingStarted = false;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
+                    anchors.fill: parent
+                    host: root
+                    coordinateItem: menuBackground
+                    paneItem: tileArea
+                    flickableItem: tileFlickable
+                    tileRowItem: tileRow
+                    group1Item: tileGroup1
+                    group2Item: tileGroup2
+                    panelRadius: root.winRadius
+                    tileRadius: root.winRadius
+                    panelBorderWidth: 1
+                    panelBorderColor: root.winBorder
+                    centeredTiles: true
+                    alignToGroup: false
+                    pinIconSize: root.pinIconSize
+                    pinIconGap: root.pinIconGap
+                    pinLabelSize: root.pinLabelSize
+                    tileColor: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.04)
+                    tileHoverColor: root.winTileHoverBg
+                    tileBorderHover: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.12)
                 }
 
             }

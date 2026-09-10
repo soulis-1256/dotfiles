@@ -144,12 +144,14 @@ function snapContentY(y, maxY) {
     return snapped
 }
 
-function folderOverlayPos(col, row, overlayW, overlayH, paneW, paneH, contentX, contentY, padLeft, padTop) {
+function folderOverlayPos(col, row, overlayW, overlayH, paneW, paneH, contentX, contentY, padLeft, padTop, alignGroup) {
     var pad = 8
     var origin = cellToPixel(col, row)
-    var tileX = (typeof padLeft === "number" ? padLeft : FLOW_PAD_LEFT) + origin.x - (contentX || 0)
-    var tileY = (typeof padTop === "number" ? padTop : FLOW_PAD_TOP) + origin.y - (contentY || 0)
-    var x = tileX + (TILE - overlayW) / 2
+    var left = (typeof padLeft === "number" ? padLeft : FLOW_PAD_LEFT)
+    var top = (typeof padTop === "number" ? padTop : FLOW_PAD_TOP)
+    var tileX = left + origin.x - (contentX || 0)
+    var tileY = top + origin.y - (contentY || 0)
+    var x = alignGroup ? (left - (contentX || 0) - 6) : (tileX + (TILE - overlayW) / 2)
     var y = tileY
     var maxX = Math.max(pad, paneW - overlayW - pad)
     var maxY = Math.max(pad, paneH - overlayH - pad)
@@ -167,6 +169,160 @@ function folderOverlayHeight(tileCount) {
 function folderGridHeight(tileCount) {
     var rows = Math.max(1, Math.ceil((tileCount || 0) / 3))
     return rows * PITCH
+}
+
+function folderOverlayCount(folder, extraSlot) {
+    var n = (folder && folder.tiles) ? folder.tiles.length : 0
+    if (extraSlot)
+        n += 1
+    return n
+}
+
+function folderSlotToPixel(slot) {
+    slot = Math.max(0, slot || 0)
+    return {
+        "x": (slot % 3) * PITCH,
+        "y": Math.floor(slot / 3) * PITCH
+    }
+}
+
+function folderSlotFromPoint(mx, my, tileCount, fromThisFolder) {
+    var totalCount = tileCount || 0
+    if (totalCount === 0)
+        return 0
+    var maxSlot = fromThisFolder ? Math.max(0, totalCount - 1) : totalCount
+    var lx = Math.max(0, mx - 6)
+    var ly = Math.max(0, my - 36)
+    var col = Math.max(0, Math.min(2, Math.floor(lx / PITCH)))
+    var row = Math.max(0, Math.floor(ly / PITCH))
+    var slot = row * 3 + col
+    return Math.max(0, Math.min(maxSlot, slot))
+}
+
+function folderTileDisplacement(itemIndex, targetSlot, draggedIdx) {
+    if (itemIndex === draggedIdx)
+        return { "x": 0, "y": 0 }
+    var visSlot = itemIndex
+    if (draggedIdx !== -1) {
+        if (draggedIdx < targetSlot) {
+            if (itemIndex > draggedIdx && itemIndex <= targetSlot)
+                visSlot = itemIndex - 1
+        } else if (draggedIdx > targetSlot) {
+            if (itemIndex >= targetSlot && itemIndex < draggedIdx)
+                visSlot = itemIndex + 1
+        }
+    } else if (itemIndex >= targetSlot) {
+        visSlot = itemIndex + 1
+    }
+    var normal = folderSlotToPixel(itemIndex)
+    var vis = folderSlotToPixel(visSlot)
+    return { "x": vis.x - normal.x, "y": vis.y - normal.y }
+}
+
+function findFolder(lists, folderId) {
+    if (!folderId)
+        return null
+    var src = lists || []
+    var li, i, list, it
+    for (li = 0; li < src.length; li++) {
+        list = src[li] || []
+        for (i = 0; i < list.length; i++) {
+            it = list[i]
+            if (it && it.id === folderId && it.isFolder)
+                return it
+        }
+    }
+    return null
+}
+
+function toFolderChild(tile) {
+    if (!tile)
+        return null
+    return {
+        "id": tile.id,
+        "name": tile.name,
+        "icon": tile.icon || "",
+        "size": "medium",
+        "wide": false,
+        "isFolder": false
+    }
+}
+
+function makeFolder(name, children, id) {
+    var label = (name && String(name).trim()) ? String(name).trim() : "New folder"
+    return {
+        "id": id || ("folder_" + Date.now() + "_" + Math.floor(Math.random() * 10000)),
+        "isFolder": true,
+        "name": label,
+        "size": "medium",
+        "wide": false,
+        "isExpanded": true,
+        "tiles": children || []
+    }
+}
+
+function replaceTileWithFolder(list, tile, folderName) {
+    list = list || []
+    if (!tile || !tile.id)
+        return { "list": list, "folder": null, "replaced": false }
+    var folder = makeFolder(folderName, [toFolderChild(tile)])
+    var i
+    for (i = 0; i < list.length; i++) {
+        if (list[i] && list[i].id === tile.id) {
+            var next = list.slice()
+            next[i] = folder
+            return { "list": next, "folder": folder, "replaced": true }
+        }
+    }
+    return { "list": list, "folder": null, "replaced": false }
+}
+
+function addTileToFolder(list, tile, folderId) {
+    if (!tile || !tile.id || !folderId)
+        return list || []
+    var child = toFolderChild(tile)
+    return (list || []).filter(function(t) {
+        return t && t.id !== tile.id
+    }).map(function(item) {
+        if (item.id === folderId && item.isFolder) {
+            var sub = (item.tiles || []).slice()
+            if (!sub.some(function(t) { return t.id === tile.id }))
+                sub.push(child)
+            return Object.assign({}, item, { "tiles": sub, "isExpanded": true })
+        }
+        return item
+    })
+}
+
+function removeTileFromFolder(list, tileId, folderId) {
+    var found = false
+    var next = (list || []).map(function(item) {
+        if (item && item.id === folderId && item.isFolder && item.tiles) {
+            found = true
+            return Object.assign({}, item, {
+                "tiles": item.tiles.filter(function(t) { return t.id !== tileId })
+            })
+        }
+        return item
+    })
+    return { "list": next, "found": found }
+}
+
+function ungroupFolder(list, folderId) {
+    var out = []
+    var src = list || []
+    var i, c, item, children
+    for (i = 0; i < src.length; i++) {
+        item = src[i]
+        if (item && item.id === folderId && item.isFolder) {
+            children = item.tiles || []
+            for (c = 0; c < children.length; c++)
+                out.push(children[c])
+        } else {
+            out.push(item)
+        }
+    }
+    return out
 }
 
 // First-fit occupancy in array order. Does not re-sort.

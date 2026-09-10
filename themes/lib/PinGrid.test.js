@@ -358,5 +358,59 @@ if (original) {
     });
 }
 
+// --- folder overlay geometry ---
+{
+    const slot0 = lib.folderSlotToPixel(0);
+    const slot4 = lib.folderSlotToPixel(4);
+    assert(slot0.x === 0 && slot0.y === 0, "folder slot 0 origin", slot0);
+    assert(slot4.x === 98 && slot4.y === 98, "folder slot 4 is col1 row1", slot4);
+    assert(lib.folderOverlayHeight(0) === lib.folderOverlayHeight(1), "empty folder still one row");
+    assert(lib.folderGridHeight(4) === 2 * lib.PITCH, "4 tiles = 2 folder rows");
+    assert(lib.folderSlotFromPoint(6, 36, 5, false) === 0, "top-left is slot 0");
+    assert(lib.folderSlotFromPoint(6 + 98 + 10, 36 + 10, 5, false) === 1, "second column is slot 1");
+    assert(lib.folderSlotFromPoint(6 + 98 * 2, 36 + 98, 3, true) === 2, "from-folder clamps to last child", lib.folderSlotFromPoint(6 + 98 * 2, 36 + 98, 3, true));
+    assert(lib.folderSlotFromPoint(6 + 98 * 2, 36 + 98, 3, false) === 3, "drop-in can use empty slot 3");
+
+    const shiftRight = lib.folderTileDisplacement(1, 0, -1);
+    assert(shiftRight.x === 98 && shiftRight.y === 0, "incoming drop shifts later tiles right", shiftRight);
+    const noMove = lib.folderTileDisplacement(0, 2, 0);
+    assert(noMove.x === 0 && noMove.y === 0, "dragged folder child does not displace itself", noMove);
+}
+
+// --- folder overlay placement ---
+{
+    const centered = lib.folderOverlayPos(0, 0, 300, 142, 640, 500, 0, 0, 16, 12, false);
+    assert(centered.x >= 8 && centered.y >= 8, "centered overlay stays on-pane", centered);
+    const group = lib.folderOverlayPos(4, 0, 300, 142, 320, 500, 0, 0, 16, 12, true);
+    assert(group.x === 10, "alignGroup pins overlay to group column", group);
+    const scrolled = lib.folderOverlayPos(0, 2, 300, 142, 320, 500, 0, 98, 16, 12, true);
+    assert(scrolled.y === 12, "scrolled row 2 sits at pad-top", scrolled);
+}
+
+// --- folder list ops ---
+{
+    const a = pin("A");
+    const b = pin("B");
+    const f = lib.makeFolder("Apps", [a], "F1");
+    assert(f.isFolder && f.tiles.length === 1 && f.name === "Apps", "makeFolder", f);
+    assert(lib.findFolder([[f], []], "F1") === f, "findFolder in first group");
+    assert(lib.findFolder([[], [f]], "missing") === null, "findFolder miss");
+
+    const child = lib.toFolderChild(pin("C", { size: "wide", wide: true, icon: "x" }));
+    assert(child.size === "medium" && child.wide === false && child.isFolder === false && child.icon === "x", "toFolderChild flattens", child);
+
+    const replaced = lib.replaceTileWithFolder([a, b], a, "Group");
+    assert(replaced.replaced && replaced.list[0].isFolder && replaced.list[0].tiles[0].id === "A" && replaced.list[1].id === "B", "replaceTileWithFolder", replaced.list);
+
+    const added = lib.addTileToFolder([f, b], b, "F1");
+    assert(added.length === 1 && added[0].tiles.length === 2 && added[0].tiles[1].id === "B", "addTileToFolder moves pin in", added);
+
+    const removed = lib.removeTileFromFolder(added, "A", "F1");
+    assert(removed.found && removed.list[0].tiles.length === 1 && removed.list[0].tiles[0].id === "B", "removeTileFromFolder", removed.list);
+
+    const unpacked = lib.ungroupFolder([added[0]], "F1");
+    assert(unpacked.length === 2 && unpacked[0].id === "A" && unpacked[1].id === "B", "ungroupFolder splices children", unpacked.map(function (t) { return t.id; }));
+}
+
 console.log("passed", passed, "failed", failed);
 process.exit(failed ? 1 : 0);

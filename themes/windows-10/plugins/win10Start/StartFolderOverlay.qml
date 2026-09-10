@@ -1,0 +1,1 @@
+../../../windows-shared/StartFolderOverlay.qml
