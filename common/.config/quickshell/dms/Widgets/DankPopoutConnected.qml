@@ -871,7 +871,9 @@ Item {
             case SettingsData.Position.Right:
                 return Math.max(edgeGapLeft, Math.min(screenWidth - popupWidth - popupGap, anchorX - popupWidth));
             default:
-                const rawX = triggerX + (triggerWidth / 2) - (popupWidth / 2);
+                const rawX = (positioning === "screen")
+                    ? (screenWidth - popupWidth) / 2
+                    : triggerX + (triggerWidth / 2) - (popupWidth / 2);
                 const clearLeft = adjacentBarClearance(adjacentBarInfo.leftBar);
                 const clearRight = adjacentBarClearance(adjacentBarInfo.rightBar);
                 const minX = Math.max(edgeGapLeft, clearLeft);
@@ -892,7 +894,9 @@ Item {
             case SettingsData.Position.Top:
                 return Math.max(popupGap, Math.min(screenHeight - popupHeight - edgeGapBottom, anchorY));
             default:
-                const rawY = triggerY - (popupHeight / 2);
+                const rawY = (positioning === "screen")
+                    ? (screenHeight - popupHeight) / 2
+                    : triggerY - (popupHeight / 2);
                 const clearTop = adjacentBarClearance(adjacentBarInfo.topBar);
                 const clearBottom = adjacentBarClearance(adjacentBarInfo.bottomBar);
                 const minY = Math.max(edgeGapTop, clearTop);

@@ -187,11 +187,15 @@ Item {
     property int dropTargetRow: 0
     property string dropActionBadge: ""
 
+    StartDrag {
+        id: startDrag
+    }
+
     // Fast onto a tile center = folder. Slow movement = live reorder. Recomputed every move.
-    readonly property real dragSlowEnterSpeed: 300
-    readonly property real dragSlowLeaveSpeed: 480
-    readonly property int dragSlowHoldMs: 80
-    readonly property real dragFolderSpeedMin: 360
+    readonly property real dragSlowEnterSpeed: startDrag.slowEnter
+    readonly property real dragSlowLeaveSpeed: startDrag.slowLeave
+    readonly property int dragSlowHoldMs: startDrag.slowHoldMs
+    readonly property real dragFolderSpeedMin: startDrag.folderSpeedMin
     property real dragPointerSpeed: 0
     property real dragLastMouseX: 0
     property real dragLastMouseY: 0
@@ -216,35 +220,20 @@ Item {
     }
 
     function sampleDragMotion(globalX, globalY) {
-        const now = Date.now();
-        const dt = now - root.dragLastSampleMs;
-        if (dt <= 0) {
-            root.dragLastMouseX = globalX;
-            root.dragLastMouseY = globalY;
-            return;
-        }
-        const dist = Math.hypot(globalX - root.dragLastMouseX, globalY - root.dragLastMouseY);
-        const inst = (dist / dt) * 1000;
-        if (dt > 120)
-            root.dragPointerSpeed = inst;
-        else {
-            const alpha = Math.min(1, dt / 40);
-            root.dragPointerSpeed = root.dragPointerSpeed * (1 - alpha) + inst * alpha;
-        }
-        root.dragLastMouseX = globalX;
-        root.dragLastMouseY = globalY;
-        root.dragLastSampleMs = now;
-
-        if (root.dragPointerSpeed <= root.dragSlowEnterSpeed) {
-            if (root.dragSlowSinceMs <= 0)
-                root.dragSlowSinceMs = now;
-            if ((now - root.dragSlowSinceMs) >= root.dragSlowHoldMs)
-                root.dragReorderLive = true;
-        } else {
-            root.dragSlowSinceMs = 0;
-            if (root.dragPointerSpeed >= root.dragSlowLeaveSpeed)
-                root.dragReorderLive = false;
-        }
+        const next = startDrag.sampleMotion({
+            "lastX": root.dragLastMouseX,
+            "lastY": root.dragLastMouseY,
+            "lastMs": root.dragLastSampleMs,
+            "speed": root.dragPointerSpeed,
+            "slowSinceMs": root.dragSlowSinceMs,
+            "live": root.dragReorderLive
+        }, globalX, globalY);
+        root.dragLastMouseX = next.lastX;
+        root.dragLastMouseY = next.lastY;
+        root.dragLastSampleMs = next.lastMs;
+        root.dragPointerSpeed = next.speed;
+        root.dragSlowSinceMs = next.slowSinceMs;
+        root.dragReorderLive = next.live;
     }
 
     function resetDragMotion() {
@@ -1222,33 +1211,6 @@ Item {
             }
         }
 
-        const holdingSticky = !!(centerHit && root.dragFolderStickyId && centerHit.tileId === root.dragFolderStickyId);
-        const fastEnough = root.dragPointerSpeed >= root.dragFolderSpeedMin || holdingSticky;
-        if (centerHit && fastEnough) {
-            root.dragFolderStickyId = centerHit.tileId;
-            root.dragFolderStickyGroupId = hitGId;
-            root.dropTargetGroupId = hitGId;
-            if (centerHit.type === "folder") {
-                root.dropTargetType = "add-to-folder";
-                root.dropTargetFolderId = centerHit.folderId;
-                root.dropTargetTileId = centerHit.folderId;
-                root.dropTargetIndex = centerHit.tileIndex;
-                root.dropActionBadge = "Add to folder";
-            } else {
-                root.dropTargetType = "create-folder";
-                root.dropTargetFolderId = "";
-                root.dropTargetTileId = centerHit.tileId;
-                root.dropTargetIndex = centerHit.tileIndex;
-                root.dropActionBadge = "Drop to create folder";
-            }
-        } else {
-            root.dragFolderStickyId = "";
-            root.dragFolderStickyGroupId = 0;
-        }
-
-        // Live reorder gating:
-        // Over empty space: immediately active with NO delay.
-        // Over apps and folders: only delay when moving fast to allow folder creation/passing through without displacing prematurely.
         const dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
         const dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
         const isSmall = (dragW <= 45 && dragH <= 45);
@@ -1261,12 +1223,33 @@ Item {
             ? targetTg.hasTileAt(root.dropTargetCol, root.dropTargetRow, dw, dh)
             : false;
 
-        if (!hasTileUnderTarget && !centerHit) {
-            root.dragReorderLive = true;
-        } else if (hasTileUnderTarget || centerHit) {
-            if (root.dragPointerSpeed > root.dragSlowEnterSpeed) {
-                root.dragReorderLive = false;
-            }
+        const resolved = startDrag.resolveDrop({
+            "centerHit": centerHit,
+            "stickyId": root.dragFolderStickyId,
+            "speed": root.dragPointerSpeed,
+            "live": root.dragReorderLive,
+            "hasTileUnder": hasTileUnderTarget,
+            "fromFolder": !!root.draggedFromFolderId,
+            "draggedIsFolder": !!(root.draggedTileData && root.draggedTileData.isFolder)
+        });
+        root.dropTargetType = resolved.dropType;
+        root.dropActionBadge = resolved.badge;
+        root.dragReorderLive = resolved.live;
+        root.dragFolderStickyId = resolved.stickyId || "";
+        if (resolved.stickyId) {
+            root.dragFolderStickyGroupId = hitGId;
+            root.dropTargetGroupId = hitGId;
+        } else {
+            root.dragFolderStickyGroupId = 0;
+        }
+        if (resolved.dropType === "add-to-folder") {
+            root.dropTargetFolderId = resolved.folderId;
+            root.dropTargetTileId = resolved.tileId;
+            root.dropTargetIndex = resolved.index;
+        } else if (resolved.dropType === "create-folder") {
+            root.dropTargetFolderId = "";
+            root.dropTargetTileId = resolved.tileId;
+            root.dropTargetIndex = resolved.index;
         }
     }
 

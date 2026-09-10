@@ -515,9 +515,11 @@ Item {
             case SettingsData.Position.Right:
                 return Math.max(leftGap, Math.min(screenWidth - popupWidth - rightGap, triggerX - popupWidth));
             default:
-                const rawX = triggerX + (triggerWidth / 2) - (popupWidth / 2);
                 const minX = leftGap;
                 const maxX = screenWidth - popupWidth - rightGap;
+                const rawX = (positioning === "screen")
+                    ? (screenWidth - popupWidth) / 2
+                    : triggerX + (triggerWidth / 2) - (popupWidth / 2);
                 return Math.max(minX, Math.min(maxX, rawX));
             }
         })(), dpr)
@@ -535,9 +537,11 @@ Item {
             case SettingsData.Position.Top:
                 return Math.max(topGap, Math.min(screenHeight - popupHeight - bottomGap, triggerY));
             default:
-                const rawY = triggerY - (popupHeight / 2);
                 const minY = topGap;
                 const maxY = screenHeight - popupHeight - bottomGap;
+                const rawY = (positioning === "screen")
+                    ? (screenHeight - popupHeight) / 2
+                    : triggerY - (popupHeight / 2);
                 return Math.max(minY, Math.min(maxY, rawY));
             }
         })(), dpr)

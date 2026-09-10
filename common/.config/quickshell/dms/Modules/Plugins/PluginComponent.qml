@@ -46,6 +46,8 @@ Item {
     property real popoutWidth: 400
     property real popoutHeight: 0
     property bool popoutFlush: false
+    // "" = anchor to the widget. "screen" = center on this monitor along the bar axis.
+    property string popoutPositioning: ""
     property real pillHorizontalPadding: -1
     property var pillClickAction: null
     property var pillRightClickAction: null
@@ -359,5 +361,6 @@ Item {
         contentHeight: root.popoutHeight
         pluginContent: root.popoutContent
         flushContent: root.popoutFlush
+        positioning: root.popoutPositioning
     }
 }

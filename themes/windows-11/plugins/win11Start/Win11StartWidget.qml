@@ -36,8 +36,9 @@ PluginComponent {
     layerNamespacePlugin: "win11-start"
     pillHorizontalPadding: 0
     popoutWidth: 648
-    popoutHeight: 748
+    popoutHeight: 672
     popoutFlush: true
+    popoutPositioning: section === "center" ? "screen" : ""
     Component.onCompleted: registerAsLauncher()
     onBlurBarWindowChanged: registerAsLauncher()
     Component.onDestruction: {
