@@ -39,5 +39,13 @@ hl.window_rule({
 	size = {1535, 994},
 })
 
+-- Loupe Image Viewer: float at fixed dimensions, centered (matching DMS Settings)
+hl.window_rule({
+	match = { class = "^(org\\.gnome\\.Loupe)$" },
+	float = true,
+	center = true,
+	size = {1535, 994},
+})
+
 -- Win11-style floats: hovering them does not steal mouse/keyboard focus
 hl.window_rule({ match = { float = true }, no_follow_mouse = true })

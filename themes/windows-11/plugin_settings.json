@@ -1,14 +1,14 @@
 {
-  "win10Start": {
+  "win11Start": {
     "enabled": true,
-    "group1Title": "Life at a glance",
+    "group1Title": "",
     "group1Tiles": [
       {
         "id": "zen",
         "name": "Zen Browser",
         "icon": "zen-browser",
-        "wide": true,
-        "size": "wide",
+        "wide": false,
+        "size": "medium",
         "isFolder": false,
         "col": 0,
         "row": 0
@@ -20,18 +20,18 @@
         "wide": false,
         "size": "medium",
         "isFolder": false,
-        "col": 4,
+        "col": 2,
         "row": 0
       },
       {
         "id": "com.mitchellh.ghostty",
         "name": "Ghostty",
         "icon": "com.mitchellh.ghostty",
-        "wide": true,
-        "size": "wide",
+        "wide": false,
+        "size": "medium",
         "isFolder": false,
-        "col": 0,
-        "row": 2
+        "col": 4,
+        "row": 0
       },
       {
         "id": "dev.zed.Zed",
@@ -40,7 +40,7 @@
         "wide": false,
         "size": "medium",
         "isFolder": false,
-        "col": 4,
+        "col": 0,
         "row": 2
       },
       {
@@ -50,8 +50,8 @@
         "wide": false,
         "size": "medium",
         "isFolder": false,
-        "col": 0,
-        "row": 4
+        "col": 2,
+        "row": 2
       },
       {
         "id": "localsend",
@@ -60,22 +60,19 @@
         "wide": false,
         "size": "medium",
         "isFolder": false,
-        "col": 2,
-        "row": 4
+        "col": 4,
+        "row": 2
       },
       {
         "id": "gparted",
         "name": "GParted",
         "icon": "gparted",
-        "size": "small",
+        "size": "medium",
         "wide": false,
         "isFolder": false,
-        "col": 4,
+        "col": 0,
         "row": 4
-      }
-    ],
-    "group2Title": "Play & explore",
-    "group2Tiles": [
+      },
       {
         "id": "steam",
         "name": "Steam",
@@ -83,17 +80,17 @@
         "wide": false,
         "size": "medium",
         "isFolder": false,
-        "col": 0,
+        "col": 6,
         "row": 0
       },
       {
         "id": "spotify-launcher",
         "name": "Spotify (Launcher)",
         "icon": "spotify-launcher",
-        "wide": true,
-        "size": "wide",
+        "wide": false,
+        "size": "medium",
         "isFolder": false,
-        "col": 2,
+        "col": 8,
         "row": 0
       },
       {
@@ -103,8 +100,8 @@
         "size": "medium",
         "wide": false,
         "isExpanded": false,
-        "col": 0,
-        "row": 2,
+        "col": 10,
+        "row": 0,
         "tiles": [
           {
             "id": "vesktop",
@@ -132,33 +129,35 @@
           }
         ]
       }
-    ]
-  },
-  "win10Clock": {
-    "enabled": true
-  },
-  "win10Tray": {
-    "enabled": true
-  },
-  "win10Media": {
-    "enabled": false
-  },
-  "win10Actions": {
-    "enabled": false
-  },
-  "win11Start": {
-    "enabled": false
+    ],
+    "group2Title": "",
+    "group2Tiles": []
   },
   "win11Clock": {
-    "enabled": false
+    "enabled": true
+  },
+  "win11Tray": {
+    "enabled": true
   },
   "win11Media": {
     "enabled": false
   },
-  "win11Tray": {
+  "win11Actions": {
     "enabled": false
   },
-  "win11Actions": {
+  "win10Start": {
+    "enabled": false
+  },
+  "win10Clock": {
+    "enabled": false
+  },
+  "win10Media": {
+    "enabled": false
+  },
+  "win10Tray": {
+    "enabled": false
+  },
+  "win10Actions": {
     "enabled": false
   }
 }

@@ -1,0 +1,14 @@
+{
+    "id": "win11Tray",
+    "name": "Windows 11 System Tray",
+    "description": "Stock DMS tray icons: left-click native menu, right-click hide/show",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win11TrayWidget.qml",
+    "icon": "notifications",
+    "permissions": [
+        "settings_read"
+    ]
+}

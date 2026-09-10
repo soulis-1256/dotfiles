@@ -27,22 +27,22 @@
   "matugenContrast": 0,
   "runUserMatugenTemplates": true,
   "matugenTargetMonitor": "",
-  "popupTransparency": 1,
-  "dockTransparency": 1,
+  "popupTransparency": 0.78,
+  "dockTransparency": 0.85,
   "widgetBackgroundColor": "s",
   "widgetBackgroundCustomColor": "#6750A4",
   "widgetBackgroundCustomStrength": 0.5,
   "widgetColorMode": "default",
   "controlCenterTileColorMode": "primary",
   "buttonColorMode": "primary",
-  "cornerRadius": 0,
+  "cornerRadius": 8,
   "niriLayoutGapsOverride": -1,
   "niriLayoutRadiusOverride": -1,
   "niriLayoutBorderSize": -1,
-  "hyprlandLayoutGapsOverride": 0,
-  "hyprlandLayoutGapsOutOverride": 0,
-  "hyprlandLayoutRadiusOverride": 0,
-  "hyprlandLayoutBorderSize": 2,
+  "hyprlandLayoutGapsOverride": 4,
+  "hyprlandLayoutGapsOutOverride": 4,
+  "hyprlandLayoutRadiusOverride": 8,
+  "hyprlandLayoutBorderSize": 1,
   "hyprlandResizeOnBorder": true,
   "mangoLayoutGapsOverride": -1,
   "mangoLayoutGapsOutOverride": -1,
@@ -62,28 +62,28 @@
   "customAnimationDuration": 500,
   "syncComponentAnimationSpeeds": true,
   "popoutAnimationSpeed": 1,
-  "popoutCustomAnimationDuration": 120,
+  "popoutCustomAnimationDuration": 180,
   "modalAnimationSpeed": 1,
-  "modalCustomAnimationDuration": 150,
+  "modalCustomAnimationDuration": 180,
   "enableRippleEffects": false,
-  "animationVariant": 1,
-  "motionEffect": 1,
-  "m3ElevationEnabled": false,
-  "m3ElevationIntensity": 12,
-  "m3ElevationOpacity": 30,
+  "animationVariant": 0,
+  "motionEffect": 0,
+  "m3ElevationEnabled": true,
+  "m3ElevationIntensity": 10,
+  "m3ElevationOpacity": 22,
   "m3ElevationColorMode": "default",
   "m3ElevationLightDirection": "top",
   "m3ElevationCustomColor": "#000000",
   "modalElevationEnabled": false,
-  "popoutElevationEnabled": false,
+  "popoutElevationEnabled": true,
   "barElevationEnabled": false,
-  "blurEnabled": false,
+  "blurEnabled": true,
   "blurForegroundLayers": true,
-  "blurLayerOutlineOpacity": 0.12,
-  "blurBorderEnabled": false,
+  "blurLayerOutlineOpacity": 0.1,
+  "blurBorderEnabled": true,
   "blurBorderColor": "outline",
   "blurBorderCustomColor": "#ffffff",
-  "blurBorderOpacity": 0.35,
+  "blurBorderOpacity": 0.14,
   "wallpaperFillMode": "Fill",
   "blurredWallpaperLayer": false,
   "blurWallpaperOnOverview": false,
@@ -185,7 +185,7 @@
   "workspaceScrolling": false,
   "showWorkspaceApps": true,
   "workspaceDragReorder": true,
-  "maxWorkspaceIcons": 10,
+  "maxWorkspaceIcons": 3,
   "workspaceAppIconSizeOffset": 0,
   "groupWorkspaceApps": true,
   "groupActiveWorkspaceApps": false,
@@ -194,6 +194,8 @@
   "reverseScrolling": false,
   "dwlShowAllTags": false,
   "workspaceActiveAppHighlightEnabled": false,
+  "workspaceIndicatorStyle": "compact",
+  "barHoverStyle": "inset",
   "workspaceColorMode": "default",
   "workspaceFocusedCustomColor": "#6750A4",
   "workspaceOccupiedColorMode": "none",
@@ -279,7 +281,7 @@
     }
   ],
   "centeringMode": "index",
-  "clockDateFormat": "ddd d MMM yyyy",
+  "clockDateFormat": "dd/MM/yyyy",
   "lockDateFormat": "",
   "greeterRememberLastSession": true,
   "greeterRememberLastUser": true,
@@ -554,14 +556,7 @@
   "notificationHistorySaveLow": true,
   "notificationHistorySaveNormal": true,
   "notificationHistorySaveCritical": true,
-  "notificationRules": [
-    {
-      "action": "popup_only",
-      "field": "appName",
-      "matchType": "exact",
-      "pattern": "Clock"
-    }
-  ],
+  "notificationRules": [],
   "notificationFocusedMonitor": false,
   "notificationCenterShowCalendar": true,
   "osdAlwaysShowValue": false,
@@ -659,7 +654,17 @@
       "showOnLastDisplay": false,
       "leftWidgets": [
         {
-          "id": "win10Start",
+          "id": "weather",
+          "enabled": true
+        },
+        {
+          "id": "music",
+          "enabled": true
+        }
+      ],
+      "centerWidgets": [
+        {
+          "id": "win11Start",
           "enabled": true
         },
         {
@@ -667,14 +672,9 @@
           "enabled": true
         }
       ],
-      "centerWidgets": [],
       "rightWidgets": [
         {
-          "id": "music",
-          "enabled": true
-        },
-        {
-          "id": "win10Tray",
+          "id": "win11Tray",
           "enabled": true
         },
         {
@@ -685,30 +685,14 @@
           "id": "keyboard_layout_name",
           "enabled": true,
           "keyboardLayoutNameCompactMode": true,
-          "keyboardLayoutNameShowIcon": false
-        },
-        {
-          "id": "cpuUsage",
-          "enabled": true,
-          "minimumWidth": true
-        },
-        {
-          "id": "memUsage",
-          "enabled": true,
-          "minimumWidth": true,
-          "showSwap": false,
-          "showInGb": true
-        },
-        {
-          "id": "network_speed_monitor",
-          "enabled": true
+          "keyboardLayoutNameShowIcon": true
         },
         {
           "id": "controlCenterButton",
           "enabled": true
         },
         {
-          "id": "win10Clock",
+          "id": "win11Clock",
           "enabled": true
         }
       ],
@@ -716,17 +700,18 @@
       "innerPadding": 0,
       "barInsetPadding": 0,
       "bottomGap": 0,
-      "transparency": 1,
+      "transparency": 0.5,
       "widgetTransparency": 0,
       "squareCorners": true,
       "fullHeightWidgets": true,
+      "barHeight": 52,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
       "gothCornerRadiusValue": 12,
-      "borderEnabled": false,
+      "borderEnabled": true,
       "borderColor": "surfaceText",
-      "borderOpacity": 1,
+      "borderOpacity": 0.22,
       "borderThickness": 1,
       "fontScale": 1,
       "autoHide": false,
@@ -734,9 +719,9 @@
       "openOnOverview": false,
       "visible": true,
       "popupGapsAuto": false,
-      "popupGapsManual": 0,
+      "popupGapsManual": 12,
       "shadowIntensity": 0,
-      "shadowOpacity": 60,
+      "shadowOpacity": 40,
       "widgetOutlineEnabled": false,
       "scrollEnabled": true,
       "clickThrough": false,
@@ -757,23 +742,38 @@
       "showOnLastDisplay": false,
       "leftWidgets": [
         {
-          "id": "win10Start",
+          "id": "win11Start",
           "enabled": true
         }
       ],
-      "centerWidgets": [
-        {
-          "id": "weather",
-          "enabled": true
-        }
-      ],
+      "centerWidgets": [],
       "rightWidgets": [
+        {
+          "id": "win11Tray",
+          "enabled": true
+        },
+        {
+          "id": "network_speed_monitor",
+          "enabled": true
+        },
+        {
+          "id": "cpuUsage",
+          "enabled": true,
+          "minimumWidth": true
+        },
+        {
+          "id": "memUsage",
+          "enabled": true,
+          "minimumWidth": true,
+          "showSwap": false,
+          "showInGb": true
+        },
         {
           "id": "controlCenterButton",
           "enabled": true
         },
         {
-          "id": "win10Clock",
+          "id": "win11Clock",
           "enabled": true
         }
       ],
@@ -781,17 +781,18 @@
       "innerPadding": 0,
       "barInsetPadding": 0,
       "bottomGap": 0,
-      "transparency": 1,
+      "transparency": 0.5,
       "widgetTransparency": 0,
       "squareCorners": true,
       "fullHeightWidgets": true,
+      "barHeight": 52,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
       "gothCornerRadiusValue": 12,
-      "borderEnabled": false,
+      "borderEnabled": true,
       "borderColor": "surfaceText",
-      "borderOpacity": 1,
+      "borderOpacity": 0.22,
       "borderThickness": 1,
       "widgetOutlineEnabled": false,
       "widgetOutlineColor": "primary",
@@ -804,13 +805,13 @@
       "openOnOverview": false,
       "visible": true,
       "popupGapsAuto": false,
-      "popupGapsManual": 0,
+      "popupGapsManual": 12,
       "maximizeDetection": true,
       "scrollEnabled": true,
       "scrollXBehavior": "column",
       "scrollYBehavior": "workspace",
       "shadowIntensity": 0,
-      "shadowOpacity": 60,
+      "shadowOpacity": 40,
       "shadowColorMode": "text",
       "shadowCustomColor": "#000000",
       "removeWidgetPadding": false,

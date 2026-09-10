@@ -432,6 +432,8 @@ Singleton {
     property bool reverseScrolling: false
     property bool dwlShowAllTags: false
     property bool workspaceActiveAppHighlightEnabled: false
+    property string workspaceIndicatorStyle: "full"
+    property string barHoverStyle: "full"
     property string workspaceColorMode: "default"
     property string workspaceFocusedCustomColor: "#6750A4"
     property string workspaceOccupiedColorMode: "none"
@@ -995,6 +997,7 @@ Singleton {
             "widgetTransparency": 1.0,
             "squareCorners": false,
             "fullHeightWidgets": false,
+            "barHeight": 48,
             "noBackground": false,
             "maximizeWidgetIcons": false,
             "maximizeWidgetText": false,

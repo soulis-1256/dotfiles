@@ -13,7 +13,7 @@ THEMES_DIR="${DOTFILES_DIR}/themes"
 CURRENT_THEME_FILE="${HOME}/.config/.current_theme"
 HYPR_THEME_SYMLINK="${HOME}/.config/hypr/theme.lua"
 DMS_CONFIG_DIR="${HOME}/.config/DankMaterialShell"
-MANAGED_PLUGINS=(win10Start win10Clock win10Media win10Tray)
+MANAGED_PLUGINS=(win10Start win10Clock win10Media win10Tray win11Start win11Clock win11Media win11Tray)
 
 BOLD='\033[1m'
 CYAN='\033[0;36m'
@@ -272,20 +272,21 @@ usage() {
     echo ""
     echo "Commands:"
     echo "  list, -l              List available themes"
-    echo "  apply <theme>         Apply a theme (default, windows-10)"
+    echo "  apply <theme>         Apply a theme (default, windows-10, windows-11)"
     echo "  apply <theme> --reset Apply pack defaults, discarding saved bar/layout tweaks"
     echo "  current, status       Show the active theme"
     echo "  help, -h              Show this message"
     echo ""
     echo "Reapplying the active theme keeps live DankMaterialShell settings (bar"
-    echo "layout, widgets, etc.) and win10 Start pin/folder layout. Switching away"
+    echo "layout, widgets, etc.) and Start pin/folder layout. Switching away"
     echo "and back restores that theme's last snapshot. Plugin pin state is never"
     echo "replaced by pack defaults once it exists."
     echo ""
     echo "Examples:"
     echo "  theme-switcher list"
     echo "  theme-switcher apply windows-10"
-    echo "  theme-switcher apply windows-10 --reset"
+    echo "  theme-switcher apply windows-11"
+    echo "  theme-switcher apply windows-11 --reset"
     echo "  theme-switcher apply default"
 }
 

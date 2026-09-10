@@ -41,4 +41,11 @@ hl.window_rule({
 	monitor = "DP-1",
 })
 
+-- 6. Pin Loupe Image Viewer to primary monitor DP-1 on Desktop
+hl.window_rule({
+	match = { class = "^(org\\.gnome\\.Loupe)$" },
+	monitor = "DP-1",
+})
+
+
 

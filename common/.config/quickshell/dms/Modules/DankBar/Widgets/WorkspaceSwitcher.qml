@@ -734,12 +734,23 @@ Item {
     readonly property real padding: (root.isFullHeight || (root.barConfig?.removeWidgetPadding ?? false)) ? 0 : Theme.snap((root.barConfig?.widgetPadding ?? 12) * (widgetHeight / 30), dpr)
     readonly property real visualWidth: isVertical ? (root.isFullHeight ? root.barThickness : widgetHeight) : (workspaceRow.implicitWidth + (root.isFullHeight ? 0 : padding * 2))
     readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + (root.isFullHeight ? 0 : padding * 2)) : (root.isFullHeight ? root.barThickness : widgetHeight)
+    readonly property bool compactHorizontal: !isVertical && SettingsData.workspaceIndicatorStyle === "compact"
+    readonly property int compactIndexTopMargin: 1
+    readonly property int compactPillBottomMargin: 1
+    readonly property int compactPillHeight: 3
+    readonly property int workspaceLabelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
     readonly property real appIconSize: {
-        if (root.isFullHeight)
+        if (root.isFullHeight) {
+            if (root.compactHorizontal) {
+                const hover = root.barThickness - 2 * Theme.barHoverMargin;
+                const topBand = compactIndexTopMargin + workspaceLabelSize;
+                const bottomBand = compactPillBottomMargin + compactPillHeight;
+                return Math.max(16, hover - topBand - bottomBand - 2 + SettingsData.workspaceAppIconSizeOffset);
+            }
             return Math.max(20, Math.round(root.barThickness * 0.54 + SettingsData.workspaceAppIconSizeOffset));
+        }
         return Theme.barIconSize(barThickness, -6 + SettingsData.workspaceAppIconSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale);
     }
-    readonly property int workspaceLabelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
     readonly property int appCountBadgeSize: Math.max(11, Math.round(appIconSize * 0.58))
     readonly property int appCountBadgeTextSize: Math.max(8, Math.round(appCountBadgeSize * 0.68))
 
@@ -1240,7 +1251,16 @@ Item {
                         return !!(modelData && modelData._placeholder);
                     return modelData === -1;
                 }
-                property bool isHovered: mouseArea.containsMouse
+                HoverHandler {
+                    id: workspaceHover
+                    enabled: !delegateRoot.isPlaceholder
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                }
+                // MouseArea.containsMouse is the source of truth (Win10). HoverHandler
+                // only supplements the active slot, where child icon MouseAreas steal
+                // containsMouse. Ignoring HoverHandler on inactive slots prevents a
+                // stuck hovered=true from painting another workspace as active.
+                property bool isHovered: mouseArea.containsMouse || (isActive && workspaceHover.hovered)
 
                 property var loadedWorkspaceData: null
                 property bool loadedIsUrgent: false
@@ -1326,9 +1346,13 @@ Item {
                     return (SettingsData.groupWorkspaceApps && (!isActive || SettingsData.groupActiveWorkspaceApps)) ? groupedCount : totalCount;
                 }
 
+                readonly property bool compactHorizontal: root.compactHorizontal
+
                 readonly property real baseWidth: {
                     if (root.isFullHeight) {
                         if (root.isVertical)
+                            return root.barThickness;
+                        if (compactHorizontal)
                             return root.barThickness;
                         return root.appIconSize + 10 + (isActive ? 6 : 0);
                     }
@@ -1350,6 +1374,8 @@ Item {
                 readonly property real iconsExtraWidth: {
                     if (!root.isVertical && SettingsData.showWorkspaceApps && stableIconCount > 0) {
                         const numIcons = Math.min(stableIconCount, SettingsData.maxWorkspaceIcons);
+                        if (compactHorizontal)
+                            return Math.max(0, numIcons - 1) * (root.appIconSize + Theme.spacingXS);
                         return numIcons * root.appIconSize + (numIcons > 0 ? (numIcons - 1) * Theme.spacingXS : 0) + (isActive ? Theme.spacingXS : 0);
                     }
                     return 0;
@@ -1365,6 +1391,8 @@ Item {
                 readonly property real visualWidth: {
                     if (root.isFullHeight && root.isVertical)
                         return root.barThickness;
+                    if (compactHorizontal && root.isFullHeight)
+                        return baseWidth + iconsExtraWidth;
                     if (contentImplicitWidth <= 0)
                         return baseWidth + iconsExtraWidth;
                     const padding = root.isFullHeight ? 8 : (root.isVertical ? Theme.spacingXS : Theme.spacingS);
@@ -1479,6 +1507,8 @@ Item {
                 readonly property color quickshellIconInactiveColor: getContrastingIconColor(root.isFullHeight ? "transparent" : (isOccupied ? occupiedColor : unfocusedColor), false)
 
                 readonly property color requestedColor: {
+                    if (root.isFullHeight && Theme.barHoverInset)
+                        return "transparent";
                     if (root.isFullHeight) {
                         if (mouseArea.pressed)
                             return "#1a1a1a";
@@ -1732,6 +1762,16 @@ Item {
 
                 Rectangle {
                     id: visualContent
+                    readonly property bool compactHorizontal: delegateRoot.compactHorizontal
+                    readonly property real compactIconOffset: {
+                        if (!compactHorizontal)
+                            return 0;
+                        const hoverY = hoverBg.visible ? hoverBg.y : 0;
+                        const hoverH = hoverBg.visible ? hoverBg.height : height;
+                        const numberBottom = compactIndexLabel.visible ? (compactIndexLabel.y + compactIndexLabel.height) : hoverY;
+                        const pillTop = hoverY + hoverH - root.compactPillBottomMargin - root.compactPillHeight;
+                        return (numberBottom + pillTop) / 2 - height / 2;
+                    }
                     width: (root.isFullHeight && root.isVertical) ? root.barThickness : delegateRoot.visualWidth
                     height: (root.isFullHeight && !root.isVertical) ? root.barThickness : delegateRoot.visualHeight
                     x: root.isFullHeight ? 0 : (root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2)
@@ -1741,15 +1781,88 @@ Item {
                     opacity: dragHandler.dragging ? 0.8 : 1.0
 
                     Rectangle {
+                        id: hoverBg
+                        visible: root.isFullHeight && Theme.barHoverInset && !isPlaceholder
+                        anchors.fill: parent
+                        anchors.margins: Theme.barHoverMargin
+                        radius: Theme.barHoverRadius
+                        readonly property bool shown: mouseArea.pressed || isUrgent || isHovered || isActive
+                        color: {
+                            if (mouseArea.pressed)
+                                return "#1a1a1a";
+                            if (isUrgent)
+                                return isHovered ? Qt.lighter(urgentColor, 1.15) : Theme.withAlpha(urgentColor, 0.35);
+                            if (isHovered)
+                                return "#323232";
+                            return "#2a2a2a";
+                        }
+                        opacity: shown ? 1 : 0
+                        // Animate opacity, never color→transparent. Qt interpolates
+                        // transparent as black and can leave a leftover dark fill
+                        // that looks like a second active workspace.
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: 100
+                            }
+                        }
+                    }
+
+                    Rectangle {
                         id: activeIndicator
-                        visible: root.isFullHeight && isActive
-                        color: Theme.primary
-                        width: root.isVertical ? 3 : undefined
-                        height: root.isVertical ? undefined : 3
-                        anchors.top: root.isVertical ? parent.top : undefined
-                        anchors.bottom: parent.bottom
-                        anchors.left: root.isVertical ? (root.axis?.edge === "right" ? parent.left : undefined) : parent.left
-                        anchors.right: root.isVertical ? (root.axis?.edge === "left" ? parent.right : undefined) : parent.right
+                        readonly property bool compact: SettingsData.workspaceIndicatorStyle === "compact"
+                        readonly property bool showOccupied: compact && isOccupied && !isActive
+                        visible: root.isFullHeight && !isPlaceholder && (isActive || showOccupied)
+                        color: isActive ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.45)
+                        radius: compact ? 1.5 : 0
+                        width: {
+                            if (root.isVertical)
+                                return 3;
+                            if (compact)
+                                return isActive ? 18 : 8;
+                            return parent.width;
+                        }
+                        height: {
+                            if (!root.isVertical)
+                                return 3;
+                            if (compact)
+                                return isActive ? 18 : 8;
+                            return parent.height;
+                        }
+                        x: {
+                            if (root.isVertical)
+                                return root.axis?.edge === "right" ? 0 : parent.width - width;
+                            if (compact && hoverBg.visible)
+                                return hoverBg.x + Math.round((hoverBg.width - width) / 2);
+                            return Math.round((parent.width - width) / 2);
+                        }
+                        y: {
+                            if (root.isVertical)
+                                return Math.round((parent.height - height) / 2);
+                            if (compact && hoverBg.visible)
+                                return hoverBg.y + hoverBg.height - height - root.compactPillBottomMargin;
+                            return parent.height - height;
+                        }
+
+                        Behavior on width {
+                            enabled: activeIndicator.compact
+                            NumberAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
+                        Behavior on height {
+                            enabled: activeIndicator.compact
+                            NumberAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
                     }
 
                     border.width: dragHandler.dragging ? 2 : (isDropTarget ? 2 : 0)
@@ -1795,6 +1908,24 @@ Item {
                         }
                     }
 
+                    StyledText {
+                        id: compactIndexLabel
+                        visible: visualContent.compactHorizontal && SettingsData.showWorkspaceIndex && !isPlaceholder
+                        anchors.horizontalCenter: hoverBg.visible ? hoverBg.horizontalCenter : parent.horizontalCenter
+                        anchors.top: hoverBg.visible ? hoverBg.top : parent.top
+                        anchors.topMargin: hoverBg.visible ? root.compactIndexTopMargin : 1
+                        width: Math.min(implicitWidth, (hoverBg.visible ? hoverBg.width : parent.width) - 4)
+                        height: root.workspaceLabelSize
+                        z: 3
+                        text: root.getWorkspaceIndex(modelData, index)
+                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                        font.pixelSize: root.workspaceLabelSize
+                        font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
+                        wrapMode: Text.NoWrap
+                        elide: Text.ElideNone
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
                     Loader {
                         id: appIconsLoader
                         anchors.fill: parent
@@ -1806,7 +1937,9 @@ Item {
 
                             Loader {
                                 id: contentRow
-                                anchors.centerIn: parent
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.verticalCenterOffset: visualContent.compactIconOffset
                                 sourceComponent: root.isVertical ? columnLayout : rowLayout
                             }
 
@@ -1847,7 +1980,7 @@ Item {
                                     }
 
                                     Item {
-                                        visible: ((SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName) && !loadedHasIcon) || (loadedHasIcon && SettingsData.showWorkspaceName && hasWorkspaceName)
+                                        visible: !visualContent.compactHorizontal && (((SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName) && !loadedHasIcon) || (loadedHasIcon && SettingsData.showWorkspaceName && hasWorkspaceName))
                                         width: wsIndexText.implicitWidth
                                         height: root.appIconSize
 

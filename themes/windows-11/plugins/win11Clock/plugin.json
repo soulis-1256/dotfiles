@@ -1,0 +1,14 @@
+{
+    "id": "win11Clock",
+    "name": "Windows 11 Clock",
+    "description": "Right-aligned clock and date with a persistent notification bell",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win11ClockWidget.qml",
+    "icon": "schedule",
+    "permissions": [
+        "settings_read"
+    ]
+}

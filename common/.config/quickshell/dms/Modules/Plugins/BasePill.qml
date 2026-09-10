@@ -106,22 +106,27 @@ Item {
         Rectangle {
             id: background
             anchors.fill: parent
-            radius: root.isFullHeight ? 0 : ((barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius)
+            anchors.margins: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverMargin : 0
+            radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : ((barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius))
             color: {
                 if (barConfig?.noBackground ?? false) {
                     return "transparent";
                 }
 
+                const isHovered = root.enableBackgroundHover && (mouseArea.containsMouse || (root.isHovered || false));
+
+                if (root.isFullHeight && Theme.barHoverInset)
+                    return Theme.barHoverFill(mouseArea.pressed, isHovered);
+
                 if (root.isFullHeight) {
                     if (mouseArea.pressed)
                         return "#1a1a1a";
-                    if (root.enableBackgroundHover && (mouseArea.containsMouse || (root.isHovered || false)))
+                    if (isHovered)
                         return "#323232";
                     return "transparent";
                 }
 
                 const rawTransparency = (root.barConfig && root.barConfig.widgetTransparency !== undefined) ? root.barConfig.widgetTransparency : 1.0;
-                const isHovered = root.enableBackgroundHover && (mouseArea.containsMouse || (root.isHovered || false));
                 const transparency = isHovered ? Math.max(0.3, rawTransparency) : rawTransparency;
                 const baseColor = isHovered ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.widgetBaseBackgroundColor;
 

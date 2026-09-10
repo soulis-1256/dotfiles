@@ -13,5 +13,20 @@
   },
   "win10Actions": {
     "enabled": false
+  },
+  "win11Start": {
+    "enabled": false
+  },
+  "win11Clock": {
+    "enabled": false
+  },
+  "win11Media": {
+    "enabled": false
+  },
+  "win11Tray": {
+    "enabled": false
+  },
+  "win11Actions": {
+    "enabled": false
   }
 }

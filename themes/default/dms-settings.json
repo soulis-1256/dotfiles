@@ -194,6 +194,8 @@
   "reverseScrolling": false,
   "dwlShowAllTags": false,
   "workspaceActiveAppHighlightEnabled": false,
+  "workspaceIndicatorStyle": "full",
+  "barHoverStyle": "full",
   "workspaceColorMode": "default",
   "workspaceFocusedCustomColor": "#6750A4",
   "workspaceOccupiedColorMode": "none",

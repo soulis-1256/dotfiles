@@ -9,18 +9,22 @@ import qs.Modules.Plugins
 import qs.Services
 import qs.Widgets
 
+// Fork of DMS SystemTrayBar (qs.Modules.DankBar.Widgets.SystemTrayBar).
+// Left-click opens the app's native tray menu; right-click is hide/show only.
+// Hover is an inset rounded rect on the Windows 11 taskbar (full-height on Win10).
 BasePill {
     id: root
 
     enableBackgroundHover: false
     enableCursor: false
-    readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
+    horizontalPadding: 0
+    readonly property int itemHoverRadius: Theme.barHoverInset ? Theme.barHoverRadius : Theme.cornerRadius
 
     property var parentWindow: null
     property var widgetData: null
     property string section: "right"
-    property bool isAtBottom: false
-    property bool isAutoHideBar: false
+    property bool isAtBottom: axis && axis.edge === "bottom"
+    property bool isAutoHideBar: barConfig ? (barConfig.autoHide ?? false) : false
     property bool useOverflowPopup: !widgetData?.trayUseInlineExpansion
     property bool useSingleLineOverflowPopup: widgetData?.trayPopupSingleLine ?? SettingsData.trayPopupSingleLine
     property bool useAutomaticOverflow: widgetData?.trayAutoOverflow ?? SettingsData.trayAutoOverflow
@@ -73,27 +77,31 @@ BasePill {
     }
 
     function activateInlineTrayItem(trayItem, anchorItem) {
-        if (!trayItem)
-            return;
-        if (!trayItem.onlyMenu) {
-            trayItem.activate();
-            return;
-        }
-        if (!trayItem.hasMenu)
-            return;
-        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+        root.openNativeTrayMenu(trayItem, anchorItem, { "x": (anchorItem ? anchorItem.width : 0) / 2, "y": (anchorItem ? anchorItem.height : 0) / 2 }, anchorItem);
     }
 
-    function openInlineTrayContextMenu(trayItem, areaItem, mouse, anchorItem) {
-        if (!trayItem) {
+    function openNativeTrayMenu(trayItem, areaItem, mouse, anchorItem) {
+        if (!trayItem)
             return;
-        }
+        if (root.useOverflowPopup)
+            root.menuOpen = false;
         if (!trayItem.hasMenu) {
-            const gp = areaItem.mapToGlobal(mouse.x, mouse.y);
-            root.callContextMenuFallback(trayItem.id, Math.round(gp.x), Math.round(gp.y));
+            root.closeTrayMenu();
+            if (areaItem && mouse) {
+                const gp = areaItem.mapToGlobal(mouse.x, mouse.y);
+                root.callContextMenuFallback(trayItem.id, Math.round(gp.x), Math.round(gp.y));
+            }
             return;
         }
-        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis, "native");
+    }
+
+    function openVisibilityTrayMenu(trayItem, anchorItem) {
+        if (!trayItem)
+            return;
+        if (root.useOverflowPopup)
+            root.menuOpen = false;
+        root.showForTrayItem(trayItem, anchorItem, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis, "visibility");
     }
 
     function toggleIconName() {
@@ -398,7 +406,7 @@ BasePill {
         }
     }
 
-    readonly property real trayItemSize: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale) + 6
+    readonly property real trayItemSize: root.widgetThickness
 
     readonly property real minTooltipY: {
         if (!parentScreen || !isVerticalOrientation) {
@@ -468,7 +476,7 @@ BasePill {
                     property string itemKey: modelData.key
                     property string iconSource: root.trayIconSourceFor(trayItem)
 
-                    width: root.isFullHeight ? (root.trayItemSize + 10) : root.trayItemSize
+                    width: root.trayItemSize
                     height: root.barThickness
                     z: dragHandler.dragging ? 100 : 0
 
@@ -503,34 +511,10 @@ BasePill {
 
                     Rectangle {
                         id: visualContent
-                        width: {
-                            if (!root.isFullHeight)
-                                return root.trayItemSize;
-                            return root.trayItemSize + 10 - (Theme.barHoverInset ? Theme.barHoverMargin * 2 : 0);
-                        }
-                        height: {
-                            if (!root.isFullHeight)
-                                return root.trayItemSize;
-                            return root.barThickness - (Theme.barHoverInset ? Theme.barHoverMargin * 2 : 0);
-                        }
-                        anchors.centerIn: parent
-                        radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : Theme.cornerRadius)
-                        color: {
-                            if (root.isFullHeight && Theme.barHoverInset)
-                                return Theme.barHoverFill(trayItemArea.pressed, trayItemArea.containsMouse);
-                            if (root.isFullHeight) {
-                                if (trayItemArea.pressed) return "#1a1a1a";
-                                if (trayItemArea.containsMouse) return "#323232";
-                                return "transparent";
-                            }
-                            return trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0);
-                        }
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: root.isFullHeight ? 100 : 0
-                            }
-                        }
+                        anchors.fill: parent
+                        anchors.margins: Theme.barHoverMargin
+                        radius: root.itemHoverRadius
+                        color: Theme.barHoverInset ? Theme.barHoverFill(trayItemArea.pressed, trayItemArea.containsMouse) : (trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
                         border.width: dragHandler.dragging ? 2 : 0
                         border.color: Theme.primary
                         opacity: dragHandler.dragging ? 0.8 : 1.0
@@ -572,7 +556,7 @@ BasePill {
 
                         DankRipple {
                             id: itemRipple
-                            cornerRadius: Theme.cornerRadius
+                            cornerRadius: root.itemHoverRadius
                         }
                     }
 
@@ -607,15 +591,7 @@ BasePill {
 
                             if (!delegateRoot.trayItem)
                                 return;
-                            if (!delegateRoot.trayItem.onlyMenu) {
-                                delegateRoot.trayItem.activate();
-                                return;
-                            }
-                            if (!delegateRoot.trayItem.hasMenu)
-                                return;
-                            if (root.useOverflowPopup)
-                                root.menuOpen = false;
-                            root.showForTrayItem(delegateRoot.trayItem, visualContent, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+                            root.openNativeTrayMenu(delegateRoot.trayItem, trayItemArea, mouse, visualContent);
                         }
 
                         onPositionChanged: mouse => {
@@ -639,50 +615,23 @@ BasePill {
                                 return;
                             if (mouse.button !== Qt.RightButton)
                                 return;
-                            if (!delegateRoot.trayItem?.hasMenu) {
-                                const gp = trayItemArea.mapToGlobal(mouse.x, mouse.y);
-                                root.callContextMenuFallback(delegateRoot.trayItem.id, Math.round(gp.x), Math.round(gp.y));
-                                return;
-                            }
-                            if (root.useOverflowPopup)
-                                root.menuOpen = false;
-                            root.showForTrayItem(delegateRoot.trayItem, visualContent, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+                            root.openVisibilityTrayMenu(delegateRoot.trayItem, visualContent);
                         }
                     }
                 }
             }
 
             Item {
-                width: root.isFullHeight ? 24 : root.trayItemSize
+                width: root.trayItemSize
                 height: root.barThickness
                 visible: root.hasHiddenItems
 
                 Rectangle {
                     id: caretButton
-                    width: root.isFullHeight ? 24 : root.trayItemSize
-                    height: {
-                        if (!root.isFullHeight)
-                            return root.trayItemSize;
-                        return root.barThickness - (Theme.barHoverInset ? Theme.barHoverMargin * 2 : 0);
-                    }
-                    anchors.centerIn: parent
-                    radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : Theme.cornerRadius)
-                    color: {
-                        if (root.isFullHeight && Theme.barHoverInset)
-                            return Theme.barHoverFill(caretArea.pressed, caretArea.containsMouse);
-                        if (root.isFullHeight) {
-                            if (caretArea.pressed) return "#1a1a1a";
-                            if (caretArea.containsMouse) return "#323232";
-                            return "transparent";
-                        }
-                        return caretArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0);
-                    }
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: root.isFullHeight ? 100 : 0
-                        }
-                    }
+                    anchors.fill: parent
+                    anchors.margins: Theme.barHoverMargin
+                    radius: root.itemHoverRadius
+                    color: Theme.barHoverInset ? Theme.barHoverFill(caretArea.pressed, caretArea.containsMouse) : (caretArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
 
                     DankIcon {
                         anchors.centerIn: parent
@@ -693,7 +642,7 @@ BasePill {
 
                     DankRipple {
                         id: caretRipple
-                        cornerRadius: Theme.cornerRadius
+                        cornerRadius: root.itemHoverRadius
                     }
 
                     MouseArea {
@@ -750,12 +699,10 @@ BasePill {
 
             Rectangle {
                 id: inlineVisualContent
-                width: root.trayItemSize
-                height: root.trayItemSize
-                x: root.isVerticalOrientation ? Math.round((parent.width - width) / 2) : (root.reverseInlineHorizontal ? parent.width - width : 0)
-                y: root.isVerticalOrientation ? (root.reverseInlineVertical ? parent.height - height : 0) : Math.round((parent.height - height) / 2)
-                radius: Theme.cornerRadius
-                color: inlineTrayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                anchors.fill: parent
+                anchors.margins: Theme.barHoverMargin
+                radius: root.itemHoverRadius
+                color: Theme.barHoverInset ? Theme.barHoverFill(inlineTrayItemArea.pressed, inlineTrayItemArea.containsMouse) : (inlineTrayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
                 opacity: root.inlineExpanded ? 1 : 0
 
                 Behavior on opacity {
@@ -798,7 +745,7 @@ BasePill {
 
                 DankRipple {
                     id: inlineItemRipple
-                    cornerRadius: Theme.cornerRadius
+                    cornerRadius: root.itemHoverRadius
                 }
             }
 
@@ -822,7 +769,7 @@ BasePill {
                     }
                     if (mouse.button !== Qt.RightButton)
                         return;
-                    root.openInlineTrayContextMenu(trayItem, inlineTrayItemArea, mouse, inlineVisualContent);
+                    root.openVisibilityTrayMenu(trayItem, inlineVisualContent);
                 }
             }
         }
@@ -871,11 +818,10 @@ BasePill {
 
             Rectangle {
                 id: visualContent
-                width: root.trayItemSize
-                height: root.trayItemSize
-                anchors.centerIn: parent
-                radius: Theme.cornerRadius
-                color: trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                anchors.fill: parent
+                anchors.margins: Theme.barHoverMargin
+                radius: root.itemHoverRadius
+                color: Theme.barHoverInset ? Theme.barHoverFill(trayItemArea.pressed, trayItemArea.containsMouse) : (trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
                 border.width: dragHandler.dragging ? 2 : 0
                 border.color: Theme.primary
                 opacity: dragHandler.dragging ? 0.8 : 1.0
@@ -917,7 +863,7 @@ BasePill {
 
                 DankRipple {
                     id: itemRipple
-                    cornerRadius: Theme.cornerRadius
+                    cornerRadius: root.itemHoverRadius
                 }
             }
 
@@ -952,15 +898,7 @@ BasePill {
 
                     if (!trayItem)
                         return;
-                    if (!trayItem.onlyMenu) {
-                        trayItem.activate();
-                        return;
-                    }
-                    if (!trayItem.hasMenu)
-                        return;
-                    if (root.useOverflowPopup)
-                        root.menuOpen = false;
-                    root.showForTrayItem(trayItem, visualContent, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+                    root.openNativeTrayMenu(trayItem, trayItemArea, mouse, visualContent);
                 }
 
                 onPositionChanged: mouse => {
@@ -984,7 +922,7 @@ BasePill {
                         return;
                     if (mouse.button !== Qt.RightButton)
                         return;
-                    root.openInlineTrayContextMenu(trayItem, trayItemArea, mouse, visualContent);
+                    root.openVisibilityTrayMenu(trayItem, visualContent);
                 }
             }
         }
@@ -1021,11 +959,10 @@ BasePill {
 
                 Rectangle {
                     id: caretButtonVert
-                    width: root.trayItemSize
-                    height: root.trayItemSize
-                    anchors.centerIn: parent
-                    radius: Theme.cornerRadius
-                    color: caretAreaVert.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                    anchors.fill: parent
+                    anchors.margins: Theme.barHoverMargin
+                    radius: root.itemHoverRadius
+                    color: Theme.barHoverInset ? Theme.barHoverFill(caretAreaVert.pressed, caretAreaVert.containsMouse) : (caretAreaVert.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
 
                     DankIcon {
                         anchors.centerIn: parent
@@ -1036,7 +973,7 @@ BasePill {
 
                     DankRipple {
                         id: caretRippleVert
-                        cornerRadius: Theme.cornerRadius
+                        cornerRadius: root.itemHoverRadius
                     }
 
                     MouseArea {
@@ -1494,17 +1431,10 @@ BasePill {
                                         return;
                                     if (!trayItem)
                                         return;
-                                    if (mouse.button === Qt.LeftButton && !trayItem.onlyMenu) {
-                                        trayItem.activate();
-                                        root.menuOpen = false;
-                                        return;
-                                    }
-                                    if (!trayItem.hasMenu) {
-                                        const gp = itemArea.mapToGlobal(mouse.x, mouse.y);
-                                        root.callContextMenuFallback(trayItem.id, Math.round(gp.x), Math.round(gp.y));
-                                        return;
-                                    }
-                                    root.showForTrayItem(trayItem, menuContainer, parentScreen, root.isAtBottom, root.isVerticalOrientation, root.axis);
+                                    if (mouse.button === Qt.LeftButton)
+                                        root.openNativeTrayMenu(trayItem, itemArea, mouse, menuContainer);
+                                    else if (mouse.button === Qt.RightButton)
+                                        root.openVisibilityTrayMenu(trayItem, menuContainer);
                                 }
                             }
                         }
@@ -1527,7 +1457,9 @@ BasePill {
             property bool isVertical: false
             property var axis: null
             property bool showMenu: false
+            property bool menuReady: false
             property var menuHandle: null
+            property string menuMode: "native"
 
             ListModel {
                 id: entryStack
@@ -1536,20 +1468,56 @@ BasePill {
                 return entryStack.count ? entryStack.get(entryStack.count - 1).handle : null;
             }
 
-            function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj) {
+            function nativeChildCount() {
+                const kids = rootOpener.children;
+                if (!kids)
+                    return 0;
+                if (kids.values && kids.values.length !== undefined)
+                    return kids.values.length;
+                if (typeof kids.rowCount === "function")
+                    return kids.rowCount();
+                if (typeof kids.count === "number")
+                    return kids.count;
+                return nativeMenuRepeater.count || 0;
+            }
+
+            function tryRevealNativeMenu() {
+                if (menuMode !== "native" || menuReady)
+                    return;
+                if (nativeChildCount() <= 0 && nativeMenuRepeater.count <= 0)
+                    return;
+                nativeSettleTimer.restart();
+            }
+
+            function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj, mode) {
                 trayItem = item;
                 anchorItem = anchor;
                 parentScreen = screen;
                 isAtBottom = atBottom;
                 isVertical = vertical;
                 axis = axisObj;
-                menuHandle = item?.menu;
-
+                menuMode = mode || "native";
+                menuHandle = menuMode === "native" ? item?.menu : null;
+                menuReady = menuMode === "visibility";
                 showMenu = true;
+                if (menuMode === "native") {
+                    nativeMenuReadyTimeout.restart();
+                    Qt.callLater(tryRevealNativeMenu);
+                }
             }
 
             function close() {
+                nativeSettleTimer.stop();
+                nativeMenuReadyTimeout.stop();
+                menuReady = false;
                 showMenu = false;
+                root._closedThisTick = true;
+                Qt.callLater(function() {
+                    if (root._closedThisTick && root.currentTrayMenu === menuRoot) {
+                        root.closeTrayMenu();
+                    }
+                    root._closedThisTick = false;
+                });
             }
 
             Connections {
@@ -1581,6 +1549,30 @@ BasePill {
                 interval: 80
                 repeat: false
                 onTriggered: menuRoot.close()
+            }
+
+            Timer {
+                id: nativeSettleTimer
+                interval: 16
+                repeat: false
+                onTriggered: {
+                    if (menuRoot.menuMode !== "native" || menuRoot.menuReady)
+                        return;
+                    if (menuRoot.nativeChildCount() > 0 || nativeMenuRepeater.count > 0)
+                        menuRoot.menuReady = true;
+                }
+            }
+
+            Timer {
+                id: nativeMenuReadyTimeout
+                interval: 600
+                repeat: false
+                onTriggered: {
+                    if (menuRoot.menuMode !== "native" || menuRoot.menuReady)
+                        return;
+                    if (menuRoot.nativeChildCount() > 0 || nativeMenuRepeater.count > 0)
+                        menuRoot.menuReady = true;
+                }
             }
 
             function showSubMenu(entry) {
@@ -1617,22 +1609,22 @@ BasePill {
                     targetWindow: menuWindow
                     blurX: trayMenuContainer.x
                     blurY: trayMenuContainer.y
-                    blurWidth: menuRoot.showMenu ? trayMenuContainer.width : 0
-                    blurHeight: menuRoot.showMenu ? trayMenuContainer.height : 0
+                    blurWidth: menuRoot.showMenu && menuRoot.menuReady ? trayMenuContainer.width : 0
+                    blurHeight: menuRoot.showMenu && menuRoot.menuReady ? trayMenuContainer.height : 0
                     blurRadius: Theme.cornerRadius
                 }
 
                 WlrLayershell.namespace: "dms:tray-menu-window"
-                visible: menuRoot.showMenu && (menuRoot.trayItem?.hasMenu ?? false)
+                visible: menuRoot.showMenu && (menuRoot.menuMode === "visibility" || (menuRoot.trayItem?.hasMenu ?? false))
                 screen: menuRoot.parentScreen
                 WlrLayershell.layer: root.barUsesOverlayLayer ? WlrLayershell.Overlay : WlrLayershell.Top
                 WlrLayershell.exclusiveZone: -1
-                WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(menuRoot.showMenu, null)
+                WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(menuRoot.showMenu && menuRoot.menuReady, null)
                 color: "transparent"
 
                 DankFocusGrab {
                     windows: [menuWindow].concat(KeyboardFocus.barWindows)
-                    wanted: KeyboardFocus.wantsGrab(menuRoot.showMenu, null)
+                    wanted: KeyboardFocus.wantsGrab(menuRoot.showMenu && menuRoot.menuReady, null)
                 }
 
                 anchors {
@@ -1688,16 +1680,20 @@ BasePill {
                     adjacentBarInfo: menuWindow.adjacentBarInfo
                 }
 
+                Rectangle {
+                    id: dismissMaskRect
+                    x: menuWindow.maskX
+                    y: menuWindow.maskY
+                    width: menuWindow.maskWidth
+                    height: menuWindow.maskHeight
+                    visible: false
+                }
+
                 mask: Region {
-                    item: Rectangle {
-                        x: menuWindow.maskX
-                        y: menuWindow.maskY
-                        width: menuWindow.maskWidth
-                        height: menuWindow.maskHeight
-                    }
+                    item: menuRoot.showMenu && menuRoot.menuReady ? dismissMaskRect : null
 
                     Region {
-                        item: menuRoot.showMenu ? trayMenuContainer : null
+                        item: menuRoot.showMenu && menuRoot.menuReady ? trayMenuContainer : null
                     }
                 }
 
@@ -1717,7 +1713,7 @@ BasePill {
                     width: menuWindow.maskWidth
                     height: menuWindow.maskHeight
                     z: -1
-                    enabled: menuRoot.showMenu
+                    enabled: menuRoot.showMenu && menuRoot.menuReady
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                     onClicked: mouse => {
                         const clickX = mouse.x + menuWindow.maskX;
@@ -1786,7 +1782,10 @@ BasePill {
 
                     readonly property real rawWidth: Math.min(500, Math.max(250, menuColumn.implicitWidth + Theme.spacingS * 2))
                     readonly property real rawHeight: {
-                        const desiredHeight = Math.max(40, menuColumn.implicitHeight + Theme.spacingS * 2);
+                        const contentHeight = menuColumn.implicitHeight + Theme.spacingS * 2;
+                        if (menuRoot.menuMode === "native" && !menuRoot.menuReady)
+                            return contentHeight;
+                        const desiredHeight = Math.max(40, contentHeight);
                         const maxHeight = Math.max(40, menuWindow.maskHeight - 20);
                         return Math.min(desiredHeight, maxHeight);
                     }
@@ -1824,17 +1823,11 @@ BasePill {
                             }
                         })(), menuWindow.dpr)
 
-                    opacity: menuRoot.showMenu ? 1 : 0
-                    scale: menuRoot.showMenu ? 1 : 0.85
+                    opacity: menuRoot.showMenu && menuRoot.menuReady ? 1 : 0
+                    scale: 1
 
                     Behavior on opacity {
-                        NumberAnimation {
-                            duration: Theme.mediumDuration
-                            easing.type: Theme.emphasizedEasing
-                        }
-                    }
-
-                    Behavior on scale {
+                        enabled: menuRoot.menuReady
                         NumberAnimation {
                             duration: Theme.mediumDuration
                             easing.type: Theme.emphasizedEasing
@@ -1869,6 +1862,14 @@ BasePill {
                     QsMenuOpener {
                         id: rootOpener
                         menu: menuRoot.menuHandle
+                        onChildrenChanged: menuRoot.tryRevealNativeMenu()
+                    }
+
+                    Connections {
+                        target: rootOpener.children
+                        function onValuesChanged() {
+                            menuRoot.tryRevealNativeMenu();
+                        }
                     }
 
                     QsMenuOpener {
@@ -1893,9 +1894,10 @@ BasePill {
 
                             width: menuFlickable.width
                             spacing: 1
+                            onImplicitHeightChanged: menuRoot.tryRevealNativeMenu()
 
                             Rectangle {
-                                visible: entryStack.count === 0
+                                visible: entryStack.count === 0 && menuRoot.menuMode === "visibility"
                                 width: parent.width
                                 height: 28
                                 radius: Theme.cornerRadius
@@ -1952,14 +1954,7 @@ BasePill {
                             }
 
                             Rectangle {
-                                visible: entryStack.count === 0
-                                width: parent.width
-                                height: 1
-                                color: Theme.outlineHeavy
-                            }
-
-                            Rectangle {
-                                visible: entryStack.count > 0
+                                visible: entryStack.count > 0 && menuRoot.menuMode === "native"
                                 width: parent.width
                                 height: 28
                                 radius: Theme.cornerRadius
@@ -1996,14 +1991,16 @@ BasePill {
                             }
 
                             Rectangle {
-                                visible: entryStack.count > 0
+                                visible: entryStack.count > 0 && menuRoot.menuMode === "native"
                                 width: parent.width
                                 height: 1
                                 color: Theme.outlineHeavy
                             }
 
                             Repeater {
-                                model: entryStack.count ? (subOpener.children ? subOpener.children : (menuRoot.topEntry()?.children || [])) : rootOpener.children
+                                id: nativeMenuRepeater
+                                model: menuRoot.menuMode === "native" ? (entryStack.count ? (subOpener.children ? subOpener.children : (menuRoot.topEntry()?.children || [])) : rootOpener.children) : []
+                                onCountChanged: menuRoot.tryRevealNativeMenu()
 
                                 Rectangle {
                                     property var menuEntry: modelData
@@ -2127,14 +2124,40 @@ BasePill {
         }
     }
 
-    function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj) {
-        if (!screen)
-            return;
+    property string _openTrayItemId: ""
+    property string _openTrayMenuMode: ""
+    property bool _closedThisTick: false
+
+    function closeTrayMenu() {
         if (currentTrayMenu) {
             currentTrayMenu.showMenu = false;
             currentTrayMenu.destroy();
             currentTrayMenu = null;
         }
+        _openTrayItemId = "";
+        _openTrayMenuMode = "";
+        _closedThisTick = true;
+        Qt.callLater(function() {
+            root._closedThisTick = false;
+        });
+    }
+
+    function showForTrayItem(item, anchor, screen, atBottom, vertical, axisObj, mode) {
+        if (!screen)
+            return;
+        const menuMode = mode || "native";
+        const itemId = item ? (item.id || "") : "";
+        const sameItem = itemId !== "" && itemId === root._openTrayItemId;
+        const sameMode = menuMode === root._openTrayMenuMode;
+        if ((sameItem && sameMode) || (currentTrayMenu && currentTrayMenu.showMenu && currentTrayMenu.trayItem === item && currentTrayMenu.menuMode === menuMode)) {
+            root.closeTrayMenu();
+            return;
+        }
+        if (root._closedThisTick && sameItem && sameMode)
+            return;
+
+        root.closeTrayMenu();
+        root._closedThisTick = false;
 
         PopoutManager.closeAllPopouts();
         ModalManager.closeAllModalsExcept(null);
@@ -2142,7 +2165,9 @@ BasePill {
         currentTrayMenu = trayMenuComponent.createObject(null);
         if (!currentTrayMenu)
             return;
-        currentTrayMenu.showForTrayItem(item, anchor, screen, atBottom, vertical ?? false, axisObj);
+        root._openTrayItemId = itemId;
+        root._openTrayMenuMode = menuMode;
+        currentTrayMenu.showForTrayItem(item, anchor, screen, atBottom, vertical ?? false, axisObj, menuMode);
     }
 
     function _trayLayoutRoot() {
@@ -2190,7 +2215,7 @@ BasePill {
         if (!hit?.trayItem?.hasMenu)
             return false;
         const anchor = hit.children?.length > 0 ? hit.children[0] : hit;
-        showForTrayItem(hit.trayItem, anchor, parentScreen, isAtBottom, isVerticalOrientation, axis);
+        showForTrayItem(hit.trayItem, anchor, parentScreen, isAtBottom, isVerticalOrientation, axis, "native");
         return true;
     }
 }

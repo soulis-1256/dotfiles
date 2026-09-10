@@ -2006,6 +2006,17 @@ Singleton {
         return Qt.rgba(c.r, c.g, c.b, a);
     }
 
+    readonly property bool barHoverInset: typeof SettingsData !== "undefined" && SettingsData.barHoverStyle === "inset"
+    readonly property int barHoverMargin: barHoverInset ? 4 : 0
+    readonly property int barHoverRadius: barHoverInset ? 4 : 0
+    function barHoverFill(pressed, hovered) {
+        if (pressed)
+            return withAlpha(surfaceText, 0.12);
+        if (hovered)
+            return withAlpha(surfaceText, 0.08);
+        return withAlpha(surfaceText, 0);
+    }
+
     function popupLayerColor(baseColor) {
         if (isConnectedEffect)
             return connectedSurfaceColor;

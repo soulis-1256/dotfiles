@@ -1,0 +1,14 @@
+{
+    "id": "win11Media",
+    "name": "Windows 11 Now Playing",
+    "description": "Compact taskbar now-playing control with a Windows 11 media flyout",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Win11MediaWidget.qml",
+    "icon": "music_note",
+    "permissions": [
+        "settings_read"
+    ]
+}

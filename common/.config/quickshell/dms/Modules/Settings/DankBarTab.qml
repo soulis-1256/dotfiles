@@ -140,6 +140,7 @@ Item {
             transparency: defaultBar.transparency ?? 1.0,
             widgetTransparency: defaultBar.widgetTransparency ?? 1.0,
             squareCorners: defaultBar.squareCorners ?? false,
+            barHeight: defaultBar.barHeight ?? 48,
             noBackground: defaultBar.noBackground ?? false,
             gothCornersEnabled: defaultBar.gothCornersEnabled ?? false,
             gothCornerRadiusOverride: defaultBar.gothCornerRadiusOverride ?? false,
