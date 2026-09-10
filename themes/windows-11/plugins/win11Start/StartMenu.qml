@@ -28,6 +28,9 @@ Item {
     readonly property real winRadius: 8
     readonly property real winRadiusSmall: 4
     readonly property real winRadiusLarge: 12
+    readonly property int pinIconSize: 36
+    readonly property int pinIconGap: 4
+    readonly property int pinLabelSize: 13
     readonly property int gridCols: PinGrid.COLS
     readonly property int gridTileCols: PinGrid.TILE_COLS
     readonly property real pinnedGridWidth: gridTileCols * PinGrid.PITCH
@@ -1985,7 +1988,7 @@ Item {
                 StyledText {
                     id: allAppsLabel
                     anchors.centerIn: parent
-                    text: root.allAppsMode ? "< Back" : "All apps"
+                    text: root.allAppsMode ? "Back" : "All apps"
                     color: root.winText
                     font.pixelSize: 12
                 }
@@ -2713,44 +2716,41 @@ Item {
                                             }
                                         }
 
-                                        AppIconRenderer {
+                                        Column {
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            y: 16
-                                            width: 36
-                                            height: 36
-                                            iconValue: modelData.icon || ""
-                                            iconSize: 36
-                                            fallbackText: (modelData.name || "?").charAt(0)
-                                        }
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: root.pinIconGap
+                                            width: parent.width - 8
 
-                                        StyledText {
-                                            visible: root.renamingItemId !== modelData.id
-                                            anchors.left: parent.left
-                                            anchors.leftMargin: 6
-                                            anchors.right: parent.right
-                                            anchors.rightMargin: 6
-                                            anchors.bottom: parent.bottom
-                                            anchors.bottomMargin: 6
-                                            text: modelData.name || ""
-                                            color: root.winText
-                                            font.pixelSize: 11
-                                            horizontalAlignment: Text.AlignHCenter
-                                            elide: Text.ElideRight
-                                            wrapMode: Text.Wrap
-                                            maximumLineCount: 2
-                                        }
+                                            AppIconRenderer {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                width: root.pinIconSize
+                                                height: root.pinIconSize
+                                                iconValue: modelData.icon || ""
+                                                iconSize: root.pinIconSize
+                                                fallbackText: (modelData.name || "?").charAt(0)
+                                            }
 
-                                        TextInput {
-                                            id: foTileRenameInput
+                                            StyledText {
+                                                visible: root.renamingItemId !== modelData.id
+                                                width: parent.width
+                                                text: modelData.name || ""
+                                                color: root.winText
+                                                font.pixelSize: root.pinLabelSize
+                                                horizontalAlignment: Text.AlignHCenter
+                                                elide: Text.ElideRight
+                                                wrapMode: Text.Wrap
+                                                maximumLineCount: 2
+                                            }
 
-                                            visible: root.renamingItemId === modelData.id
-                                            anchors.left: parent.left
-                                            anchors.leftMargin: 8
-                                            anchors.bottom: parent.bottom
-                                            anchors.bottomMargin: 6
-                                            width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width - 16)
-                                            font.pixelSize: 11
-                                            color: root.winText
+                                            TextInput {
+                                                id: foTileRenameInput
+
+                                                visible: root.renamingItemId === modelData.id
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width)
+                                                font.pixelSize: root.pinLabelSize
+                                                color: root.winText
                                             selectByMouse: true
                                             selectionColor: root.winAccent
                                             selectedTextColor: "#ffffff"
@@ -2775,6 +2775,7 @@ Item {
                                             Keys.onEscapePressed: function(event) {
                                                 root.dismissInlineRename();
                                                 event.accepted = true;
+                                            }
                                             }
                                         }
 
@@ -3250,12 +3251,13 @@ Item {
                                             AppIconRenderer {
                                                 id: bestMatchIcon
 
+                                                visible: !(root.bestMatchApp && root.bestMatchApp.isWeb)
                                                 anchors.left: parent.left
                                                 anchors.leftMargin: 12
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                width: 32
-                                                height: 32
-                                                iconValue: (root.bestMatchApp && root.bestMatchApp.icon ? root.bestMatchApp.icon : (root.bestMatchApp && root.bestMatchApp.isWeb ? "public" : ""))
+                                                width: (root.bestMatchApp && root.bestMatchApp.isWeb) ? 0 : 32
+                                                height: (root.bestMatchApp && root.bestMatchApp.isWeb) ? 0 : 32
+                                                iconValue: (root.bestMatchApp && root.bestMatchApp.icon ? root.bestMatchApp.icon : "")
                                                 iconSize: 32
                                                 fallbackText: (root.bestMatchApp && root.bestMatchApp.name ? root.bestMatchApp.name.charAt(0) : "?")
                                             }
@@ -3392,12 +3394,13 @@ Item {
                                                 AppIconRenderer {
                                                     id: subIcon
 
+                                                    visible: !modelData.isWeb
                                                     anchors.left: parent.left
                                                     anchors.leftMargin: 12
                                                     anchors.verticalCenter: parent.verticalCenter
-                                                    width: 22
-                                                    height: 22
-                                                    iconValue: modelData.icon || (modelData.isWeb ? "public" : "")
+                                                    width: modelData.isWeb ? 0 : 22
+                                                    height: modelData.isWeb ? 0 : 22
+                                                    iconValue: modelData.icon || ""
                                                     iconSize: 22
                                                     fallbackText: (modelData.name || "?").charAt(0)
                                                 }
@@ -3469,10 +3472,11 @@ Item {
                             Item { width: 1; height: 12 }
 
                             AppIconRenderer {
+                                visible: !(root.currentPreviewItem && root.currentPreviewItem.isWeb)
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 64
                                 height: 64
-                                iconValue: (root.currentPreviewItem && root.currentPreviewItem.icon ? root.currentPreviewItem.icon : (root.currentPreviewItem && root.currentPreviewItem.isWeb ? "public" : ""))
+                                iconValue: (root.currentPreviewItem && root.currentPreviewItem.icon ? root.currentPreviewItem.icon : "")
                                 iconSize: 64
                                 fallbackText: (root.currentPreviewItem && root.currentPreviewItem.name ? root.currentPreviewItem.name.charAt(0) : "?")
                             }
@@ -3877,310 +3881,12 @@ Item {
             }
         }
 
-        // ==========================================
-        // CONTEXT MENU (Pin/Unpin/Resize/Rename/Folder)
-        // ==========================================
-        Rectangle {
+        StartContextMenu {
             id: contextMenuOverlay
-
-            visible: root.contextMenuVisible
-            width: 200
-            height: contextMenuCol.implicitHeight + 8
-            x: Math.max(8, Math.min(root.contextMenuX, menuBackground.width - width - 8))
-            y: Math.max(8, Math.min(root.contextMenuY, menuBackground.height - height - 8))
-            radius: root.winRadius
-            color: Theme.surfaceContainer
-            border.color: root.winBorder
-            border.width: 1
-            z: 70
-            clip: true
-
-            Column {
-                id: contextMenuCol
-
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 4
-                spacing: 0
-
-                // ----------------------------------------------------
-                // 1. APP IN ALL-APPS LIST / SEARCH
-                // ----------------------------------------------------
-                PowerRow {
-                    visible: root.contextMenuType === "app"
-                    iconName: root.isAppPinned(root.contextMenuItem) ? "remove_circle_outline" : "push_pin"
-                    label: root.isAppPinned(root.contextMenuItem) ? "Unpin from Start" : "Pin to Start"
-                    onClicked: {
-                        root.togglePinApp(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // ----------------------------------------------------
-                // SHARED: OPEN IN WORKSPACE (Inline 2x5 Grid)
-                // ----------------------------------------------------
-                Rectangle {
-                    visible: root.contextMenuType === "app" && (!root.contextMenuItem || !root.contextMenuItem.isFolder)
-                    width: parent.width - 16
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    height: 1
-                    color: Qt.rgba(255, 255, 255, 0.08)
-                }
-
-                Item {
-                    id: wsSection
-                    visible: (root.contextMenuType === "app" || root.contextMenuType === "tile" || root.contextMenuType === "folderTile") && (!root.contextMenuItem || !root.contextMenuItem.isFolder)
-                    width: parent.width
-                    implicitHeight: wsSectionCol.implicitHeight + 8
-                    height: implicitHeight
-
-                    Column {
-                        id: wsSectionCol
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.topMargin: 4
-                        spacing: 2
-
-                        Row {
-                            spacing: 6
-                            anchors.left: parent.left
-                            anchors.leftMargin: 12
-                            height: 20
-
-                            DankIcon {
-                                name: "workspaces"
-                                size: 12
-                                color: root.winMuted
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            StyledText {
-                                text: "Open in workspace"
-                                font.pixelSize: 11
-                                color: root.winMuted
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        Repeater {
-                            model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-
-                            Rectangle {
-                                id: wsRow
-                                required property int modelData
-                                readonly property bool isCurrent: {
-                                    for (var i = 0; i < root.availableWorkspaces.length; i++) {
-                                        if (root.availableWorkspaces[i].id === modelData)
-                                            return root.availableWorkspaces[i].isFocused;
-                                    }
-                                    return false;
-                                }
-                                readonly property bool wsExists: {
-                                    for (var i = 0; i < root.availableWorkspaces.length; i++) {
-                                        if (root.availableWorkspaces[i].id === modelData)
-                                            return root.availableWorkspaces[i].exists;
-                                    }
-                                    return false;
-                                }
-
-                                width: parent.width
-                                height: 24
-                                color: wsRowHover.containsMouse ? root.winHover : "transparent"
-
-                                StyledText {
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 12
-                                    anchors.right: wsDot.left
-                                    anchors.rightMargin: 8
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: "Workspace " + wsRow.modelData + (wsRow.isCurrent ? " (active)" : "")
-                                    font.pixelSize: 11
-                                    font.weight: wsRow.isCurrent ? Font.DemiBold : Font.Normal
-                                    color: root.winText
-                                    elide: Text.ElideRight
-                                }
-
-                                Rectangle {
-                                    id: wsDot
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: wsRow.wsExists
-                                    width: 6
-                                    height: 6
-                                    radius: 3
-                                    color: root.winAccent
-                                }
-
-                                MouseArea {
-                                    id: wsRowHover
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.launchInWorkspace(root.contextMenuItem, wsRow.modelData);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folderTile"
-                    width: parent.width - 16
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    height: 1
-                    color: Qt.rgba(255, 255, 255, 0.08)
-                }
-
-                // Rename tile
-                PowerRow {
-                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folderTile"
-                    iconName: "edit"
-                    label: "Rename tile"
-                    onClicked: {
-                        root.beginItemRename(root.contextMenuItem ? root.contextMenuItem.id : "");
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // Create folder with this tile
-                PowerRow {
-                    visible: root.contextMenuType === "tile"
-                    iconName: "create_new_folder"
-                    label: "Group into folder"
-                    onClicked: {
-                        root.createFolderWithTile(root.contextMenuItem, "New folder");
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // Add to existing folders in group
-                Repeater {
-                    model: (root.contextMenuType === "tile") ? root.getFoldersInGroup(root.contextMenuGroupId) : []
-
-                    PowerRow {
-                        required property var modelData
-                        iconName: "folder"
-                        label: "Add to \"" + (modelData.name || "Folder") + "\""
-                        onClicked: {
-                            root.addTileToFolder(root.contextMenuItem, modelData.id);
-                            root.contextMenuVisible = false;
-                        }
-                    }
-                }
-
-                // Move tile to other group
-                PowerRow {
-                    visible: false
-                    iconName: "swap_horiz"
-                    label: "Move to " + (root.contextMenuGroupId === 1 ? (root.group2Title || "Play & explore") : (root.group1Title || "Life at a glance"))
-                    onClicked: {
-                        root.moveTileBetweenGroups(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // ----------------------------------------------------
-                // 3. FOLDER
-                // ----------------------------------------------------
-                PowerRow {
-                    visible: root.contextMenuType === "folder"
-                    iconName: (root.contextMenuItem && root.openFolderId === root.contextMenuItem.id) ? "folder" : "folder_open"
-                    label: (root.contextMenuItem && root.openFolderId === root.contextMenuItem.id) ? "Close folder" : "Open folder"
-                    onClicked: {
-                        if (root.contextMenuItem) {
-                            if (root.openFolderId === root.contextMenuItem.id)
-                                root.closeActiveFolder();
-                            else
-                                root.openFolder(root.contextMenuItem.id, root.contextMenuGroupId);
-                        }
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                PowerRow {
-                    visible: root.contextMenuType === "folder"
-                    iconName: "edit"
-                    label: "Rename folder"
-                    onClicked: {
-                        root.beginItemRename(root.contextMenuItem ? root.contextMenuItem.id : "");
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                PowerRow {
-                    visible: root.contextMenuType === "folder"
-                    iconName: "folder_delete"
-                    label: "Ungroup folder"
-                    onClicked: {
-                        root.ungroupFolder(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                PowerRow {
-                    visible: false
-                    iconName: "swap_horiz"
-                    label: "Move to " + (root.contextMenuGroupId === 1 ? (root.group2Title || "Play & explore") : (root.group1Title || "Life at a glance"))
-                    onClicked: {
-                        root.moveTileBetweenGroups(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // ----------------------------------------------------
-                // 4. TILE INSIDE FOLDER
-                // ----------------------------------------------------
-                PowerRow {
-                    visible: root.contextMenuType === "folderTile"
-                    iconName: "drive_file_move"
-                    label: "Remove from folder"
-                    onClicked: {
-                        root.removeTileFromFolder(root.contextMenuItem, root.contextMenuParentFolder ? root.contextMenuParentFolder.id : "");
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-                // ----------------------------------------------------
-                // 5. GROUP HEADER
-                // ----------------------------------------------------
-                PowerRow {
-                    visible: false
-                    iconName: "edit"
-                    label: "Rename group"
-                    onClicked: {
-                        root.contextMenuVisible = false;
-                        root.beginGroupRename(root.contextMenuGroupId);
-                    }
-                }
-
-                // ----------------------------------------------------
-                // 6. UNPIN FROM START (Shared)
-                // ----------------------------------------------------
-                Rectangle {
-                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folder" || root.contextMenuType === "folderTile"
-                    width: parent.width - 16
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    height: 1
-                    color: Qt.rgba(255, 255, 255, 0.08)
-                }
-
-                PowerRow {
-                    visible: root.contextMenuType === "tile" || root.contextMenuType === "folder" || root.contextMenuType === "folderTile"
-                    iconName: "remove_circle_outline"
-                    label: root.contextMenuType === "folder" ? "Unpin folder from Start" : "Unpin from Start"
-                    onClicked: {
-                        root.unpinTile(root.contextMenuItem);
-                        root.contextMenuVisible = false;
-                    }
-                }
-
-            }
-
+            host: root
+            showResize: false
+            showMoveToGroup: false
+            menuRadius: root.winRadius
         }
 
         // Click-away catcher for inline rename (Enter commits; Escape / click away dismisses)
@@ -4229,64 +3935,62 @@ Item {
                 scale: 1.04
 
                 // If folder, show 2x2 grid preview
-                Grid {
-                    visible: !!(root.draggedTileData && root.draggedTileData.isFolder)
+                Column {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top: parent.top
-                    anchors.topMargin: 12
-                    columns: 2
-                    spacing: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: root.pinIconGap
+                    width: parent.width - 8
 
-                    Repeater {
-                        model: (root.draggedTileData && root.draggedTileData.tiles ? root.draggedTileData.tiles : []).slice(0, 4)
+                    Grid {
+                        visible: !!(root.draggedTileData && root.draggedTileData.isFolder)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        columns: 2
+                        spacing: 4
 
-                        Rectangle {
-                            required property var modelData
-                            width: 20
-                            height: 20
-                            radius: 4
-                            color: Qt.rgba(255, 255, 255, 0.15)
+                        Repeater {
+                            model: (root.draggedTileData && root.draggedTileData.tiles ? root.draggedTileData.tiles : []).slice(0, 4)
 
-                            AppIconRenderer {
-                                anchors.centerIn: parent
-                                width: 16
-                                height: 16
-                                iconValue: modelData.icon || ""
-                                iconSize: 16
-                                fallbackText: (modelData.name || "?").charAt(0)
+                            Rectangle {
+                                required property var modelData
+                                width: 20
+                                height: 20
+                                radius: 4
+                                color: Qt.rgba(255, 255, 255, 0.15)
+
+                                AppIconRenderer {
+                                    anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    iconValue: modelData.icon || ""
+                                    iconSize: 16
+                                    fallbackText: (modelData.name || "?").charAt(0)
+                                }
                             }
                         }
                     }
-                }
 
-                // If regular app tile, show app icon
-                AppIconRenderer {
-                    visible: !(root.draggedTileData && root.draggedTileData.isFolder)
-                    anchors.centerIn: parent
-                    width: parent.height > 60 ? 36 : 22
-                    height: parent.height > 60 ? 36 : 22
-                    iconValue: (root.draggedTileData && root.draggedTileData.icon) ? root.draggedTileData.icon : ""
-                    iconSize: parent.height > 60 ? 36 : 22
-                    fallbackText: ((root.draggedTileData && root.draggedTileData.name) || "?").charAt(0)
-                }
+                    AppIconRenderer {
+                        visible: !(root.draggedTileData && root.draggedTileData.isFolder)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: parent.parent.height > 60 ? root.pinIconSize : 22
+                        height: parent.parent.height > 60 ? root.pinIconSize : 22
+                        iconValue: (root.draggedTileData && root.draggedTileData.icon) ? root.draggedTileData.icon : ""
+                        iconSize: parent.parent.height > 60 ? root.pinIconSize : 22
+                        fallbackText: ((root.draggedTileData && root.draggedTileData.name) || "?").charAt(0)
+                    }
 
-                // Tile / Folder Name
-                StyledText {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 6
-                    anchors.right: parent.right
-                    anchors.rightMargin: 6
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 6
-                    text: (root.draggedTileData && root.draggedTileData.name) || ""
-                    color: "#ffffff"
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    visible: parent.height > 45
+                    StyledText {
+                        width: parent.width
+                        text: (root.draggedTileData && root.draggedTileData.name) || ""
+                        color: "#ffffff"
+                        font.pixelSize: root.pinLabelSize
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
+                        visible: parent.parent.height > 45
+                    }
                 }
             }
 
@@ -4877,11 +4581,14 @@ Item {
                                     }
                                 }
 
-                                // 2x2 Mini Preview Grid
+                                Column {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: root.pinIconGap
+                                    width: parent.width - 8
+
                                 Grid {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    anchors.top: parent.top
-                                    anchors.topMargin: 12
                                     columns: 2
                                     spacing: 4
 
@@ -4907,26 +4614,20 @@ Item {
                                     }
                                 }
 
-                                // Folder Label
                                 Item {
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 6
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 6
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: 6
-                                    height: 28
+                                    width: parent.width
+                                    height: Math.max(folderLabelText.implicitHeight, folderRenameInput.visible ? folderRenameInput.implicitHeight : 0)
 
                                     StyledText {
                                         id: folderLabelText
 
                                         anchors.left: parent.left
                                         anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
+                                        anchors.top: parent.top
                                         visible: root.renamingItemId !== modelData.id
                                         text: modelData.name || "Folder"
                                         color: root.winText
-                                        font.pixelSize: 11
+                                        font.pixelSize: root.pinLabelSize
                                         horizontalAlignment: Text.AlignHCenter
                                         elide: Text.ElideRight
                                         wrapMode: Text.Wrap
@@ -4946,10 +4647,10 @@ Item {
                                         id: folderRenameInput
 
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        anchors.bottom: parent.bottom
+                                        anchors.top: parent.top
                                         width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width)
                                         visible: root.renamingItemId === modelData.id
-                                        font.pixelSize: 11
+                                        font.pixelSize: root.pinLabelSize
                                         horizontalAlignment: Text.AlignHCenter
                                         color: root.winText
                                         selectByMouse: true
@@ -4989,6 +4690,7 @@ Item {
                                         color: root.winAccent
                                         z: 2
                                     }
+                                }
                                 }
 
                                 MouseArea {
@@ -5112,55 +4814,52 @@ Item {
                                     }
                                 }
 
-                                AppIconRenderer {
+                                Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    y: 16
-                                    width: 36
-                                    height: 36
-                                    iconValue: modelData.icon || ""
-                                    iconSize: 36
-                                    fallbackText: (modelData.name || "?").charAt(0)
-                                }
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: root.pinIconGap
+                                    width: parent.width - 8
 
-                                // Tile Display Name (Normal)
-                                StyledText {
-                                    id: tileNameText
+                                    AppIconRenderer {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: root.pinIconSize
+                                        height: root.pinIconSize
+                                        iconValue: modelData.icon || ""
+                                        iconSize: root.pinIconSize
+                                        fallbackText: (modelData.name || "?").charAt(0)
+                                    }
 
-                                    visible: root.renamingItemId !== modelData.id
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 6
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 6
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: 6
-                                    text: modelData.name || ""
-                                    color: root.winText
-                                    font.pixelSize: 11
-                                    font.weight: Font.Normal
-                                    horizontalAlignment: Text.AlignHCenter
-                                    elide: Text.ElideRight
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 2
-                                }
+                                    StyledText {
+                                        id: tileNameText
 
-                                TextInput {
-                                    id: tileRenameInput
+                                        visible: root.renamingItemId !== modelData.id
+                                        width: parent.width
+                                        text: modelData.name || ""
+                                        color: root.winText
+                                        font.pixelSize: root.pinLabelSize
+                                        font.weight: Font.Normal
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                    }
 
-                                    visible: root.renamingItemId === modelData.id
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: 6
-                                    width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width - 12)
-                                    font.pixelSize: 11
-                                    font.weight: Font.Normal
-                                    horizontalAlignment: Text.AlignHCenter
-                                    color: root.winText
-                                    selectByMouse: true
-                                    selectionColor: root.winAccent
-                                    selectedTextColor: "#ffffff"
-                                    clip: true
-                                    text: modelData.name || ""
-                                    z: 2
+                                    TextInput {
+                                        id: tileRenameInput
+
+                                        visible: root.renamingItemId === modelData.id
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: Math.min(Math.max(Math.ceil(contentWidth) + 2, 16), parent.width)
+                                        font.pixelSize: root.pinLabelSize
+                                        font.weight: Font.Normal
+                                        horizontalAlignment: Text.AlignHCenter
+                                        color: root.winText
+                                        selectByMouse: true
+                                        selectionColor: root.winAccent
+                                        selectedTextColor: "#ffffff"
+                                        clip: true
+                                        text: modelData.name || ""
+                                        z: 2
 
                                     onVisibleChanged: {
                                         if (visible) {
@@ -5179,6 +4878,7 @@ Item {
                                     Keys.onEscapePressed: function(event) {
                                         root.dismissInlineRename();
                                         event.accepted = true;
+                                    }
                                     }
                                 }
 
