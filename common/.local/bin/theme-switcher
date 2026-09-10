@@ -238,9 +238,6 @@ apply_theme() {
         echo -e "  ${GREEN}✓${NC} Linked Hyprland theme overrides"
     fi
 
-    mkdir -p "${DMS_CONFIG_DIR}/themes"
-    ln -sfn "${theme_path}" "${DMS_CONFIG_DIR}/themes/${target}"
-
     if [[ -f "${theme_path}/dms-settings.json" ]]; then
         apply_dms_settings "${theme_path}/dms-settings.json" "$target" "$reset_flag"
         if [[ "$reset_flag" == "1" ]]; then
