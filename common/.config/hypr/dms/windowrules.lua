@@ -7,14 +7,6 @@ hl.window_rule({
 	match = { class = "^(steam)$", title = "^(Steam)$" },
 	tile = true,
 })
--- Force Steam dialogs to stay focused so clicks/close buttons work properly
-hl.window_rule({
-	match = {
-		class = "^(steam)$",
-		title = "^(Steam Settings|Friends List|.*Dialog.*|.*Properties.*|Special Offers|.*News.*|Sign in to Steam)$",
-	},
-	stay_focused = true,
-})
 -- Remove borders and disable blur/shadow effects on Steam
 hl.window_rule({
 	match = { class = "^([sS]team.*)$" },

@@ -1,7 +1,7 @@
 -- DMS default keybinds (Hyprland 0.55+ Lua)
 
 -- === Application Launchers ===
-hl.bind("SUPER + T", hl.dsp.exec_cmd("ghostty"))
+hl.bind("SUPER + grave", hl.dsp.exec_cmd("ghostty"))
 -- SUPER+space is keyboard layout (grp:win_space_toggle); spotlight is SUPER+R in binds-user.lua
 -- hl.bind("SUPER + space", hl.dsp.exec_cmd("dms ipc call spotlight toggle"))
 hl.bind("ALT + space", hl.dsp.exec_cmd("dms ipc call spotlight-bar toggle"))

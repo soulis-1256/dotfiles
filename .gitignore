@@ -17,6 +17,7 @@
 
 # Session state & caches
 fish_variables
+**/completions/
 .pulse-cookie
 .cache/
 .local/state/

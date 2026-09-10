@@ -952,6 +952,17 @@ Item {
                                 return;
                             }
 
+                            if ((event.modifiers & Qt.MetaModifier) && event.key === Qt.Key_Space) {
+                                if (CompositorService.isNiri) {
+                                    NiriService.cycleKeyboardLayout();
+                                } else if (CompositorService.isHyprland) {
+                                    Quickshell.execDetached(["hyprctl", "switchxkblayout", hyprlandKeyboard || "all", "next"]);
+                                    updateHyprlandLayout();
+                                }
+                                event.accepted = true;
+                                return;
+                            }
+
                             if (pam.passwd.active) {
                                 log.debug("PAM is active, ignoring input");
                                 event.accepted = true;
