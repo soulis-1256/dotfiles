@@ -1347,6 +1347,7 @@ Item {
                 }
 
                 readonly property bool compactHorizontal: root.compactHorizontal
+                readonly property bool hasWorkspaceApps: loadedHasIcon || (SettingsData.showWorkspaceApps && (loadedIcons.length > 0 || stableIconCount > 0))
 
                 readonly property real baseWidth: {
                     if (root.isFullHeight) {
@@ -1510,11 +1511,9 @@ Item {
                     if (root.isFullHeight && Theme.barHoverInset)
                         return "transparent";
                     if (root.isFullHeight) {
-                        if (mouseArea.pressed)
-                            return "#1a1a1a";
                         if (isActive)
                             return "#2a2a2a";
-                        if (delegateRoot.isHovered)
+                        if (delegateRoot.isHovered || mouseArea.pressed)
                             return isUrgent ? Qt.lighter(urgentColor, 1.15) : "#323232";
                         if (isUrgent)
                             return urgentColor;
@@ -1763,6 +1762,7 @@ Item {
                 Rectangle {
                     id: visualContent
                     readonly property bool compactHorizontal: delegateRoot.compactHorizontal
+                    readonly property bool hasWorkspaceApps: delegateRoot.hasWorkspaceApps
                     readonly property real compactIconOffset: {
                         if (!compactHorizontal)
                             return 0;
@@ -1788,11 +1788,11 @@ Item {
                         radius: Theme.barHoverRadius
                         readonly property bool shown: mouseArea.pressed || isUrgent || isHovered || isActive
                         color: {
-                            if (mouseArea.pressed)
-                                return "#1a1a1a";
                             if (isUrgent)
                                 return isHovered ? Qt.lighter(urgentColor, 1.15) : Theme.withAlpha(urgentColor, 0.35);
-                            if (isHovered)
+                            if (isActive)
+                                return "#2a2a2a";
+                            if (isHovered || mouseArea.pressed)
                                 return "#323232";
                             return "#2a2a2a";
                         }
@@ -1910,10 +1910,18 @@ Item {
 
                     StyledText {
                         id: compactIndexLabel
-                        visible: visualContent.compactHorizontal && SettingsData.showWorkspaceIndex && !isPlaceholder
+                        visible: visualContent.compactHorizontal && (SettingsData.showWorkspaceIndex || !visualContent.hasWorkspaceApps) && !isPlaceholder
                         anchors.horizontalCenter: hoverBg.visible ? hoverBg.horizontalCenter : parent.horizontalCenter
                         anchors.top: hoverBg.visible ? hoverBg.top : parent.top
-                        anchors.topMargin: hoverBg.visible ? root.compactIndexTopMargin : 1
+                        anchors.topMargin: {
+                            if (!visualContent.hasWorkspaceApps) {
+                                const h = hoverBg.visible ? hoverBg.height : parent.height;
+                                const bottomReserved = (isActive || (isOccupied && activeIndicator.visible)) ? (root.compactPillBottomMargin + root.compactPillHeight) : 0;
+                                const labelH = height > 0 ? height : root.workspaceLabelSize;
+                                return Math.max(1, Math.round((h - bottomReserved - labelH) / 2));
+                            }
+                            return hoverBg.visible ? root.compactIndexTopMargin : 1;
+                        }
                         width: Math.min(implicitWidth, (hoverBg.visible ? hoverBg.width : parent.width) - 4)
                         height: root.workspaceLabelSize
                         z: 3
@@ -1924,6 +1932,13 @@ Item {
                         wrapMode: Text.NoWrap
                         elide: Text.ElideNone
                         horizontalAlignment: Text.AlignHCenter
+
+                        Behavior on anchors.topMargin {
+                            NumberAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
                     }
 
                     Loader {

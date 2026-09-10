@@ -1,5 +1,5 @@
 [Default Applications]
-x-scheme-handler/discord=vesktop.desktop
+x-scheme-handler/discord=discord.desktop
 x-scheme-handler/http=zen.desktop
 x-scheme-handler/https=zen.desktop
 image/jpeg=org.gnome.Loupe.desktop

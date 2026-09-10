@@ -53,6 +53,15 @@ Item {
     property bool alphabetZoomOpen: false
     property bool railPinnedOpen: false
     property bool allAppsMode: false
+    property real allAppsTransition: 0.0
+
+    NumberAnimation {
+        id: allAppsAnim
+        target: root
+        property: "allAppsTransition"
+        duration: 250
+        easing.type: Easing.OutCubic
+    }
     property bool isSearchMode: false
     onIsSearchModeChanged: {
         if (root.isSearchMode)
@@ -297,6 +306,8 @@ Item {
         root.closeActiveFolder();
 
         // 2. All apps / sidebar
+        allAppsAnim.stop();
+        root.allAppsTransition = 0.0;
         root.allAppsMode = false;
         root.railPinnedOpen = false;
         if (typeof railDrawer !== "undefined" && railDrawer) {
@@ -328,20 +339,12 @@ Item {
         root.cancelDraggingTile();
 
         // 6. Scroll positions
-        if (typeof appListView !== "undefined" && appListView) {
-            if (appListView.flicking) appListView.cancelFlick();
-            appListView.contentY = 0;
-            appListView.positionViewAtBeginning();
-        }
-        if (typeof searchResultsView !== "undefined" && searchResultsView) {
-            if (searchResultsView.flicking) searchResultsView.cancelFlick();
-            searchResultsView.contentY = 0;
-            searchResultsView.positionViewAtBeginning();
-        }
-        if (typeof tileFlickable !== "undefined" && tileFlickable) {
-            if (tileFlickable.flicking) tileFlickable.cancelFlick();
-            tileFlickable.contentY = 0;
-        }
+        if (typeof appListScroller !== "undefined" && appListScroller)
+            appListScroller.reset();
+        if (typeof searchScroller !== "undefined" && searchScroller)
+            searchScroller.reset();
+        if (typeof tileScroller !== "undefined" && tileScroller)
+            tileScroller.reset();
     }
 
     function closeSidebarAndPopovers() {
@@ -596,7 +599,7 @@ Item {
             "q": "spotify",
             "wide": false
         }, {
-            "q": "vesktop",
+            "q": "discord",
             "wide": false
         }, {
             "q": "vlc",
@@ -1292,6 +1295,13 @@ Item {
             else if (targetGId === 2)
                 g2 = createF(g2);
         } else {
+            let placeCol = targetCol;
+            let placeRow = targetRow;
+            if (targetType === "reorder" && targetTg && typeof targetTg.getInsertPos === "function") {
+                const ip = targetTg.getInsertPos(targetCol, targetRow);
+                placeCol = ip.x;
+                placeRow = ip.y;
+            }
             const droppedTile = {
                 "id": tile.id,
                 "name": tile.name,
@@ -1300,8 +1310,8 @@ Item {
                 "wide": false,
                 "isFolder": !!tile.isFolder,
                 "tiles": tile.tiles || [],
-                "col": targetCol,
-                "row": targetRow
+                "col": placeCol,
+                "row": placeRow
             };
 
             const applyDisplaced = function(list) {
@@ -1964,33 +1974,91 @@ Item {
             anchors.topMargin: 16
             height: 32
             visible: !root.isSearchMode
+            clip: true
 
-            StyledText {
+            Item {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.allAppsMode ? "All apps" : "Pinned"
-                color: root.winText
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
+                width: 140
+                height: 24
+
+                StyledText {
+                    id: pinnedTitleText
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Pinned"
+                    color: root.winText
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    opacity: Math.max(0, 1.0 - root.allAppsTransition * 1.6)
+                    visible: opacity > 0
+                    transform: Translate {
+                        x: -Math.round(20 * root.allAppsTransition)
+                    }
+                }
+
+                StyledText {
+                    id: allAppsTitleText
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "All apps"
+                    color: root.winText
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    opacity: Math.max(0, (root.allAppsTransition - 0.2) / 0.8)
+                    visible: opacity > 0
+                    transform: Translate {
+                        x: Math.round(20 * (1.0 - root.allAppsTransition))
+                    }
+                }
             }
 
             Rectangle {
                 id: allAppsButton
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                width: allAppsLabel.implicitWidth + 28
+                width: buttonContentRow.implicitWidth + 20
                 height: 28
                 radius: 6
                 color: allAppsHover.containsMouse ? root.winHover : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.06)
                 border.width: 1
                 border.color: root.winBorder
 
-                StyledText {
-                    id: allAppsLabel
+                Behavior on width {
+                    NumberAnimation {
+                        duration: 180
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Row {
+                    id: buttonContentRow
                     anchors.centerIn: parent
-                    text: root.allAppsMode ? "Back" : "All apps"
-                    color: root.winText
-                    font.pixelSize: 12
+                    spacing: 4
+
+                    DankIcon {
+                        name: "chevron_left"
+                        size: 16
+                        color: root.winText
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.allAppsMode
+                    }
+
+                    StyledText {
+                        id: allAppsLabel
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.allAppsMode ? "Back" : "All apps"
+                        color: root.winText
+                        font.pixelSize: 12
+                    }
+
+                    DankIcon {
+                        name: "chevron_right"
+                        size: 16
+                        color: root.winText
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !root.allAppsMode
+                    }
                 }
 
                 MouseArea {
@@ -2001,6 +2069,15 @@ Item {
                     onClicked: {
                         root.allAppsMode = !root.allAppsMode;
                         root.closeSidebarAndPopovers();
+                        if (root.allAppsMode) {
+                            if (typeof appListView !== "undefined" && appListView) {
+                                appListView.positionViewAtBeginning();
+                            }
+                        }
+                        allAppsAnim.stop();
+                        allAppsAnim.from = root.allAppsTransition;
+                        allAppsAnim.to = root.allAppsMode ? 1.0 : 0.0;
+                        allAppsAnim.start();
                     }
                 }
             }
@@ -2021,14 +2098,21 @@ Item {
             anchors.topMargin: 4
             anchors.bottomMargin: 4
             visible: !root.isSearchMode
+            clip: true
 
             // All apps list
             Item {
                 id: appListPane
 
                 anchors.fill: parent
-                visible: root.allAppsMode
+                visible: root.allAppsTransition > 0.001
+                opacity: Math.max(0, (root.allAppsTransition - 0.15) / 0.85)
+                enabled: root.allAppsMode && root.allAppsTransition > 0.8
                 clip: true
+
+                transform: Translate {
+                    x: Math.round(48 * (1.0 - root.allAppsTransition))
+                }
 
                 ListView {
                     id: appListView
@@ -2047,24 +2131,9 @@ Item {
                     spacing: 0
                     cacheBuffer: 400
 
-                    WheelHandler {
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: event => {
-                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                            let dy = 0;
-                            if (pixelY !== 0)
-                                dy = -pixelY * 2.4;
-                            else if (angleY !== 0)
-                                dy = -(angleY / 120) * 152;
-                            if (dy === 0)
-                                return;
-                            if (appListView.flicking)
-                                appListView.cancelFlick();
-                            const maxY = Math.max(0, appListView.contentHeight - appListView.height);
-                            appListView.contentY = Math.max(0, Math.min(maxY, appListView.contentY + dy));
-                            event.accepted = true;
-                        }
+                    SmoothScrollHandler {
+                        id: appListScroller
+                        stepSize: 140
                     }
 
                     delegate: Item {
@@ -2312,8 +2381,11 @@ Item {
                                     onClicked: {
                                         if (parent.isActive) {
                                             const targetIdx = root.letterIndices[parent.modelData];
-                                            if (targetIdx !== undefined)
+                                            if (targetIdx !== undefined) {
+                                                appListScrollAnim.stop();
                                                 appListView.positionViewAtIndex(targetIdx, ListView.Beginning);
+                                                appListView.targetContentY = appListView.contentY;
+                                            }
 
                                             root.alphabetZoomOpen = false;
                                         }
@@ -2335,7 +2407,13 @@ Item {
                 id: tileArea
 
                 anchors.fill: parent
-                visible: !root.allAppsMode && (root.hasGroup1 || root.hasGroup2)
+                visible: (root.allAppsTransition < 0.999) && (root.hasGroup1 || root.hasGroup2)
+                opacity: Math.max(0, 1.0 - root.allAppsTransition * 1.5)
+                enabled: !root.allAppsMode && root.allAppsTransition < 0.2
+
+                transform: Translate {
+                    x: -Math.round(48 * root.allAppsTransition)
+                }
 
                 Flickable {
                     id: tileFlickable
@@ -2351,20 +2429,9 @@ Item {
                     flickableDirection: Flickable.VerticalFlick
                     interactive: !root.isDraggingTile
 
-                    WheelHandler {
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: event => {
-                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                            const dy = PinGrid.wheelDelta(pixelY, angleY);
-                            if (dy === 0)
-                                return;
-                            if (tileFlickable.flicking)
-                                tileFlickable.cancelFlick();
-                            const maxY = Math.max(0, tileFlickable.contentHeight - tileFlickable.height);
-                            tileFlickable.contentY = PinGrid.snapContentY(tileFlickable.contentY + dy, maxY);
-                            event.accepted = true;
-                        }
+                    SmoothScrollHandler {
+                        id: tileScroller
+                        snapIncrement: PinGrid.PITCH
                     }
 
                     MouseArea {
@@ -3345,24 +3412,9 @@ Item {
                                             model: root.searchResults.slice(1, 10)
                                             spacing: 2
 
-                                            WheelHandler {
-                                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                                onWheel: event => {
-                                                    const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                                                    const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                                                    let dy = 0;
-                                                    if (pixelY !== 0)
-                                                        dy = -pixelY * 2.4;
-                                                    else if (angleY !== 0)
-                                                        dy = -(angleY / 120) * 114;
-                                                    if (dy === 0)
-                                                        return;
-                                                    if (searchResultsView.flicking)
-                                                        searchResultsView.cancelFlick();
-                                                    const maxY = Math.max(0, searchResultsView.contentHeight - searchResultsView.height);
-                                                    searchResultsView.contentY = Math.max(0, Math.min(maxY, searchResultsView.contentY + dy));
-                                                    event.accepted = true;
-                                                }
+                                            SmoothScrollHandler {
+                                                id: searchScroller
+                                                stepSize: 114
                                             }
 
                                             delegate: Item {
@@ -4211,6 +4263,17 @@ Item {
             return Qt.point(cell.x, cell.y);
         }
 
+        function dropProbeX() {
+            var pointerPos = tileFlowItem.mapFromItem(menuBackground, root.dragGhostX + root.dragOffsetX, root.dragGhostY + root.dragOffsetY);
+            var ghostPos = tileFlowItem.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
+            return Math.max(pointerPos.x, ghostPos.x + PinGrid.TILE / 2);
+        }
+
+        function getInsertPos(targetCol, targetRow) {
+            var p = PinGrid.insertCell(tg.getOtherItems(), targetCol, targetRow, tg.dropProbeX());
+            return Qt.point(p.x, p.y);
+        }
+
         readonly property var liveDisplacedMap: {
             if (!root.isDraggingTile || root.dragCommitting || !root.dragReorderLive || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId)
                 return ({});
@@ -4225,9 +4288,7 @@ Item {
             var src = root.draggedTileData;
             var sourceCol = (!root.draggedFromFolderId && src && typeof src.col === "number") ? src.col : undefined;
             var sourceRow = (!root.draggedFromFolderId && src && typeof src.row === "number") ? src.row : undefined;
-            var ghostPos = tileFlowItem.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
-            var probeX = ghostPos.x + PinGrid.TILE / 2;
-            var raw = PinGrid.displacedMap(tg.getOtherItems(), targetCol, targetRow, probeX, sourceCol, sourceRow);
+            var raw = PinGrid.displacedMap(tg.getOtherItems(), targetCol, targetRow, tg.dropProbeX(), sourceCol, sourceRow);
             var res = {};
             for (var id in raw) {
                 if (!Object.prototype.hasOwnProperty.call(raw, id))

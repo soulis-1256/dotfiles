@@ -33,7 +33,7 @@ dotfiles/
 │   │   ├── nvim/                       # Neovim IDE configuration
 │   │   ├── zed/                        # Zed editor config
 │   │   ├── btop/                       # Btop resource monitor layout
-│   │   ├── pipewire/                   # Mic volume protection (Vesktop / Discord fix)
+│   │   ├── pipewire/                   # Mic volume protection (Discord / Chromium fix)
 │   │   ├── gtk-3.0/                    # GTK3 styling & colors
 │   │   └── gtk-4.0/                    # GTK4 styling & colors
 │   ├── .local/bin/
@@ -43,7 +43,7 @@ dotfiles/
 ├── desktop/                            # STOWED ONLY ON DESKTOP
 │   └── .config/
 │       ├── hypr/
-│       │   └── desktop.lua             # Desktop overrides (Zen autostart, secondary screen PiP, Vesktop ws10)
+│       │   └── desktop.lua             # Desktop overrides (Zen autostart, secondary screen PiP, Discord ws10)
 │       ├── DankMaterialShell/          # Desktop settings (Bottom main bar + 2nd portrait bar)
 │       └── matugen/                    # Desktop color palette config
 │

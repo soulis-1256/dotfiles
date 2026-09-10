@@ -283,20 +283,12 @@ Item {
         root.cancelDraggingTile();
 
         // 6. Scroll positions
-        if (typeof appListView !== "undefined" && appListView) {
-            if (appListView.flicking) appListView.cancelFlick();
-            appListView.contentY = 0;
-            appListView.positionViewAtBeginning();
-        }
-        if (typeof searchResultsView !== "undefined" && searchResultsView) {
-            if (searchResultsView.flicking) searchResultsView.cancelFlick();
-            searchResultsView.contentY = 0;
-            searchResultsView.positionViewAtBeginning();
-        }
-        if (typeof tileFlickable !== "undefined" && tileFlickable) {
-            if (tileFlickable.flicking) tileFlickable.cancelFlick();
-            tileFlickable.contentY = 0;
-        }
+        if (typeof appListScroller !== "undefined" && appListScroller)
+            appListScroller.reset();
+        if (typeof searchScroller !== "undefined" && searchScroller)
+            searchScroller.reset();
+        if (typeof tileScroller !== "undefined" && tileScroller)
+            tileScroller.reset();
     }
 
     function closeSidebarAndPopovers() {
@@ -582,7 +574,7 @@ Item {
             "q": "spotify",
             "wide": true
         }, {
-            "q": "vesktop",
+            "q": "discord",
             "wide": false
         }, {
             "q": "vlc",
@@ -2019,24 +2011,9 @@ Item {
                     spacing: 0
                     cacheBuffer: 400
 
-                    WheelHandler {
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: event => {
-                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                            let dy = 0;
-                            if (pixelY !== 0)
-                                dy = -pixelY * 2.4;
-                            else if (angleY !== 0)
-                                dy = -(angleY / 120) * 152;
-                            if (dy === 0)
-                                return;
-                            if (appListView.flicking)
-                                appListView.cancelFlick();
-                            const maxY = Math.max(0, appListView.contentHeight - appListView.height);
-                            appListView.contentY = Math.max(0, Math.min(maxY, appListView.contentY + dy));
-                            event.accepted = true;
-                        }
+                    SmoothScrollHandler {
+                        id: appListScroller
+                        stepSize: 140
                     }
 
                     delegate: Item {
@@ -2280,8 +2257,13 @@ Item {
                                     onClicked: {
                                         if (parent.isActive) {
                                             const targetIdx = root.letterIndices[parent.modelData];
-                                            if (targetIdx !== undefined)
+                                            if (targetIdx !== undefined) {
+                                                if (typeof appListScroller !== "undefined" && appListScroller)
+                                                    appListScroller.stop();
                                                 appListView.positionViewAtIndex(targetIdx, ListView.Beginning);
+                                                if (typeof appListScroller !== "undefined" && appListScroller)
+                                                    appListScroller.targetContentY = appListView.contentY;
+                                            }
 
                                             root.alphabetZoomOpen = false;
                                         }
@@ -2320,24 +2302,9 @@ Item {
                     flickableDirection: Flickable.VerticalFlick
                     interactive: !root.isDraggingTile
 
-                    WheelHandler {
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: event => {
-                            const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                            const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                            let dy = 0;
-                            if (pixelY !== 0)
-                                dy = -pixelY * 2.4;
-                            else if (angleY !== 0)
-                                dy = -(angleY / 120) * 152;
-                            if (dy === 0)
-                                return;
-                            if (tileFlickable.flicking)
-                                tileFlickable.cancelFlick();
-                            const maxY = Math.max(0, tileFlickable.contentHeight - tileFlickable.height);
-                            tileFlickable.contentY = Math.max(0, Math.min(maxY, tileFlickable.contentY + dy));
-                            event.accepted = true;
-                        }
+                    SmoothScrollHandler {
+                        id: tileScroller
+                        stepSize: 152
                     }
 
                     MouseArea {
@@ -3452,24 +3419,9 @@ Item {
                                             model: root.searchResults.slice(1, 10)
                                             spacing: 2
 
-                                            WheelHandler {
-                                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                                onWheel: event => {
-                                                    const pixelY = event.pixelDelta ? event.pixelDelta.y : 0;
-                                                    const angleY = event.angleDelta ? event.angleDelta.y : 0;
-                                                    let dy = 0;
-                                                    if (pixelY !== 0)
-                                                        dy = -pixelY * 2.4;
-                                                    else if (angleY !== 0)
-                                                        dy = -(angleY / 120) * 114;
-                                                    if (dy === 0)
-                                                        return;
-                                                    if (searchResultsView.flicking)
-                                                        searchResultsView.cancelFlick();
-                                                    const maxY = Math.max(0, searchResultsView.contentHeight - searchResultsView.height);
-                                                    searchResultsView.contentY = Math.max(0, Math.min(maxY, searchResultsView.contentY + dy));
-                                                    event.accepted = true;
-                                                }
+                                            SmoothScrollHandler {
+                                                id: searchScroller
+                                                stepSize: 114
                                             }
 
                                             delegate: Item {

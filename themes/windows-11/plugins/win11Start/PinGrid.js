@@ -175,6 +175,23 @@ function hasTileAt(items, c, r, w, h) {
     return false
 }
 
+// Occupied slot: left half inserts at this tile (it moves), right half
+// inserts after it (it stays, later pins make the gap). Empty slots
+// occupy the hole. probeX is in tileFlowItem pixels (pointer or ghost).
+function insertCell(other, targetCol, targetRow, probeX) {
+    targetCol = cellNum(targetCol)
+    targetRow = cellNum(targetRow)
+    if (!other || !hasTileAt(other, targetCol, targetRow))
+        return { "x": targetCol, "y": targetRow }
+    if (typeof probeX !== "number" || !isFinite(probeX))
+        return { "x": targetCol, "y": targetRow }
+    var origin = cellToPixel(targetCol, targetRow)
+    if (probeX < origin.x + PITCH / 2)
+        return { "x": targetCol, "y": targetRow }
+    var np = slotPos(slotIndex(targetCol, targetRow) + 1)
+    return { "x": np.x, "y": np.y }
+}
+
 function pack(list) {
     if (!list || list.length === 0)
         return []
@@ -257,6 +274,16 @@ function pack(list) {
 
 function displacedMap(other, targetCol, targetRow, probeX, sourceCol, sourceRow) {
     if (!other || other.length === 0)
+        return {}
+
+    var insert = insertCell(other, targetCol, targetRow, probeX)
+    targetCol = insert.x
+    targetRow = insert.y
+
+    // Empty target occupies that hole. Range-shift is only for inserting
+    // into an occupied slot — otherwise a tile dragged into a gap (e.g.
+    // left of a folder with empty space) pushes every later pin forward.
+    if (!hasTileAt(other, targetCol, targetRow))
         return {}
 
     var targetIdx = slotIndex(targetCol, targetRow)

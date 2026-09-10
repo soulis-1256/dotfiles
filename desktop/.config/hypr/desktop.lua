@@ -7,9 +7,9 @@ hl.on("hyprland.start", function()
 	hl.dispatch(hl.dsp.focus({ workspace = "1" }))
 end)
 
--- 2. Send Vesktop to Workspace 10 on the secondary portrait monitor
+-- 2. Send Discord to Workspace 10 on the secondary portrait monitor
 hl.window_rule({
-	match = { class = "^(vesktop)$" },
+	match = { class = "^(discord)$" },
 	workspace = "10 silent",
 	no_initial_focus = true,
 	opaque = true,

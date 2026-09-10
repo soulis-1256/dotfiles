@@ -23,6 +23,8 @@ Item {
     property bool enableBackgroundHover: true
     property bool enableCursor: true
     readonly property bool isMouseHovered: mouseArea.containsMouse
+    property bool isHovered: false
+    readonly property bool isPressed: mouseArea.pressed
     property bool isLeftBarEdge: false
     property bool isRightBarEdge: false
     property bool isTopBarEdge: false
@@ -115,13 +117,8 @@ Item {
 
                 const isHovered = root.enableBackgroundHover && (mouseArea.containsMouse || (root.isHovered || false));
 
-                if (root.isFullHeight && Theme.barHoverInset)
-                    return Theme.barHoverFill(mouseArea.pressed, isHovered);
-
                 if (root.isFullHeight) {
-                    if (mouseArea.pressed)
-                        return "#1a1a1a";
-                    if (isHovered)
+                    if (isHovered || mouseArea.pressed)
                         return "#323232";
                     return "transparent";
                 }
@@ -172,8 +169,11 @@ Item {
                 root.rightClicked(rPos.x, rPos.y);
                 return;
             }
-            const ripplePos = mouseArea.mapToItem(visualContent, mouse.x, mouse.y);
-            rippleLayer.trigger(ripplePos.x, ripplePos.y);
+        }
+        onClicked: function (mouse) {
+            if (mouse.button !== Qt.LeftButton)
+                return;
+
             if (popoutTarget) {
                 // Ensure bar context is set first if supported
                 if (popoutTarget.setBarContext) {

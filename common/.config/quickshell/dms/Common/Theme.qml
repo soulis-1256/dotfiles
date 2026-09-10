@@ -2010,11 +2010,9 @@ Singleton {
     readonly property int barHoverMargin: barHoverInset ? 4 : 0
     readonly property int barHoverRadius: barHoverInset ? 4 : 0
     function barHoverFill(pressed, hovered) {
-        if (pressed)
-            return withAlpha(surfaceText, 0.12);
-        if (hovered)
-            return withAlpha(surfaceText, 0.08);
-        return withAlpha(surfaceText, 0);
+        if (pressed || hovered)
+            return "#323232";
+        return "transparent";
     }
 
     function popupLayerColor(baseColor) {

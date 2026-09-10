@@ -71,6 +71,8 @@ Item {
     readonly property bool hasHorizontalPill: horizontalBarPill !== null
     readonly property bool hasVerticalPill: verticalBarPill !== null
     readonly property bool hasPopout: popoutContent !== null
+    readonly property bool isPressed: (isVertical ? verticalPill?.isPressed : horizontalPill?.isPressed) ?? false
+    readonly property bool isPopoutOpen: pluginPopout?.shouldBeVisible ?? false
 
     readonly property int iconSize: Theme.barIconSize(barThickness, -4, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
     readonly property int iconSizeLarge: Theme.barIconSize(barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
@@ -205,6 +207,7 @@ Item {
         opacity: root.effectiveVisible ? 1 : 0
         axis: root.axis
         section: root.section
+        isHovered: root.isPopoutOpen
         popoutTarget: hasPopout ? pluginPopout : null
         parentScreen: root.parentScreen
         widgetThickness: root.widgetThickness
@@ -265,6 +268,7 @@ Item {
         opacity: root.effectiveVisible ? 1 : 0
         axis: root.axis
         section: root.section
+        isHovered: root.isPopoutOpen
         popoutTarget: hasPopout ? pluginPopout : null
         parentScreen: root.parentScreen
         widgetThickness: root.widgetThickness

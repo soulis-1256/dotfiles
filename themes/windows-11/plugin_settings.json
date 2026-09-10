@@ -104,9 +104,9 @@
         "row": 0,
         "tiles": [
           {
-            "id": "vesktop",
-            "name": "Vesktop",
-            "icon": "vesktop",
+            "id": "discord",
+            "name": "Discord",
+            "icon": "discord",
             "wide": false,
             "size": "medium",
             "isFolder": false

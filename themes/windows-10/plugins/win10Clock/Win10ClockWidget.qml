@@ -15,7 +15,7 @@ PluginComponent {
     pillHorizontalPadding: 0
 
     pillClickAction: (x, y, w, s, scr, barPosition, barTh, barSp, cfg) => {
-        popoutService?.toggleNotificationCenter(x, y, w, s, scr || parentScreen, barPosition, barTh, barSp, cfg);
+        (popoutService || PopoutService).toggleNotificationCenter(x, y, w, s, scr || parentScreen, barPosition, barTh, barSp, cfg);
     }
 
     horizontalBarPill: Component {

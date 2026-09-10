@@ -169,6 +169,32 @@ hl.config({
 	},
 })
 
+-- Hyprland's CLayerSurface::onMap() forces pointer focus onto any newly mapped
+-- OnDemand/Exclusive layer, even when the cursor is still over the bar. Clicks
+-- then go to that layer (or nowhere, if they land in an input-region hole) until
+-- the mouse moves. Re-hit-test pointer focus after DMS popouts/modals map.
+hl.on("layer.opened", function(layer)
+	local ns = layer and layer.namespace or ""
+	if ns:sub(1, 4) ~= "dms:" then
+		return
+	end
+	if ns:find(":background$") or ns:find(":clickcatcher$") then
+		return
+	end
+	if ns:find("^dms:bar") or ns:find("wallpaper") or ns == "dms:tooltip" then
+		return
+	end
+	local p = hl.get_cursor_pos()
+	if not p then
+		return
+	end
+	local x, y = p.x, p.y
+	hl.dispatch(hl.dsp.cursor.move({ x = x + 1, y = y }))
+	hl.timer(function()
+		hl.dispatch(hl.dsp.cursor.move({ x = x, y = y }))
+	end, { timeout = 1, type = "oneshot" })
+end)
+
 -- Smart borders & gaps: disable gaps, borders, and rounding when only one tiled window is present
 hl.workspace_rule({ workspace = "w[tv1]", gaps_in = 0, gaps_out = 0 })
 hl.workspace_rule({ workspace = "f[1]", gaps_in = 0, gaps_out = 0 })

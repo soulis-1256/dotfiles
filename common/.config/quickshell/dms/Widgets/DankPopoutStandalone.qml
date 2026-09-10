@@ -59,6 +59,9 @@ Item {
     property bool fullHeightSurface: false
     property bool _primeContent: false
     property bool _contentWarm: false
+    // Keyboard focus is applied one tick after map. Hyprland's onMap() steals
+    // pointer onto OnDemand layers even when the cursor is still over the bar.
+    property bool _keyboardReady: false
     property bool _resizeActive: false
     property real _surfaceMarginLeft: 0
     property real _surfaceMarginTop: 0
@@ -380,6 +383,10 @@ Item {
 
         animationsEnabled = true;
         shouldBeVisible = true;
+        Qt.callLater(() => {
+            if (root.shouldBeVisible)
+                root._keyboardReady = true;
+        });
         if (screen) {
             PopoutManager.showPopout(popoutHandle);
             opened();
@@ -389,6 +396,7 @@ Item {
     function close() {
         isClosing = true;
         shouldBeVisible = false;
+        _keyboardReady = false;
         _primeContent = false;
         PopoutManager.popoutChanged();
         closeTimer.restart();
@@ -678,7 +686,7 @@ Item {
         WlrLayershell.namespace: root.layerNamespace
         WlrLayershell.layer: root.effectivePopoutLayer
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(shouldBeVisible, customKeyboardFocus)
+        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(shouldBeVisible && root._keyboardReady, customKeyboardFocus)
 
         anchors {
             left: true
