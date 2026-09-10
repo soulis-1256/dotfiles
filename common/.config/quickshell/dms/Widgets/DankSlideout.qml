@@ -34,10 +34,16 @@ PanelWindow {
     property alias loadedItem: contentLoader.item
     property real customTransparency: -1
     property bool mappedVisible: false
+    // Set when the slide-out animation finishes, before unmap. Hides the
+    // layer-backed panel and drops blur so the last committed frame is empty
+    // instead of a 1-frame snap back to the rest position.
+    property bool closeSettled: false
     signal aboutToHide
     signal revealed
 
     function show() {
+        unmapTimer.stop();
+        closeSettled = false;
         mappedVisible = true;
         Qt.callLater(() => {
             isVisible = true;
@@ -103,7 +109,7 @@ PanelWindow {
         onHoverMoved: (sceneX, sceneY) => PopoutManager.updateHoverCursor(root.surfaceOriginX + sceneX, sceneY)
     }
 
-    readonly property bool slideoutBlurActive: root.visible && BlurService.enabled && Theme.connectedSurfaceBlurEnabled
+    readonly property bool slideoutBlurActive: root.visible && !root.closeSettled && BlurService.enabled && Theme.connectedSurfaceBlurEnabled
 
     WlrLayershell.layer: (!suppressOverlayLayer && (triggerUsesOverlayLayer || CompositorService.framePeerSurfacesUseOverlayForScreen(modelData))) ? WlrLayershell.Overlay : WlrLayershell.Top
     WlrLayershell.exclusiveZone: 0
@@ -153,11 +159,13 @@ PanelWindow {
                 easing.type: Easing.OutCubic
 
                 onRunningChanged: {
-                    if (!running) {
-                        if (!root.isVisible)
-                            root.mappedVisible = false;
-                        slideAnimation.duration = 450;
+                    if (running)
+                        return;
+                    if (!root.isVisible) {
+                        root.closeSettled = true;
+                        unmapTimer.restart();
                     }
+                    slideAnimation.duration = 450;
                 }
             }
         }
@@ -172,7 +180,8 @@ PanelWindow {
 
         Item {
             id: contentRect
-            layer.enabled: Quickshell.env("DMS_DISABLE_LAYER") !== "true" && Quickshell.env("DMS_DISABLE_LAYER") !== "1"
+            visible: !root.closeSettled
+            layer.enabled: !root.closeSettled && Quickshell.env("DMS_DISABLE_LAYER") !== "true" && Quickshell.env("DMS_DISABLE_LAYER") !== "1"
             layer.smooth: false
             layer.textureSize: Qt.size(0, 0)
             opacity: 1
@@ -268,12 +277,33 @@ PanelWindow {
         }
     }
 
+    Timer {
+        id: unmapTimer
+        interval: 16
+        repeat: false
+        onTriggered: {
+            if (!root.isVisible)
+                root.mappedVisible = false;
+        }
+    }
+
     WindowBlur {
+        id: slideoutBlur
         targetWindow: root
-        blurX: root.slideoutBlurActive ? slideContainer.x + root.slideoutSlideSnapX : 0
-        blurY: root.slideoutBlurActive ? slideContainer.y : 0
-        blurWidth: root.slideoutBlurActive ? slideContainer.width : 0
-        blurHeight: root.slideoutBlurActive ? slideContainer.height : 0
+        blurEnabled: Theme.connectedSurfaceBlurEnabled && root.slideoutBlurActive
+        // Keep last geometry on close so we _clear() instead of publishing a
+        // 0-size region (which can flash the full layer for one frame).
+        blurX: slideContainer.x + root.slideoutSlideSnapX
+        blurY: slideContainer.y
+        blurWidth: slideContainer.width
+        blurHeight: slideContainer.height
         blurRadius: Theme.connectedSurfaceRadius
+        // Intersect with the rest rect so the off-screen tail of the slide
+        // cannot leave a blur sliver at the edge.
+        clipEnabled: true
+        clipX: slideContainer.x
+        clipY: slideContainer.y
+        clipWidth: slideContainer.width
+        clipHeight: slideContainer.height
     }
 }

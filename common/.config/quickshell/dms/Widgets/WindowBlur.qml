@@ -73,7 +73,7 @@ Item {
     onClipHeightChanged: settleKickAction.restart()
 
     function _runSettleKick() {
-        if (!targetWindow?.visible)
+        if (!targetWindow?.visible || !_active)
             return;
         kick();
         settleRepeatTimer.restart();
@@ -90,7 +90,7 @@ Item {
         interval: 96
         repeat: false
         onTriggered: {
-            if (!root.targetWindow?.visible)
+            if (!root.targetWindow?.visible || !root._active)
                 return;
             root.kick();
         }
@@ -103,7 +103,7 @@ Item {
     function _runLifecycleKick() {
         if (!targetWindow)
             return;
-        if (targetWindow.visible)
+        if (targetWindow.visible && _active)
             kick();
         else
             _apply();
