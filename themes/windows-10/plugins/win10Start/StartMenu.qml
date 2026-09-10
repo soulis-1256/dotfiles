@@ -6,6 +6,7 @@ import Quickshell.I3
 import qs.Common
 import qs.Services
 import qs.Widgets
+import "PinGrid.js" as PinGrid
 
 Item {
     // ==========================================
@@ -26,6 +27,7 @@ Item {
     readonly property color winBorder: Theme.outline
     readonly property color winTileBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.10)
     readonly property color winTileHoverBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.18)
+    readonly property var pinGridOpts: ({ "cols": 6 })
     readonly property bool hasGroup1: (root.group1Tiles && root.group1Tiles.length > 0) || root.group1Title !== ""
     readonly property bool hasGroup2: (root.group2Tiles && root.group2Tiles.length > 0) || root.group2Title !== "" || (root.isDraggingTile && root.dropTargetGroupId === 2)
     readonly property real dynamicTileWidth: {
@@ -191,7 +193,7 @@ Item {
         id: startDrag
     }
 
-    // Fast onto a tile center = folder. Slow movement = live reorder. Recomputed every move.
+    // Slow-hold timings in StartDrag.qml. Spatial 30/40/30 is in PinGrid.
     readonly property real dragSlowEnterSpeed: startDrag.slowEnter
     readonly property real dragSlowLeaveSpeed: startDrag.slowLeave
     readonly property int dragSlowHoldMs: startDrag.slowHoldMs
@@ -205,6 +207,9 @@ Item {
     property bool dragCommitting: false
     property string dragFolderStickyId: ""
     property int dragFolderStickyGroupId: 0
+    property string dragFolderHoverId: ""
+    property real dragFolderHoverSinceMs: 0
+    property var dragLiveDisplacedMap: ({})
 
     function toFolderChild(tile) {
         if (!tile)
@@ -246,6 +251,9 @@ Item {
         root.dragCommitting = false;
         root.dragFolderStickyId = "";
         root.dragFolderStickyGroupId = 0;
+        root.dragFolderHoverId = "";
+        root.dragFolderHoverSinceMs = 0;
+        root.dragLiveDisplacedMap = ({});
     }
 
     function resetMenuState() {
@@ -629,93 +637,7 @@ Item {
     }
 
     function packTilesGrid(list) {
-        if (!list || list.length === 0) return [];
-        var occupied = {};
-        var result = [];
-
-        function canFit(r, c, w, h) {
-            if (c + w > 6) return false;
-            for (var dr = 0; dr < h; dr++) {
-                for (var dc = 0; dc < w; dc++) {
-                    if (occupied[(r + dr) + "," + (c + dc)]) return false;
-                }
-            }
-            return true;
-        }
-
-        function occupy(r, c, w, h) {
-            for (var dr = 0; dr < h; dr++) {
-                for (var dc = 0; dc < w; dc++) {
-                    occupied[(r + dr) + "," + (c + dc)] = true;
-                }
-            }
-        }
-
-        var sorted = list.slice().sort(function(a, b) {
-            var ra = (typeof a.row === "number") ? a.row : 999;
-            var ca = (typeof a.col === "number") ? a.col : 999;
-            var rb = (typeof b.row === "number") ? b.row : 999;
-            var cb = (typeof b.col === "number") ? b.col : 999;
-            return (ra * 6 + ca) - (rb * 6 + cb);
-        });
-
-        for (var i = 0; i < sorted.length; i++) {
-            var it = Object.assign({}, sorted[i]);
-            var size = it.size || (it.wide ? "wide" : "medium");
-            var w = size === "small" ? 1 : ((size === "wide" || size === "large") ? 4 : 2);
-            var h = size === "small" ? 1 : (size === "large" ? 4 : 2);
-            it.wCells = w;
-            it.hCells = h;
-
-            var placed = false;
-            if (typeof it.col === "number" && typeof it.row === "number" && it.col >= 0 && it.col + w <= 6 && it.row >= 0) {
-                if (canFit(it.row, it.col, w, h)) {
-                    occupy(it.row, it.col, w, h);
-                    placed = true;
-                }
-            }
-
-            if (!placed) {
-                var stepC = (w === 1) ? 1 : 2;
-                var stepR = (h === 1) ? 1 : 2;
-                var startR = Math.floor(Math.max(0, it.row || 0) / stepR) * stepR;
-                var startC = Math.floor(Math.max(0, it.col || 0) / stepC) * stepC;
-                for (var r = startR; r < 200 && !placed; r += stepR) {
-                    var cMin = (r === startR) ? startC : 0;
-                    for (var c = cMin; c <= 6 - w && !placed; c += stepC) {
-                        if (canFit(r, c, w, h)) {
-                            it.col = c;
-                            it.row = r;
-                            occupy(r, c, w, h);
-                            placed = true;
-                        }
-                    }
-                }
-                if (!placed) {
-                    for (var r2 = 0; r2 < startR && !placed; r2 += stepR) {
-                        for (var c2 = 0; c2 <= 6 - w && !placed; c2 += stepC) {
-                            if (canFit(r2, c2, w, h)) {
-                                it.col = c2;
-                                it.row = r2;
-                                occupy(r2, c2, w, h);
-                                placed = true;
-                            }
-                        }
-                    }
-                }
-            }
-            result.push(it);
-        }
-
-        result.sort(function(a, b) {
-            var ra = (typeof a.row === "number") ? a.row : 0;
-            var ca = (typeof a.col === "number") ? a.col : 0;
-            var rb = (typeof b.row === "number") ? b.row : 0;
-            var cb = (typeof b.col === "number") ? b.col : 0;
-            return (ra * 6 + ca) - (rb * 6 + cb);
-        });
-
-        return result;
+        return PinGrid.pack(list, root.pinGridOpts);
     }
 
     function normalizeTiles(tiles) {
@@ -740,7 +662,7 @@ Item {
             return copy;
         }).filter(function(t) { return t !== null; });
 
-        return packTilesGrid(norm);
+        return packTilesGrid(PinGrid.sortByGeometry(norm, root.pinGridOpts));
     }
 
     function refreshTiles() {
@@ -859,10 +781,6 @@ Item {
                     const c = Object.assign({}, item);
                     c.size = newSize;
                     c.wide = (newSize === "wide" || newSize === "large");
-                    if (newSize !== "small") {
-                        c.col = Math.min(newSize === "wide" || newSize === "large" ? 2 : 4, Math.floor((c.col || 0) / 2) * 2);
-                        c.row = Math.floor((c.row || 0) / 2) * 2;
-                    }
                     return c;
                 }
                 return item;
@@ -944,8 +862,8 @@ Item {
             }
             return list;
         };
-        root.group1Tiles = replaceIn(root.group1Tiles);
-        root.group2Tiles = replaceIn(root.group2Tiles);
+        root.group1Tiles = packTilesGrid(replaceIn(root.group1Tiles));
+        root.group2Tiles = packTilesGrid(replaceIn(root.group2Tiles));
         saveTilesState();
     }
 
@@ -971,8 +889,8 @@ Item {
                 return item;
             });
         };
-        root.group1Tiles = addIn(g1);
-        root.group2Tiles = addIn(g2);
+        root.group1Tiles = packTilesGrid(addIn(g1));
+        root.group2Tiles = packTilesGrid(addIn(g2));
         saveTilesState();
     }
 
@@ -1001,11 +919,13 @@ Item {
         if (targetGroup === 1) {
             const c = root.group1Tiles.slice();
             c.push(extractedTile);
-            root.group1Tiles = c;
+            root.group1Tiles = packTilesGrid(c);
+            root.group2Tiles = packTilesGrid(root.group2Tiles);
         } else {
             const c = root.group2Tiles.slice();
             c.push(extractedTile);
-            root.group2Tiles = c;
+            root.group2Tiles = packTilesGrid(c);
+            root.group1Tiles = packTilesGrid(root.group1Tiles);
         }
         saveTilesState();
     }
@@ -1029,8 +949,8 @@ Item {
             }
             return out;
         };
-        root.group1Tiles = unpack(root.group1Tiles);
-        root.group2Tiles = unpack(root.group2Tiles);
+        root.group1Tiles = packTilesGrid(unpack(root.group1Tiles));
+        root.group2Tiles = packTilesGrid(unpack(root.group2Tiles));
         saveTilesState();
     }
 
@@ -1040,15 +960,15 @@ Item {
 
         const inG1 = root.group1Tiles.some(function(t) { return t.id === tile.id; });
         if (inG1) {
-            root.group1Tiles = root.group1Tiles.filter(function(t) { return t.id !== tile.id; });
+            root.group1Tiles = packTilesGrid(root.group1Tiles.filter(function(t) { return t.id !== tile.id; }));
             const c = root.group2Tiles.slice();
             c.push(tile);
-            root.group2Tiles = c;
+            root.group2Tiles = packTilesGrid(c);
         } else {
-            root.group2Tiles = root.group2Tiles.filter(function(t) { return t.id !== tile.id; });
+            root.group2Tiles = packTilesGrid(root.group2Tiles.filter(function(t) { return t.id !== tile.id; }));
             const c = root.group1Tiles.slice();
             c.push(tile);
-            root.group1Tiles = c;
+            root.group1Tiles = packTilesGrid(c);
         }
         saveTilesState();
     }
@@ -1061,9 +981,9 @@ Item {
         const item = list.splice(fromIdx, 1)[0];
         list.splice(toIdx, 0, item);
         if (groupId === 1)
-            root.group1Tiles = list;
+            root.group1Tiles = packTilesGrid(list);
         else
-            root.group2Tiles = list;
+            root.group2Tiles = packTilesGrid(list);
         saveTilesState();
     }
 
@@ -1103,6 +1023,9 @@ Item {
         root.dragCommitting = false;
         root.dragFolderStickyId = "";
         root.dragFolderStickyGroupId = 0;
+        root.dragFolderHoverId = "";
+        root.dragFolderHoverSinceMs = 0;
+        root.dragLiveDisplacedMap = ({});
         root.isDraggingTile = true;
         updateDragPosition(globalX, globalY);
     }
@@ -1126,6 +1049,9 @@ Item {
                 root.dragReorderLive = true;
                 root.dragFolderStickyId = "";
                 root.dragFolderStickyGroupId = 0;
+                root.dragFolderHoverId = "";
+                root.dragFolderHoverSinceMs = 0;
+                root.dragLiveDisplacedMap = ({});
                 root.dropTargetType = "reorder-folder";
                 root.dropTargetGroupId = root.openFolderGroupId;
                 root.dropTargetFolderId = root.openFolderId;
@@ -1154,95 +1080,34 @@ Item {
             targetGId = 1;
         }
 
-        const lp = targetTg.mapFromItem(menuBackground, globalX, globalY);
-
-        root.dropTargetType = "reorder";
-        root.dropTargetGroupId = targetGId;
-        root.dropTargetFolderId = "";
-        root.dropTargetTileId = "";
-        if (typeof targetTg.calculateTargetCell === "function") {
-            const cell = targetTg.calculateTargetCell(globalX, globalY);
-            root.dropTargetCol = cell.x;
-            root.dropTargetRow = cell.y;
-        } else {
-            root.dropTargetCol = 0;
-            root.dropTargetRow = 0;
-        }
-        root.dropActionBadge = root.draggedFromFolderId ? "Move out of folder" : "";
-
-        // Keep folder-mode while still on the same tile. Speed/slow-reorder must not cancel it.
-        let centerHit = null;
-        let hitGId = targetGId;
-        if (root.dragFolderStickyId) {
-            const stickyGId = root.dragFolderStickyGroupId || targetGId;
-            const stickyTg = (stickyGId === 2 && tileGroup2.visible) ? tileGroup2 : tileGroup1;
-            if (stickyTg && typeof stickyTg.checkStickyDropTarget === "function") {
-                const stickyLp = stickyTg.mapFromItem(menuBackground, globalX, globalY);
-                centerHit = stickyTg.checkStickyDropTarget(stickyLp.x, stickyLp.y);
-                if (centerHit)
-                    hitGId = stickyGId;
-            }
-        }
-
-        if (!centerHit) {
-            if (typeof targetTg.checkCenterDropTarget === "function")
-                centerHit = targetTg.checkCenterDropTarget(lp.x, lp.y);
-            if (centerHit)
-                hitGId = targetGId;
-            if (!centerHit && root.hasGroup2 && tileGroup2.visible) {
-                const otherTg = (targetGId === 1) ? tileGroup2 : tileGroup1;
-                const otherGId = (targetGId === 1) ? 2 : 1;
-                if (typeof otherTg.checkCenterDropTarget === "function") {
-                    const otherLp = otherTg.mapFromItem(menuBackground, globalX, globalY);
-                    const hit = otherTg.checkCenterDropTarget(otherLp.x, otherLp.y);
-                    if (hit) {
-                        centerHit = hit;
-                        hitGId = otherGId;
-                    }
-                }
-            }
-        }
-
-        const dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
-        const dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
-        const isSmall = (dragW <= 45 && dragH <= 45);
-        const isWide = (dragW > 100 && dragH <= 100);
-        const isLarge = (dragW > 100 && dragH > 100);
-        const dw = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
-        const dh = isSmall ? 1 : (isLarge ? 4 : 2);
-
-        const hasTileUnderTarget = (targetTg && typeof targetTg.hasTileAt === "function")
-            ? targetTg.hasTileAt(root.dropTargetCol, root.dropTargetRow, dw, dh)
-            : false;
-
-        const resolved = startDrag.resolveDrop({
-            "centerHit": centerHit,
-            "stickyId": root.dragFolderStickyId,
-            "speed": root.dragPointerSpeed,
-            "live": root.dragReorderLive,
-            "hasTileUnder": hasTileUnderTarget,
+        const lp = (typeof targetTg.mapToFlow === "function")
+            ? targetTg.mapToFlow(globalX, globalY)
+            : targetTg.mapFromItem(menuBackground, globalX, globalY);
+        const items = targetTg.getOtherItems();
+        const resolved = PinGrid.resolveDropTarget(Object.assign({}, root.pinGridOpts, {
+            "lx": lp.x,
+            "ly": lp.y,
+            "items": items,
+            "draggedTile": root.draggedTileData,
+            "sourceIndex": (!root.draggedFromFolderId && root.draggedFromGroupId === targetGId) ? root.draggedSourceIndex : -1,
             "fromFolder": !!root.draggedFromFolderId,
-            "draggedIsFolder": !!(root.draggedTileData && root.draggedTileData.isFolder)
-        });
+            "stickyId": root.dragFolderStickyId,
+            "prevInsertIndex": (root.dropTargetGroupId === targetGId) ? root.dropTargetIndex : -1,
+            "prevDropType": (root.dropTargetGroupId === targetGId) ? root.dropTargetType : ""
+        }));
+
         root.dropTargetType = resolved.dropType;
+        root.dropTargetGroupId = targetGId;
+        root.dropTargetFolderId = resolved.folderId || "";
+        root.dropTargetTileId = resolved.tileId || "";
+        root.dropTargetIndex = resolved.targetIndex;
+        root.dropTargetCol = resolved.targetCol;
+        root.dropTargetRow = resolved.targetRow;
         root.dropActionBadge = resolved.badge;
-        root.dragReorderLive = resolved.live;
         root.dragFolderStickyId = resolved.stickyId || "";
-        if (resolved.stickyId) {
-            root.dragFolderStickyGroupId = hitGId;
-            root.dropTargetGroupId = hitGId;
-        } else {
-            root.dragFolderStickyGroupId = 0;
-        }
-        if (resolved.dropType === "add-to-folder") {
-            root.dropTargetFolderId = resolved.folderId;
-            root.dropTargetTileId = resolved.tileId;
-            root.dropTargetIndex = resolved.index;
-        } else if (resolved.dropType === "create-folder") {
-            root.dropTargetFolderId = "";
-            root.dropTargetTileId = resolved.tileId;
-            root.dropTargetIndex = resolved.index;
-        }
+        root.dragFolderHoverId = resolved.hoverId || "";
+        root.dragFolderHoverSinceMs = resolved.hoverSince || 0;
+        root.dragLiveDisplacedMap = resolved.displacedMap || ({});
     }
 
     function cancelDraggingTile() {
@@ -1276,13 +1141,6 @@ Item {
         const targetGId = root.dropTargetGroupId || fromGId || 1;
         const targetFolderId = root.dropTargetFolderId;
         const targetIndex = root.dropTargetIndex;
-        const fromIndex = root.draggedSourceIndex;
-        const targetCol = root.dropTargetCol;
-        const targetRow = root.dropTargetRow;
-        const targetTg = (targetGId === 1) ? tileGroup1 : tileGroup2;
-        const displaced = (targetType === "reorder" && targetTg && typeof targetTg.getDisplacedMap === "function")
-            ? targetTg.getDisplacedMap(targetCol, targetRow) : {};
-
         if (targetType === "none") {
             cancelDraggingTile();
             return;
@@ -1369,37 +1227,22 @@ Item {
                 g1 = createF(g1);
             else if (targetGId === 2)
                 g2 = createF(g2);
-        } else {
+        } else if (targetType === "reorder") {
             const droppedTile = {
                 "id": tile.id,
                 "name": tile.name,
                 "icon": tile.icon || "",
-                "size": tile.size || "medium",
-                "wide": !!tile.wide,
+                "size": tile.size || (tile.wide ? "wide" : "medium"),
+                "wide": (tile.size === "wide" || tile.size === "large" || !!tile.wide),
                 "isFolder": !!tile.isFolder,
-                "tiles": tile.tiles || [],
-                "col": targetCol,
-                "row": targetRow
+                "tiles": tile.tiles || []
             };
-
-            const applyDisplaced = function(list) {
-                return (list || []).map(function(item) {
-                    if (displaced && displaced[item.id]) {
-                        const pt = displaced[item.id];
-                        return Object.assign({}, item, { col: pt.x, row: pt.y });
-                    }
-                    return item;
-                });
-            };
-
             if (targetGId === 1) {
-                g1 = applyDisplaced(g1);
-                g1.push(droppedTile);
-                g1 = packTilesGrid(g1);
+                const insertAt = Math.max(0, Math.min(targetIndex, g1.length));
+                g1.splice(insertAt, 0, droppedTile);
             } else {
-                g2 = applyDisplaced(g2);
-                g2.push(droppedTile);
-                g2 = packTilesGrid(g2);
+                const insertAt = Math.max(0, Math.min(targetIndex, g2.length));
+                g2.splice(insertAt, 0, droppedTile);
             }
         }
 
@@ -1424,8 +1267,8 @@ Item {
             }
             return res;
         };
-        g1 = cleanEmpty(g1);
-        g2 = cleanEmpty(g2);
+        g1 = packTilesGrid(cleanEmpty(g1));
+        g2 = packTilesGrid(cleanEmpty(g2));
 
         // Repeater rebuilds the group; freeze motion so new delegates don't fly from (0,0).
         root.dragCommitting = true;
@@ -4272,407 +4115,32 @@ Item {
         signal titleChanged(string newTitle)
 
         function cellToPixel(c, r) {
-            var bCol = Math.floor(c / 2);
-            var lCol = c % 2;
-            var bRow = Math.floor(r / 2);
-            var lRow = r % 2;
-            var px = bCol * 98 + lCol * 49;
-            var py = bRow * 98 + lRow * 49;
-            return Qt.point(px, py);
+            var p = PinGrid.cellToPixel(c, r);
+            return Qt.point(p.x, p.y);
         }
 
-        readonly property var tilePositions: {
-            var model = tg.tilesModel || [];
-            var arr = [];
-            for (var i = 0; i < model.length; i++) {
-                var it = model[i];
-                var c = (typeof it.col === "number") ? it.col : 0;
-                var r = (typeof it.row === "number") ? it.row : 0;
-                arr.push(tg.cellToPixel(c, r));
-            }
-            return arr;
-        }
+        readonly property real contentHeight: PinGrid.contentPixelHeight(tg.tilesModel, root.pinGridOpts)
 
-        readonly property real contentHeight: {
-            var maxH = 0;
-            var model = tg.tilesModel || [];
-            for (var i = 0; i < model.length; i++) {
-                var it = model[i];
-                var c = (typeof it.col === "number") ? it.col : 0;
-                var r = (typeof it.row === "number") ? it.row : 0;
-                var p = tg.cellToPixel(c, r);
-                var cSize = it.size || (it.wide ? "wide" : "medium");
-                var h = cSize === "small" ? 43 : (cSize === "large" ? 190 : 92);
-                if (p.y + h > maxH) maxH = p.y + h;
-            }
-            return Math.max(92, maxH);
+        function mapToFlow(globalX, globalY) {
+            if (typeof tileFlowItem !== "undefined" && tileFlowItem)
+                return tileFlowItem.mapFromItem(menuBackground, globalX, globalY);
+            return tg.mapFromItem(menuBackground, globalX, globalY);
         }
 
         function getOtherItems() {
-            var model = tg.tilesModel || [];
-            var list = [];
-            for (var i = 0; i < model.length; i++) {
-                var it = model[i];
-                if (!it) continue;
-                if (root.isDraggingTile && root.draggedTileData && root.draggedFromGroupId === tg.groupId && !root.draggedFromFolderId && root.draggedTileData.id === it.id) {
-                    continue;
-                }
-                var cSize = it.size || (it.wide ? "wide" : "medium");
-                var itW = cSize === "small" ? 43 : ((cSize === "wide" || cSize === "large") ? 190 : 92);
-                var itH = cSize === "small" ? 43 : (cSize === "large" ? 190 : 92);
-                var wc = cSize === "small" ? 1 : ((cSize === "wide" || cSize === "large") ? 4 : 2);
-                var hc = cSize === "small" ? 1 : (cSize === "large" ? 4 : 2);
-                list.push({ id: it.id, size: cSize, width: itW, height: itH, wCells: wc, hCells: hc, col: it.col, row: it.row, modelData: it });
+            var draggedId = "";
+            var exclude = false;
+            if (root.isDraggingTile && root.draggedTileData && root.draggedFromGroupId === tg.groupId && !root.draggedFromFolderId) {
+                draggedId = root.draggedTileData.id;
+                exclude = true;
             }
-            return list;
+            return PinGrid.otherItems(tg.tilesModel, draggedId, exclude);
         }
 
-        function hasTileAt(c, r, w, h) {
-            var items = tg.getOtherItems();
-            if (!items || items.length === 0) return false;
-            for (var i = 0; i < items.length; i++) {
-                var it = items[i];
-                var ic = (typeof it.col === "number") ? it.col : 0;
-                var ir = (typeof it.row === "number") ? it.row : 0;
-                var iw = it.wCells;
-                var ih = it.hCells;
-                if (ic < c + w && ic + iw > c && ir < r + h && ir + ih > r) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function calculateTargetCell(globalX, globalY) {
-            var lp = tileFlowItem.mapFromItem(menuBackground, globalX, globalY);
-            var lx = Math.max(0, lp.x);
-            var ly = Math.max(0, lp.y);
-
-            var dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
-            var dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
-            var isSmall = (dragW <= 45 && dragH <= 45);
-            var isWide = (dragW > 100 && dragH <= 100);
-            var isLarge = (dragW > 100 && dragH > 100);
-            var wCells = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
-            var hCells = isSmall ? 1 : (isLarge ? 4 : 2);
-
-            var majorCol = Math.max(0, Math.min(2, Math.floor(lx / 98)));
-            var inMajorX = lx - majorCol * 98;
-            var subCol = (isSmall && inMajorX >= 49) ? 1 : 0;
-            var c = majorCol * 2 + subCol;
-
-            var majorRow = Math.max(0, Math.floor(ly / 98));
-            var inMajorY = ly - majorRow * 98;
-            var subRow = (isSmall && inMajorY >= 49) ? 1 : 0;
-            var r = majorRow * 2 + subRow;
-
-            if (c + wCells > 6) {
-                c = 6 - wCells;
-            }
-            if (!isSmall) {
-                c = Math.floor(c / 2) * 2;
-                r = Math.floor(r / 2) * 2;
-            }
-
-            // Canvas bottom boundary:
-            // Tiles can be placed anywhere across the visible canvas height.
-            // Rows are capped so the bottom of the placed tile stays within the reachable canvas,
-            // leaving the remaining bottom margin (where a full item doesn't fit even on "small" size) unreachable.
-            var maxVisibleY = 572;
-            if (typeof menuBackground !== "undefined" && menuBackground) {
-                var p = tileFlowItem.mapFromItem(menuBackground, 0, menuBackground.height);
-                if (p && p.y > 0)
-                    maxVisibleY = p.y;
-            }
-            var canvasBottom = Math.max(maxVisibleY, tg.contentHeight);
-            var stepR = isSmall ? 1 : 2;
-            var maxRow = 0;
-            for (var testR = 0; testR <= 100; testR += stepR) {
-                var testPy = Math.floor(testR / 2) * 98 + (testR % 2) * 49;
-                if (testPy + dragH <= canvasBottom + 2) {
-                    maxRow = testR;
-                } else {
-                    break;
-                }
-            }
-            if (r > maxRow) {
-                r = maxRow;
-            }
-
-            return Qt.point(c, r);
-        }
-
-        function getDisplacedMap(targetCol, targetRow) {
-            if (!root.isDraggingTile || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId)
-                return {};
-
-            var dragW = (root.dragTileWidth > 0) ? root.dragTileWidth : 92;
-            var dragH = (root.dragTileHeight > 0) ? root.dragTileHeight : 92;
-            var isSmall = (dragW <= 45 && dragH <= 45);
-            var isWide = (dragW > 100 && dragH <= 100);
-            var isLarge = (dragW > 100 && dragH > 100);
-            var dw = isSmall ? 1 : ((isWide || isLarge) ? 4 : 2);
-            var dh = isSmall ? 1 : (isLarge ? 4 : 2);
-
-            var other = getOtherItems();
-            if (!other || other.length === 0)
-                return {};
-
-            function rectsOverlap(c1, r1, w1, h1, c2, r2, w2, h2) {
-                return (c1 < c2 + w2 && c1 + w1 > c2 && r1 < r2 + h2 && r1 + h1 > r2);
-            }
-
-            var hasOverlap = false;
-            for (var k = 0; k < other.length; k++) {
-                var oit = other[k];
-                var oc = (typeof oit.col === "number") ? oit.col : 0;
-                var or = (typeof oit.row === "number") ? oit.row : 0;
-                if (rectsOverlap(oc, or, oit.wCells, oit.hCells, targetCol, targetRow, dw, dh)) {
-                    hasOverlap = true;
-                    break;
-                }
-            }
-            if (!hasOverlap) {
-                return {};
-            }
-
-            function cellNum(v) {
-                var n = Number(v);
-                return isFinite(n) ? n : 0;
-            }
-
-            var occupied = {};
-            function isCellOccupied(r, c, w, h) {
-                if (c < 0 || r < 0 || c + w > 6) return true;
-                for (var dr = 0; dr < h; dr++) {
-                    for (var dc = 0; dc < w; dc++) {
-                        if (occupied[(r + dr) + "," + (c + dc)]) return true;
-                    }
-                }
-                return false;
-            }
-            function markOccupied(r, c, w, h) {
-                for (var dr = 0; dr < h; dr++) {
-                    for (var dc = 0; dc < w; dc++) {
-                        occupied[(r + dr) + "," + (c + dc)] = true;
-                    }
-                }
-            }
-            function readingKey(row, col) {
-                return cellNum(row) * 6 + cellNum(col);
-            }
-
-            var overlapped = [];
-            for (var oi = 0; oi < other.length; oi++) {
-                var oItem = other[oi];
-                var oCol = cellNum(oItem.col);
-                var oRow = cellNum(oItem.row);
-                if (rectsOverlap(oCol, oRow, oItem.wCells, oItem.hCells, targetCol, targetRow, dw, dh))
-                    overlapped.push(oItem);
-            }
-
-            var pushLeft = false;
-            if (overlapped.length > 0) {
-                var ghostPos = tileFlowItem.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
-                var probeX = ghostPos.x + dragW / 2;
-                var primary = overlapped[0];
-                var bestDist = Infinity;
-                for (var pi = 0; pi < overlapped.length; pi++) {
-                    var pItem = overlapped[pi];
-                    var pPx = tg.cellToPixel(cellNum(pItem.col), cellNum(pItem.row));
-                    var dist = Math.abs(probeX - (pPx.x + pItem.width / 2));
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        primary = pItem;
-                    }
-                }
-                var primPx = tg.cellToPixel(cellNum(primary.col), cellNum(primary.row));
-                pushLeft = probeX >= (primPx.x + primary.width / 2);
-            }
-
-            markOccupied(targetRow, targetCol, dw, dh);
-
-            var sortedOther = other.slice().sort(function(a, b) {
-                return readingKey(a.row, a.col) - readingKey(b.row, b.col);
-            });
-
-            var res = {};
-            var remaining = [];
-
-            for (var m = 0; m < sortedOther.length; m++) {
-                var itm = sortedOther[m];
-                var ic = cellNum(itm.col);
-                var ir = cellNum(itm.row);
-                var iw = itm.wCells;
-                var ih = itm.hCells;
-                var overlapsTarget = rectsOverlap(ic, ir, iw, ih, targetCol, targetRow, dw, dh);
-                var stays;
-                if (pushLeft) {
-                    // Only the tiles we landed on move. Never vacuum tiles from other rows.
-                    stays = !overlapsTarget;
-                } else {
-                    stays = !overlapsTarget && ((ir < targetRow) || (ir === targetRow && ic + iw <= targetCol));
-                }
-
-                if (stays && !isCellOccupied(ir, ic, iw, ih)) {
-                    markOccupied(ir, ic, iw, ih);
-                    res[itm.id] = Qt.point(ic, ir);
-                } else {
-                    remaining.push(itm);
-                }
-            }
-
-            function findNextSlot(fromRow, fromCol, w, h) {
-                var stepC = (w === 1) ? 1 : 2;
-                var stepR = (h === 1) ? 1 : 2;
-                var startR = Math.floor(fromRow / stepR) * stepR;
-                var startC = Math.floor(fromCol / stepC) * stepC;
-                if (startR < fromRow)
-                    startR += stepR;
-
-                for (var r = startR; r < 200; r += stepR) {
-                    var cMin = (r === startR) ? startC : 0;
-                    for (var c = cMin; c <= 6 - w; c += stepC) {
-                        if (!isCellOccupied(r, c, w, h))
-                            return Qt.point(c, r);
-                    }
-                }
-                return Qt.point(fromCol, fromRow);
-            }
-
-            function findPrevSlot(fromRow, fromCol, w, h) {
-                var stepC = (w === 1) ? 1 : 2;
-                var r = fromRow;
-                var startC = Math.floor(fromCol / stepC) * stepC;
-                for (var c = startC - stepC; c >= 0; c -= stepC) {
-                    if (!isCellOccupied(r, c, w, h))
-                        return Qt.point(c, r);
-                }
-                return null;
-            }
-
-            remaining.sort(function(a, b) {
-                return readingKey(a.row, a.col) - readingKey(b.row, b.col);
-            });
-
-            for (var j = 0; j < remaining.length; j++) {
-                var remIt = remaining[j];
-                var rw = remIt.wCells;
-                var rh = remIt.hCells;
-                var origC = cellNum(remIt.col);
-                var origR = cellNum(remIt.row);
-                var slot = null;
-                if (pushLeft)
-                    slot = findPrevSlot(origR, origR === targetRow ? targetCol : origC, rw, rh);
-                if (slot && slot.y < origR)
-                    slot = null;
-                if (!slot) {
-                    var scanR = Math.max(targetRow, origR);
-                    var scanC = (scanR === targetRow) ? targetCol : 0;
-                    slot = findNextSlot(scanR, scanC, rw, rh);
-                }
-                if (slot.y < origR)
-                    slot = findNextSlot(origR, 0, rw, rh);
-                markOccupied(slot.y, slot.x, rw, rh);
-                res[remIt.id] = Qt.point(slot.x, slot.y);
-            }
-
-            return res;
-        }
-
-        function folderHitFromItem(item, i) {
-            return {
-                type: item.modelData.isFolder ? "folder" : "tile",
-                folderId: item.modelData.id,
-                tileId: item.modelData.id,
-                tileIndex: i,
-                targetTile: item.modelData,
-                item: item
-            };
-        }
-
-        function tileGroupHeaderOffset() {
-            if (typeof tgCol !== "undefined" && tgCol && tgCol.children && tgCol.children.length > 0)
-                return tgCol.children[0].height + tgCol.spacing;
-            return 36;
-        }
-
-        function tileRectAt(i, item) {
-            var headerOffset = tg.tileGroupHeaderOffset();
-            var normalPos = (i < tg.tilePositions.length) ? tg.tilePositions[i] : Qt.point(item.x, item.y);
-            return {
-                x: normalPos.x,
-                y: headerOffset + normalPos.y,
-                w: item.width > 0 ? item.width : 92,
-                h: item.height > 0 ? item.height : 92
-            };
-        }
-
-        function pointerAndGhost() {
-            var ghostPos = tg.mapFromItem(menuBackground, root.dragGhostX, root.dragGhostY);
-            return {
-                ghostCx: ghostPos.x + ((root.dragTileWidth > 0) ? root.dragTileWidth : 92) / 2,
-                ghostCy: ghostPos.y + ((root.dragTileHeight > 0) ? root.dragTileHeight : 92) / 2
-            };
-        }
-
-        function checkStickyDropTarget(lx, ly) {
-            if (typeof tileRepeater === "undefined" || !tileRepeater)
-                return null;
-            if (!root.draggedTileData || !root.dragFolderStickyId)
-                return null;
-
-            var pg = tg.pointerAndGhost();
-            for (var i = 0; i < tileRepeater.count; i++) {
-                var item = tileRepeater.itemAt(i);
-                if (!item || !item.modelData || item.modelData.id !== root.dragFolderStickyId)
-                    continue;
-                if (item.modelData.id === root.draggedTileData.id)
-                    return null;
-
-                var r = tg.tileRectAt(i, item);
-                var pad = 10;
-                var pointerIn = (lx >= r.x - pad && lx <= r.x + r.w + pad &&
-                                 ly >= r.y - pad && ly <= r.y + r.h + pad);
-                var ghostIn = (pg.ghostCx >= r.x - pad && pg.ghostCx <= r.x + r.w + pad &&
-                               pg.ghostCy >= r.y - pad && pg.ghostCy <= r.y + r.h + pad);
-                if (pointerIn || ghostIn)
-                    return tg.folderHitFromItem(item, i);
-                return null;
-            }
-            return null;
-        }
-
-        function checkCenterDropTarget(lx, ly) {
-            if (typeof tileRepeater === "undefined" || !tileRepeater)
-                return null;
-            if (!root.draggedTileData || root.draggedTileData.isFolder)
-                return null;
-
-            var pg = tg.pointerAndGhost();
-            var best = null;
-            var bestDist = 1e9;
-
-            for (var i = 0; i < tileRepeater.count; i++) {
-                var item = tileRepeater.itemAt(i);
-                if (!item || !item.modelData) continue;
-                if (item.modelData.id === root.draggedTileData.id) continue;
-                if (root.draggedFromFolderId && root.draggedFromFolderId === item.modelData.id) continue;
-
-                var r = tg.tileRectAt(i, item);
-                var cx = r.x + r.w / 2;
-                var cy = r.y + r.h / 2;
-                var dist = Math.min(
-                    Math.hypot(lx - cx, ly - cy),
-                    Math.hypot(pg.ghostCx - cx, pg.ghostCy - cy)
-                );
-                var limit = Math.max(18, Math.min(r.w, r.h) * 0.34);
-                if (dist <= limit && dist < bestDist) {
-                    bestDist = dist;
-                    best = tg.folderHitFromItem(item, i);
-                }
-            }
-            return best;
+        readonly property var liveDisplacedMap: {
+            if (!root.isDraggingTile || root.dragCommitting || root.dropTargetGroupId !== tg.groupId)
+                return ({});
+            return root.dragLiveDisplacedMap || ({});
         }
 
         implicitWidth: groupWidth
@@ -4825,7 +4293,7 @@ Item {
                     id: slotPlaceholder
 
                     z: 10
-                    visible: root.isDraggingTile && root.dragReorderLive && root.dropTargetType === "reorder" && root.dropTargetGroupId === tg.groupId
+                    visible: root.isDraggingTile && root.dropTargetType === "reorder" && root.dropTargetGroupId === tg.groupId
                     width: (root.dragTileWidth > 0) ? root.dragTileWidth : 92
                     height: (root.dragTileHeight > 0) ? root.dragTileHeight : 92
                     color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.2)
@@ -4870,14 +4338,12 @@ Item {
 
                             // Dynamic displacement to make room for dragged item
                             readonly property point displacement: {
-                                if (root.dragCommitting || !root.isDraggingTile || !root.dragReorderLive || root.dropTargetType !== "reorder" || root.dropTargetGroupId !== tg.groupId || isBeingDragged) {
+                                if (root.dragCommitting || !root.isDraggingTile || root.dropTargetGroupId !== tg.groupId || isBeingDragged)
                                     return Qt.point(0, 0);
-                                }
-                                var displacedMap = tg.getDisplacedMap(root.dropTargetCol, root.dropTargetRow);
-                                if (!displacedMap || !displacedMap[modelData.id]) {
+                                var map = tg.liveDisplacedMap;
+                                if (!map || !map[modelData.id])
                                     return Qt.point(0, 0);
-                                }
-                                var targetCell = displacedMap[modelData.id];
+                                var targetCell = map[modelData.id];
                                 var newPx = tg.cellToPixel(targetCell.x, targetCell.y);
                                 return Qt.point(newPx.x - normalPos.x, newPx.y - normalPos.y);
                             }

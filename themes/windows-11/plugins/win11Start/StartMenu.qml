@@ -37,6 +37,7 @@ Item {
     readonly property int pinnedVisibleRows: PinGrid.VISIBLE_ROWS
     readonly property int pinnedPaneHeight: PinGrid.paneHeight(pinnedVisibleRows)
     readonly property int homeMenuHeight: PinGrid.homeHeight(pinnedVisibleRows)
+    readonly property var pinGridOpts: ({ "cols": 12, "uniformMedium": true })
     readonly property bool hasGroup1: (root.group1Tiles && root.group1Tiles.length > 0)
     readonly property bool hasGroup2: false
     readonly property real dynamicTileWidth: {
@@ -660,7 +661,7 @@ Item {
     }
 
     function packTilesGrid(list) {
-        return PinGrid.pack(list);
+        return PinGrid.pack(list, root.pinGridOpts);
     }
 
     function normalizeTiles(tiles) {
@@ -694,7 +695,7 @@ Item {
             }
         }
 
-        return packTilesGrid(PinGrid.sortByGeometry(norm));
+        return packTilesGrid(PinGrid.sortByGeometry(norm, root.pinGridOpts));
     }
 
     function flattenPinnedTiles(g1, g2) {
@@ -1094,7 +1095,7 @@ Item {
             ? targetTg.mapToFlow(globalX, globalY)
             : targetTg.mapFromItem(menuBackground, globalX, globalY);
         const items = targetTg.getOtherItems();
-        const resolved = PinGrid.resolveDropTarget({
+        const resolved = PinGrid.resolveDropTarget(Object.assign({}, root.pinGridOpts, {
             "lx": lp.x,
             "ly": lp.y,
             "items": items,
@@ -1104,7 +1105,7 @@ Item {
             "stickyId": root.dragFolderStickyId,
             "prevInsertIndex": (root.dropTargetGroupId === targetGId) ? root.dropTargetIndex : -1,
             "prevDropType": (root.dropTargetGroupId === targetGId) ? root.dropTargetType : ""
-        });
+        }));
 
         root.dropTargetType = resolved.dropType;
         root.dropTargetGroupId = targetGId;
@@ -4162,7 +4163,7 @@ Item {
             return arr;
         }
 
-        readonly property real contentHeight: PinGrid.contentPixelHeight(tg.tilesModel)
+        readonly property real contentHeight: PinGrid.contentPixelHeight(tg.tilesModel, root.pinGridOpts)
 
         function mapToFlow(globalX, globalY) {
             if (typeof tileFlowItem !== "undefined" && tileFlowItem)
@@ -4178,10 +4179,6 @@ Item {
                 exclude = true;
             }
             return PinGrid.otherItems(tg.tilesModel, draggedId, exclude);
-        }
-
-        function hasTileAt(c, r, w, h) {
-            return PinGrid.hasTileAt(tg.getOtherItems(), c, r, w, h);
         }
 
         readonly property var liveDisplacedMap: {
