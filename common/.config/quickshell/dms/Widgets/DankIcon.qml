@@ -4,8 +4,8 @@ import qs.Common
 Item {
     id: root
 
-    property alias name: icon.text
-    property alias size: icon.font.pixelSize
+    property string name: ""
+    property int size: Math.round(Theme.fontSizeMedium)
     property alias color: icon.color
     property bool filled: false
     property real fill: filled ? 1.0 : 0.0
@@ -18,33 +18,39 @@ Item {
 
     signal rotationCompleted
 
-    FontLoader {
-        id: materialSymbolsFont
-        source: Qt.resolvedUrl("../assets/fonts/material-design-icons/variablefont/MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf")
-    }
+    readonly property bool _variable: IconPackService.usesVariableAxes
+    readonly property string _glyph: IconPackService.glyph(root.name, root.filled, root.weight)
+    readonly property string _family: IconPackService.family(root.filled, root.weight)
+    readonly property real _opticalScale: IconPackService.opticalScale(root.name)
 
     StyledText {
         id: icon
 
         anchors.fill: parent
 
-        font.family: materialSymbolsFont.name
-        font.pixelSize: Math.round(Theme.fontSizeMedium)
-        font.weight: root.weight
+        text: root._glyph
+        font.family: root._family
+        // Slot stays `size`; pixelSize is optically scaled so Phosphor glyphs share a keyline.
+        // Floor so rounding cannot push oversized glyphs back up a pixel.
+        font.pixelSize: Math.max(1, Math.floor(root.size * root._opticalScale))
+        font.weight: root._variable ? root.weight : Font.Normal
         font.hintingPreference: Font.PreferNoHinting
         color: Theme.surfaceText
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.NoWrap
+        elide: Text.ElideNone
         renderType: root.smoothTransform ? Text.QtRendering : Text.NativeRendering
 
-        font.variableAxes: {
-            "FILL": root.fill.toFixed(1),
-            "GRAD": root.grade,
-            "opsz": 24,
-            "wght": root.weight
-        }
+        font.variableAxes: root._variable ? ({
+                "FILL": root.fill.toFixed(1),
+                "GRAD": root.grade,
+                "opsz": 24,
+                "wght": root.weight
+            }) : ({})
 
         Behavior on font.weight {
+            enabled: root._variable
             NumberAnimation {
                 duration: Theme.shortDuration
                 easing.type: Theme.standardEasing
@@ -53,6 +59,7 @@ Item {
     }
 
     Behavior on fill {
+        enabled: root._variable
         NumberAnimation {
             duration: Theme.shortDuration
             easing.type: Theme.standardEasing

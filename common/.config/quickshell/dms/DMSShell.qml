@@ -233,6 +233,7 @@ Item {
         PolkitService.polkitAvailable;
         DisplayConfigState.hasOutputBackend;
         PortalService.systemColorScheme;
+        IconPackService.packId;
     }
 
     Loader {

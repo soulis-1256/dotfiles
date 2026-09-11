@@ -638,6 +638,7 @@ Singleton {
 
     property string networkPreference: "auto"
 
+    property string iconPack: "lucide"
     property string iconThemeDark: "System Default"
     property string iconThemeLight: "System Default"
     property bool iconThemePerMode: false

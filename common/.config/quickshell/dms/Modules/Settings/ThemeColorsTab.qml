@@ -2363,6 +2363,80 @@ Item {
 
             SettingsCard {
                 tab: "theme"
+                tags: ["icon", "pack", "lucide", "phosphor", "material", "glyphs", "ui", "font"]
+                title: I18n.tr("UI Icon Pack")
+                settingKey: "iconPack"
+                iconName: "interests"
+
+                SettingsDropdownRow {
+                    tab: "theme"
+                    tags: ["icon", "pack", "lucide", "phosphor", "material", "glyphs"]
+                    settingKey: "iconPack"
+                    text: I18n.tr("Glyph Set")
+                    description: I18n.tr("Icons used by Dank Material Shell itself — bar widgets, settings, notifications, calendar bell, CPU, and every other DankIcon. App and tray icons still follow Icon Theme below.")
+                    currentValue: IconPackService.packLabel
+                    options: IconPackService.packLabels
+                    onValueChanged: value => SettingsData.set("iconPack", IconPackService.idForLabel(value))
+                }
+
+                Row {
+                    spacing: Theme.spacingL
+                    leftPadding: Theme.spacingM
+                    DankIcon {
+                        name: "notifications"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "memory"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "developer_board"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "wifi"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "lan"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "volume_up"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "bluetooth"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "settings"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "schedule"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                    DankIcon {
+                        name: "play_arrow"
+                        size: Theme.iconSize
+                        color: Theme.primary
+                    }
+                }
+            }
+
+            SettingsCard {
+                tab: "theme"
                 tags: ["icon", "theme", "system"]
                 title: I18n.tr("Icon Theme")
                 settingKey: "iconTheme"

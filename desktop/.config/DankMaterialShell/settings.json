@@ -353,6 +353,7 @@
     }
   ],
   "networkPreference": "wifi",
+  "iconPack": "lucide",
   "iconThemeDark": "Adwaita",
   "iconThemeLight": "System Default",
   "iconThemePerMode": false,

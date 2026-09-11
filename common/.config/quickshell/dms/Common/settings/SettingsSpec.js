@@ -276,6 +276,7 @@ var SPEC = {
 
     networkPreference: { def: "auto" },
 
+    iconPack: { def: "lucide" },
     iconThemeDark: { def: "System Default", onChange: "applyStoredIconTheme" },
     iconThemeLight: { def: "System Default", onChange: "applyStoredIconTheme" },
     iconThemePerMode: { def: false, onChange: "applyStoredIconTheme" },

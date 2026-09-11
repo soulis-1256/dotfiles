@@ -380,6 +380,7 @@
     }
   ],
   "networkPreference": "wifi",
+  "iconPack": "lucide",
   "iconThemeDark": "System Default",
   "iconThemeLight": "System Default",
   "iconThemePerMode": false,
