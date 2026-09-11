@@ -1,0 +1,12 @@
+{
+    "id": "win11Snap",
+    "name": "Windows 11 Snap Layouts",
+    "description": "Windows 11 Snap Assist overlay with mouse tiling presets",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "daemon",
+    "component": "./Win11SnapWidget.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}

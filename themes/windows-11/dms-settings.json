@@ -1,7 +1,7 @@
 {
   "currentThemeName": "custom",
-  "currentThemeCategory": "custom",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/windows-11/theme.json",
+  "currentThemeCategory": "registry",
+  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/crimsonVoltage/theme.json",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -15,7 +15,7 @@
         "accent": "red"
       }
     },
-    "peaceAndQuiet": "pink",
+    "peaceAndQuiet": "lavender",
     "astralJourney": {
       "dark": {
         "flavor": "blackhole",
@@ -33,7 +33,7 @@
   "widgetBackgroundCustomColor": "#6750A4",
   "widgetBackgroundCustomStrength": 0.5,
   "widgetColorMode": "default",
-  "controlCenterTileColorMode": "surface",
+  "controlCenterTileColorMode": "primary",
   "buttonColorMode": "primary",
   "cornerRadius": 8,
   "niriLayoutGapsOverride": -1,
@@ -66,8 +66,8 @@
   "modalAnimationSpeed": 1,
   "modalCustomAnimationDuration": 180,
   "enableRippleEffects": false,
-  "animationVariant": 0,
-  "motionEffect": 0,
+  "animationVariant": 1,
+  "motionEffect": 1,
   "m3ElevationEnabled": true,
   "m3ElevationIntensity": 10,
   "m3ElevationOpacity": 22,
@@ -185,7 +185,7 @@
   "workspaceScrolling": false,
   "showWorkspaceApps": true,
   "workspaceDragReorder": true,
-  "maxWorkspaceIcons": 3,
+  "maxWorkspaceIcons": 10,
   "workspaceAppIconSizeOffset": 0,
   "groupWorkspaceApps": true,
   "groupActiveWorkspaceApps": false,
@@ -293,7 +293,7 @@
   "greeterFontFamily": "",
   "greeterWallpaperFillMode": "",
   "greeterPamExternallyManaged": false,
-  "greeterSyncPending": false,
+  "greeterSyncPending": true,
   "greeterSyncBaseline": {},
   "mediaSize": 2,
   "appLauncherViewMode": "list",
@@ -558,6 +558,7 @@
   "notificationHistorySaveCritical": true,
   "notificationRules": [],
   "notificationFocusedMonitor": false,
+  "notificationCenterShowCalendar": true,
   "osdAlwaysShowValue": false,
   "osdPosition": 5,
   "osdVolumeEnabled": true,
@@ -684,7 +685,7 @@
           "id": "keyboard_layout_name",
           "enabled": true,
           "keyboardLayoutNameCompactMode": true,
-          "keyboardLayoutNameShowIcon": true
+          "keyboardLayoutNameShowIcon": false
         },
         {
           "id": "controlCenterButton",
@@ -926,6 +927,5 @@
   "barInsetPaddingShared": -1,
   "barInsetPaddingSyncAll": false,
   "frameBarInsetPadding": -1,
-  "configVersion": 13,
-  "notificationCenterShowCalendar": true
+  "configVersion": 13
 }

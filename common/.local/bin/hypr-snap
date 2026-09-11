@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""
+hypr-snap: Precision window snapping and tiling tool for Hyprland.
+Natively integrates with Hyprland's layout engine to tile windows into splits.
+"""
+
+import sys
+import json
+import subprocess
+import argparse
+
+ZONES = {
+    "left": "half-left",
+    "half-left": "half-left",
+    "right": "half-right",
+    "half-right": "half-right",
+    "top": "half-top",
+    "half-top": "half-top",
+    "bottom": "half-bottom",
+    "half-bottom": "half-bottom",
+    "top-left": "top-left",
+    "top-right": "top-right",
+    "bottom-left": "bottom-left",
+    "bottom-right": "bottom-right",
+    "left-two-thirds": "left-two-thirds",
+    "right-one-third": "right-one-third",
+    "left-one-third": "left-one-third",
+    "right-two-thirds": "right-two-thirds",
+    "col-1": "col-1",
+    "col-2": "col-2",
+    "col-3": "col-3",
+    "center": "center",
+    "maximize": "maximize",
+    "tile": "tile",
+}
+
+def get_active_window(target_addr=None):
+    try:
+        if target_addr:
+            t_addr = target_addr.lower()
+            clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"]))
+            for c in clients:
+                if c.get("address", "").lower() == t_addr:
+                    return c
+            return {"address": target_addr}
+        win = json.loads(subprocess.check_output(["hyprctl", "activewindow", "-j"]))
+        if win and win.get("address"):
+            return win
+    except Exception:
+        pass
+    return {"address": target_addr} if target_addr else None
+
+def apply_snap(win, zone):
+    addr = win.get("address")
+    if not addr:
+        return
+
+    if zone == "maximize":
+        lua = f"""
+local addr = "{addr}"
+hl.dispatch(hl.dsp.focus({{ window = "address:" .. addr }}))
+hl.dispatch(hl.dsp.window.float({{ action = "unset" }}))
+hl.dispatch(hl.dsp.window.fullscreen({{ mode = "maximized", action = "set" }}))
+"""
+        subprocess.run(["hyprctl", "repl", lua], capture_output=True)
+        return
+
+    if zone == "center":
+        lua = f"""
+local addr = "{addr}"
+hl.dispatch(hl.dsp.focus({{ window = "address:" .. addr }}))
+hl.dispatch(hl.dsp.window.fullscreen({{ mode = "maximized", action = "unset" }}))
+hl.dispatch(hl.dsp.window.float({{ action = "set" }}))
+hl.dispatch(hl.dsp.window.center({{}}))
+"""
+        subprocess.run(["hyprctl", "repl", lua], capture_output=True)
+        return
+
+    if zone == "tile":
+        lua = f"""
+local addr = "{addr}"
+hl.dispatch(hl.dsp.focus({{ window = "address:" .. addr }}))
+hl.dispatch(hl.dsp.window.fullscreen({{ mode = "maximized", action = "unset" }}))
+hl.dispatch(hl.dsp.window.float({{ action = "unset" }}))
+"""
+        subprocess.run(["hyprctl", "repl", lua], capture_output=True)
+        return
+
+    # Tiling directional splits
+    dir_map = {
+        "half-left": "l",
+        "left": "l",
+        "left-two-thirds": "l",
+        "col-1": "l",
+        "half-right": "r",
+        "right": "r",
+        "right-one-third": "r",
+        "col-3": "r",
+        "col-2": "r",
+        "half-top": "u",
+        "top": "u",
+        "half-bottom": "d",
+        "bottom": "d",
+        "top-left": "l",
+        "top-right": "r",
+        "bottom-left": "l",
+        "bottom-right": "r",
+    }
+
+    direction = dir_map.get(zone, "l")
+    v_dir = "u" if "top" in zone else ("d" if "bottom" in zone else None)
+    v_move = f'hl.dispatch(hl.dsp.window.move({{ direction = "{v_dir}" }}))\n' if v_dir else ""
+
+    # Ensure window is TILED (floating: unset), unfullscreened, and moved into the directional split
+    lua = f"""
+local addr = "{addr}"
+hl.dispatch(hl.dsp.focus({{ window = "address:" .. addr }}))
+hl.dispatch(hl.dsp.window.fullscreen({{ mode = "maximized", action = "unset" }}))
+hl.dispatch(hl.dsp.window.float({{ action = "unset" }}))
+hl.dispatch(hl.dsp.window.move({{ direction = "{direction}" }}))
+{v_move}
+"""
+    subprocess.run(["hyprctl", "repl", lua], capture_output=True)
+
+def main():
+    parser = argparse.ArgumentParser(description="Snap Hyprland window to layout zones")
+    parser.add_argument("zone", choices=list(ZONES.keys()), help="Target layout zone")
+    parser.add_argument("--address", default=None, help="Target window address (default: active window)")
+    args = parser.parse_args()
+
+    win = get_active_window(args.address)
+    if not win:
+        print("No active or target window found", file=sys.stderr)
+        sys.exit(1)
+
+    zone_key = ZONES[args.zone]
+    apply_snap(win, zone_key)
+
+if __name__ == "__main__":
+    main()

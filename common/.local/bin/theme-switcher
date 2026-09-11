@@ -13,7 +13,7 @@ THEMES_DIR="${DOTFILES_DIR}/themes"
 CURRENT_THEME_FILE="${HOME}/.config/.current_theme"
 HYPR_THEME_SYMLINK="${HOME}/.config/hypr/theme.lua"
 DMS_CONFIG_DIR="${HOME}/.config/DankMaterialShell"
-MANAGED_PLUGINS=(win10Start win10Clock win10Media win10Tray win11Start win11Clock win11Media win11Tray)
+MANAGED_PLUGINS=(win10Start win10Clock win10Media win10Tray win11Start win11Clock win11Media win11Tray win11Snap)
 
 BOLD='\033[1m'
 CYAN='\033[0;36m'
@@ -239,11 +239,17 @@ apply_theme() {
     fi
 
     if [[ -f "${theme_path}/dms-settings.json" ]]; then
-        apply_dms_settings "${theme_path}/dms-settings.json" "$target" "$reset_flag"
-        if [[ "$reset_flag" == "1" ]]; then
-            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings (reset to pack defaults)"
-        else
-            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings"
+        mkdir -p "${DMS_CONFIG_DIR}"
+        ln -sfn "${theme_path}/dms-settings.json" "${DMS_CONFIG_DIR}/settings.json"
+        echo -e "  ${GREEN}✓${NC} Linked DankMaterialShell settings"
+    fi
+
+    # Build Hyprland snap bridge plugin if missing
+    if [[ "$target" == "windows-11" && ! -f "${HOME}/.local/lib/hyprland/hypr-snap-bridge-v2.so" ]]; then
+        local plugin_src="${DOTFILES_DIR}/common/.config/hypr/plugins/hypr-snap-bridge"
+        if [[ -d "$plugin_src" ]] && command -v pkg-config &>/dev/null && pkg-config --exists hyprland 2>/dev/null; then
+            echo -e "  ${CYAN}Building Hyprland snap plugin...${NC}"
+            make -C "$plugin_src" install &>/dev/null || true
         fi
     fi
 

@@ -5,6 +5,7 @@
 .local/bin/docker-compose
 .local/bin/argc
 .local/bin/aichat
+*.so
 
 # Temporary & backup files
 *.bak
@@ -44,6 +45,7 @@ gtk-3.0/colors.css
 gtk-4.0/colors.css
 
 # Theme-switcher runtime (plugins + snapshots live in the stowed DMS config)
+**/DankMaterialShell/settings.json
 **/DankMaterialShell/plugin_settings.json
 **/DankMaterialShell/theme-state/
 **/DankMaterialShell/plugins/

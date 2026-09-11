@@ -543,8 +543,10 @@ hl.layer_rule({
     function focusWorkspace(workspace) {
         if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.focus({ workspace = ${luaValue(workspace)} })`);
+            Hyprland.dispatch(`hl.dsp.window.bring_to_top()`);
         } else {
             Hyprland.dispatch(`workspace ${workspace}`);
+            Hyprland.dispatch(`bringactivetotop`);
         }
     }
 
@@ -575,8 +577,10 @@ hl.layer_rule({
 
         if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.focus({ window = ${luaString(selector)} })`);
+            Hyprland.dispatch(`hl.dsp.window.bring_to_top()`);
         } else {
             Hyprland.dispatch(`focuswindow ${selector}`);
+            Hyprland.dispatch(`bringactivetotop`);
         }
     }
 

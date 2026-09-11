@@ -1,4 +1,7 @@
 {
+  "win11Snap": {
+    "enabled": true
+  },
   "win11Start": {
     "enabled": true,
     "group1Title": "",

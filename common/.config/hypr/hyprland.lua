@@ -229,3 +229,10 @@ pcall(require, "laptop")
 -- Active theme overrides (managed by theme-switcher)
 pcall(require, "theme")
 
+-- Windows 11 Snap layout drag bridge
+local snap_bridge = (os.getenv("HOME") or "") .. "/.local/lib/hyprland/hypr-snap-bridge-v2.so"
+local f = io.open(snap_bridge, "r")
+if f then
+	f:close()
+	pcall(hl.plugin.load, snap_bridge)
+end
