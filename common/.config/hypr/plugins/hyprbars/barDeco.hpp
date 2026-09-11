@@ -11,6 +11,8 @@
 #include <hyprland/src/helpers/AnimatedVariable.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
 #include <hyprland/src/helpers/signal/Signal.hpp>
+#include <hyprland/src/layout/LayoutManager.hpp>
+#include <optional>
 #include "globals.hpp"
 
 #define private public
@@ -106,11 +108,19 @@ class CHyprBar : public IHyprWindowDecoration {
 
     std::string         m_szLastTitle;
 
-    bool                m_bDraggingThis  = false;
+    bool                m_bDraggingThis      = false;
+    bool                m_bResizingThis      = false;
+    bool                m_bBorderHoverActive = false;
+    std::string         m_szCurrentCursorOverride = "";
     bool                m_bTouchEv       = false;
     bool                m_bDragPending   = false;
     bool                m_bCancelledDown = false;
     int                 m_touchId        = 0;
+
+    std::optional<Layout::eRectCorner> getResizeCorner(const Vector2D& mouseCoords);
+    bool                               isOverButton(const Vector2D& COORDS);
+    bool                               isWindowMaximized();
+    void                               toggleMaximize();
 
     // store hover state for buttons as a bitfield
     unsigned int m_iButtonHoverState = 0;

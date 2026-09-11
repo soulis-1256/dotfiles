@@ -58,9 +58,13 @@ def apply_snap(win, zone):
     if zone == "maximize":
         lua = f"""
 local addr = "{addr}"
-hl.dispatch(hl.dsp.focus({{ window = "address:" .. addr }}))
-hl.dispatch(hl.dsp.window.float({{ action = "unset" }}))
-hl.dispatch(hl.dsp.window.fullscreen({{ mode = "maximized", action = "set" }}))
+if _G.win11_toggle_maximize then
+    _G.win11_toggle_maximize(addr)
+else
+    hl.dispatch(hl.dsp.focus({{ window = "address:" .. addr }}))
+    hl.dispatch(hl.dsp.window.float({{ action = "unset" }}))
+    hl.dispatch(hl.dsp.window.fullscreen({{ mode = "maximized", action = "set" }}))
+end
 """
         subprocess.run(["hyprctl", "repl", lua], capture_output=True)
         return

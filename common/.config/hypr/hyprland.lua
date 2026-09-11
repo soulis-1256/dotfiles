@@ -147,6 +147,7 @@ if not pcall(require, "dms.outputs") then
 end
 require("dms.layout")
 require("dms.cursor")
+require("dms.floating-mode")
 require("dms.binds")
 require("dms.binds-user")
 require("dms.windowrules")
@@ -208,6 +209,11 @@ hl.window_rule({
 	border_size = 0,
 	rounding = 0,
 })
+hl.window_rule({
+	match = { fullscreen = true },
+	border_size = 0,
+	rounding = 0,
+})
 
 -- ThinkPad Lid Switch (blanks eDP-1 screen on lid close; dormant on desktop)
 hl.bind("switch:on:Lid Switch", function()
@@ -240,6 +246,87 @@ local f_bars = io.open(hyprbars_plugin, "r")
 if f_bars then
 	f_bars:close()
 	pcall(hl.plugin.load, hyprbars_plugin)
+
+	_G.win11_toggle_maximize = function(target_addr)
+		local w = (target_addr and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
+		if not w then
+			return
+		end
+
+		_G.win11_snap_cache = _G.win11_snap_cache or {}
+		local raw_addr = w.address:lower()
+		local clean_addr = raw_addr:gsub("^0x", "")
+		local full_addr = "0x" .. clean_addr
+
+		local mon = w.monitor
+		if not mon then
+			return
+		end
+
+		local bottom_res = (mon.reserved and mon.reserved.bottom) or 52
+		local usable_h = mon.height - bottom_res
+
+		-- Check whether window has hyprbars titlebar
+		local cls = (w.class or ""):lower()
+		local title = (w.title or ""):lower()
+		local has_bar = true
+		if title:match("picture[%- ]in[%- ]picture")
+			or cls:match("^(discord|zen|zen%-alpha|chromium|google%-chrome)$")
+			or cls == "com.danklinux.dms"
+			or cls:match("^steam_app_")
+			or cls:match("%.exe")
+			or (cls:match("^steam") and title:match("^notificationtoasts")) then
+			has_bar = false
+		end
+
+		local title_h = has_bar and 30 or 0
+		local max_x = mon.x
+		local max_y = mon.y + title_h
+		local max_w = mon.width
+		local max_h = usable_h - title_h
+
+		local is_currently_maximized = false
+		local cached = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
+
+		if math.abs(w.size.x - max_w) <= 4 and math.abs(w.size.y - max_h) <= 4
+			and math.abs(w.at.x - max_x) <= 4 and math.abs(w.at.y - max_y) <= 4 then
+			is_currently_maximized = true
+		end
+
+		local defRound = hl.get_config("decoration:rounding") or 12
+		local defBorder = hl.get_config("general:border_size") or 2
+
+		if is_currently_maximized then
+			-- RESTORE (to pre-snap size and position)
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
+
+			local s = cached or { w = math.floor(mon.width * 0.6), h = math.floor(usable_h * 0.7) }
+			_G.win11_snap_cache[full_addr] = nil
+			_G.win11_snap_cache[clean_addr] = nil
+
+			local newX = s.x or math.max(mon.x + 20, mon.x + math.floor((mon.width - s.w) / 2))
+			local newY = s.y or math.max(mon.y + 40, mon.y + math.floor((usable_h - s.h) / 2))
+
+			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
+			hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h }))
+			hl.dispatch(hl.dsp.window.move({ x = newX, y = newY }))
+		else
+			-- MAXIMIZE (identical to dragging to top edge)
+			if not w.floating then
+				hl.dispatch(hl.dsp.window.float({ window = "address:" .. full_addr, action = "set" }))
+			end
+
+			_G.win11_snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
+			_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
+
+			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
+			hl.dispatch(hl.dsp.window.resize({ x = max_w, y = max_h }))
+			hl.dispatch(hl.dsp.window.move({ x = max_x, y = max_y }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
+		end
+	end
 
 	_G.hyprbars_buttons_configured = false
 	_G.setup_hyprbars_buttons = function(theme_style)

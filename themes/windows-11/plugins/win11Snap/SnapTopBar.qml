@@ -238,17 +238,22 @@ Item {
                     var cardBottom = 130;
 
                     if (localX < cardLeft - 15 || localX > cardRight + 15 || localY < cardTop - 4 || localY > cardBottom + 15) {
-                        root.forceCollapse();
+                        // Left the flyout card but still dragging: collapse the UI
+                        // without clearing the zone so a flyout->edge transition
+                        // glides like edge->edge instead of snapping harshly.
+                        // Falls through to the edge checks below in this same event.
+                        collapseTimer.stop();
+                        root.isExpanded = false;
                     } else {
                         collapseTimer.stop();
                         var detected = root.detectFlyoutBox(localX - cardLeft, localY - cardTop);
                         if (detected !== "") {
                             root.setZone(detected);
-                        } else {
-                            root.activeZone = "";
-                            root.activeZoneName = "";
-                            root.lastActiveZone = "";
                         }
+                        // Gap/padding inside the flyout: keep the last zone so the
+                        // ghost glides to the next tile (same as edge-to-edge).
+                        // Clearing to "" here tears down hasActiveTarget and forces
+                        // the next tile to snap in harshly instead of gliding.
                         return;
                     }
                 }
@@ -398,6 +403,7 @@ Item {
                 var globalY = targetScreen.y + bounds.y;
 
                 if (addr && addr !== "") {
+                    var isMax = (zone === "maximize");
                     var luaEnsureFloat = "(function() " +
                         "local w = hl.get_window(\"address:" + addr + "\"); " +
                         "if w and w.floating then " +
@@ -408,6 +414,15 @@ Item {
                             "hl.dispatch(hl.dsp.focus({ window = \"address:" + addr + "\" })); " +
                             "hl.dispatch(hl.dsp.window.resize({ x = " + bounds.width + ", y = " + bounds.height + " })); " +
                             "hl.dispatch(hl.dsp.window.move({ x = " + globalX + ", y = " + globalY + " })); " +
+                            "local defRound = hl.get_config(\"decoration:rounding\") or 8; " +
+                            "local defBorder = hl.get_config(\"general:border_size\") or 1; " +
+                            "if " + (isMax ? "true" : "false") + " then " +
+                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"border_size\", value = 0 })); " +
+                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"rounding\", value = 0 })); " +
+                            "else " +
+                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"border_size\", value = defBorder })); " +
+                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"rounding\", value = defRound })); " +
+                            "end; " +
                         "end; " +
                         "return hl.dsp.no_op() " +
                     "end)()";
@@ -421,14 +436,20 @@ Item {
         if (!addr || addr === "") return;
         var luaRestore = "(function() " +
             "local w = hl.get_window(\"address:" + addr + "\"); " +
-            "if w and w.floating and _G.win11_snap_cache and _G.win11_snap_cache[\"" + addr + "\"] then " +
-                "local s = _G.win11_snap_cache[\"" + addr + "\"]; " +
-                "_G.win11_snap_cache[\"" + addr + "\"] = nil; " +
-                "local newX = math.max(10, " + posX + " - math.floor(s.w / 2)); " +
-                "local newY = math.max(10, " + posY + " - 20); " +
-                "hl.dispatch(hl.dsp.focus({ window = \"address:" + addr + "\" })); " +
-                "hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h })); " +
-                "hl.dispatch(hl.dsp.window.move({ x = newX, y = newY })); " +
+            "if w and w.floating then " +
+                "local defRound = hl.get_config(\"decoration:rounding\") or 8; " +
+                "local defBorder = hl.get_config(\"general:border_size\") or 1; " +
+                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"border_size\", value = defBorder })); " +
+                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"rounding\", value = defRound })); " +
+                "if _G.win11_snap_cache and _G.win11_snap_cache[\"" + addr + "\"] then " +
+                    "local s = _G.win11_snap_cache[\"" + addr + "\"]; " +
+                    "_G.win11_snap_cache[\"" + addr + "\"] = nil; " +
+                    "local newX = math.max(10, " + posX + " - math.floor(s.w / 2)); " +
+                    "local newY = math.max(10, " + posY + " - 20); " +
+                    "hl.dispatch(hl.dsp.focus({ window = \"address:" + addr + "\" })); " +
+                    "hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h })); " +
+                    "hl.dispatch(hl.dsp.window.move({ x = newX, y = newY })); " +
+                "end; " +
             "end; " +
             "return hl.dsp.no_op() " +
         "end)()";
@@ -570,12 +591,12 @@ Item {
             };
         case "maximize":
             return {
-                x: gap,
-                y: gap + titleH,
-                width: w - (gap * 2),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
+                x: 0,
+                y: titleH,
+                width: w,
+                height: h - titleH,
+                visualY: 0,
+                visualHeight: h
             };
         default:
             return { x: 0, y: 0, width: 0, height: 0, visualY: 0, visualHeight: 0 };
@@ -680,14 +701,17 @@ Item {
                 y: previewWin.targetY
                 width: previewWin.targetWidth
                 height: previewWin.targetHeight
-                radius: 12
+                radius: (root.activeZone === "maximize") ? 0 : 12
                 color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.18)
                 border.color: root.winAccent
-                border.width: 2
+                border.width: (root.activeZone === "maximize") ? 0 : 2
 
                 transformOrigin: Item.Center
                 scale: (root.activeZone !== "" && root.activeScreenName === modelData.name) ? 1.0 : 0.96
                 opacity: (root.activeZone !== "" && root.activeScreenName === modelData.name) ? 1.0 : 0.0
+
+                Behavior on radius { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                Behavior on border.width { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
 
                 Behavior on x { enabled: previewWin.canGlide; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 Behavior on y { enabled: previewWin.canGlide; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -999,23 +1023,17 @@ Item {
                     hoverEnabled: true
                     acceptedButtons: Qt.NoButton
 
+                    // NOTE: tiles intentionally do NOT set zones on hover.
+                    // Hover (direct pointer path) arrives earlier than dragpos
+                    // (compositor -> bridge -> IPC roundtrip), so writing zones
+                    // here races detectFlyoutBox: the lagging dragpos re-asserts
+                    // the previous zone mid-glide and the ghost looks frozen.
+                    // dragpos is the single source of truth (same as snap-edge
+                    // dragging); hover only keeps the flyout alive, and the tile
+                    // still highlights instantly via isTargeted.
                     onContainsMouseChanged: {
                         if (containsMouse) {
                             collapseTimer.stop();
-                            root.setZone(tile.zone);
-                        } else {
-                            if (root.activeZone === tile.zone) {
-                                root.activeZone = "";
-                                root.activeZoneName = "";
-                                root.lastActiveZone = "";
-                            }
-                        }
-                    }
-
-                    onPositionChanged: {
-                        if (containsMouse && root.activeZone !== tile.zone) {
-                            collapseTimer.stop();
-                            root.setZone(tile.zone);
                         }
                     }
                 }

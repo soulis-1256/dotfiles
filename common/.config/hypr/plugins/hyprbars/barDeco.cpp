@@ -12,6 +12,7 @@
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/config/ConfigManager.hpp>
+#include <hyprland/src/config/ConfigValue.hpp>
 #include <hyprland/src/config/shared/animation/AnimationTree.hpp>
 #include <hyprland/src/config/shared/parserUtils/ParserUtils.hpp>
 #include <hyprland/src/config/supplementary/executor/Executor.hpp>
@@ -20,6 +21,9 @@
 #include <hyprland/src/protocols/LayerShell.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
+#include <hyprland/src/pointer/cursor/CursorShapeOverrideController.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
+#include <hyprland/src/config/lua/ConfigManager.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
 
@@ -55,6 +59,10 @@ CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
 }
 
 CHyprBar::~CHyprBar() {
+    if (m_bBorderHoverActive) {
+        Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+        m_bBorderHoverActive = false;
+    }
     std::erase(g_pGlobalState->bars, m_self);
 }
 
@@ -149,16 +157,221 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
     handleUpEvent(info);
 }
 
+bool CHyprBar::isOverButton(const Vector2D& COORDS) {
+    const auto barHeight        = g_pGlobalState->config.barHeight->value();
+    const auto barPadding       = g_pGlobalState->config.barPadding->value();
+    const auto barButtonPadding = g_pGlobalState->config.barButtonPadding->value();
+    const auto alignButtons     = g_pGlobalState->config.barButtonsAlignment->value();
+    const bool buttonsRight     = alignButtons != "left";
+    const auto barW             = assignedBoxGlobal().w;
+
+    float offset = barPadding;
+    for (auto& b : g_pGlobalState->buttons) {
+        const float bWidth  = (b.width > 0) ? b.width : b.size;
+        const float bHeight = (b.height > 0) ? b.height : (b.width > 0 ? (float)barHeight : b.size);
+        const auto  BARBUF  = Vector2D{(int)barW, (int)barHeight};
+        Vector2D    currentPos =
+            Vector2D{(buttonsRight ? BARBUF.x - barButtonPadding - bWidth - offset : offset), (BARBUF.y - bHeight) / 2.0}.floor();
+
+        if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + bWidth, currentPos.y + bHeight))
+            return true;
+
+        offset += barButtonPadding + bWidth;
+    }
+    return false;
+}
+
+bool CHyprBar::isWindowMaximized() {
+    if (!validMapped(m_pWindow))
+        return false;
+    const auto PWIN = m_pWindow.lock();
+    if (!PWIN)
+        return false;
+
+    if (Fullscreen::controller()->isFullscreen(PWIN))
+        return true;
+
+    if (PWIN->m_isFloating && PWIN->getRealBorderSize() <= 0)
+        return true;
+
+    const auto PMONITOR = PWIN->m_monitor.lock();
+    if (PMONITOR) {
+        const auto WINPOS  = PWIN->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+        const auto WINSIZE = PWIN->size(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+        if (std::abs(WINPOS.x - PMONITOR->m_position.x) <= 4 && std::abs(WINSIZE.x - PMONITOR->m_size.x) <= 4) {
+            if (std::abs(WINPOS.y - PMONITOR->m_position.y) <= 35)
+                return true;
+        }
+    }
+
+    return false;
+}
+
+void CHyprBar::toggleMaximize() {
+    const auto PWIN = m_pWindow.lock();
+    if (!PWIN)
+        return;
+
+    Desktop::focusState()->fullWindowFocus(PWIN, Desktop::FOCUS_REASON_CLICK);
+
+    if (Config::mgr()->type() == Config::CONFIG_LUA) {
+        auto luaMgr = dynamicPointerCast<Config::Lua::CConfigManager>(WP<Config::IConfigManager>(Config::mgr()));
+        if (luaMgr) {
+            std::string code = std::format(
+                "if _G.win11_toggle_maximize then "
+                "    _G.win11_toggle_maximize('0x{:x}') "
+                "else "
+                "    hl.dispatch(hl.dsp.window.fullscreen({{ mode = 'maximized', action = 'toggle' }})) "
+                "end",
+                (uintptr_t)PWIN.get());
+            luaMgr->eval(code);
+            return;
+        }
+    }
+
+    g_pKeybindManager->m_dispatchers["fullscreen"]("1");
+}
+
+std::optional<Layout::eRectCorner> CHyprBar::getResizeCorner(const Vector2D& mouseCoords) {
+    if (!validMapped(m_pWindow) || m_hidden)
+        return std::nullopt;
+
+    const auto PWIN = m_pWindow.lock();
+    if (!PWIN)
+        return std::nullopt;
+
+    if (isWindowMaximized())
+        return std::nullopt;
+
+    static auto PRESIZEONBORDER   = CConfigValue<Config::INTEGER>("general:resize_on_border");
+    static auto PBORDERSIZE       = CConfigValue<Config::INTEGER>("general:border_size");
+    static auto PBORDERGRABEXTEND = CConfigValue<Config::INTEGER>("general:extend_border_grab_area");
+
+    if (!*PRESIZEONBORDER)
+        return std::nullopt;
+
+    const int BORDERSIZE   = PWIN->getRealBorderSize();
+    if (BORDERSIZE <= 0)
+        return std::nullopt;
+
+    const int GRAB_EXTEND  = *PBORDERGRABEXTEND;
+    const int BORDER_GRAB  = BORDERSIZE + GRAB_EXTEND;
+    const int ROUNDING     = PWIN->rounding();
+    const int CORNER       = std::max(ROUNDING + BORDERSIZE + 10, 20);
+    const int HEIGHT       = g_pGlobalState->config.barHeight->value();
+
+    const CBox barBox = assignedBoxGlobal();
+    if (barBox.w <= 0 || barBox.h <= 0)
+        return std::nullopt;
+
+    const Vector2D COORDS   = mouseCoords - barBox.pos();
+    const int      TOP_ZONE = std::max((int)BORDERSIZE, 4);
+
+    // Outside the extended grab zone around the bar
+    if (COORDS.x < -BORDER_GRAB || COORDS.x > barBox.w + BORDER_GRAB ||
+        COORDS.y < -BORDER_GRAB || COORDS.y > HEIGHT + BORDER_GRAB)
+        return std::nullopt;
+
+    // Caption button priority: if within bar height and below TOP_ZONE, buttons take precedence
+    if (COORDS.y >= TOP_ZONE && COORDS.y < HEIGHT && COORDS.x >= 0 && COORDS.x <= barBox.w) {
+        if (isOverButton(COORDS))
+            return std::nullopt;
+    }
+
+    // Top edge & top corners (above the bar in the grab area and along the top border strip)
+    if (COORDS.y < TOP_ZONE) {
+        if (COORDS.x < CORNER)
+            return Layout::CORNER_TOPLEFT;
+        if (COORDS.x > barBox.w - CORNER)
+            return Layout::CORNER_TOPRIGHT;
+        return Layout::CORNER_TOP;
+    }
+
+    // Left edge of the bar
+    if (COORDS.x < TOP_ZONE) {
+        if (COORDS.y < CORNER)
+            return Layout::CORNER_TOPLEFT;
+        return Layout::CORNER_LEFT;
+    }
+
+    // Right edge of the bar
+    if (COORDS.x > barBox.w - TOP_ZONE) {
+        if (COORDS.y < CORNER)
+            return Layout::CORNER_TOPRIGHT;
+        return Layout::CORNER_RIGHT;
+    }
+
+    return std::nullopt;
+}
+
 void CHyprBar::onMouseMove(Vector2D coords) {
     // ensure proper redraws of button icons on hover when using hardware cursors
     if (g_pGlobalState->config.iconOnHover->value())
         damageOnButtonHover();
 
-    if (!m_bDragPending || m_bTouchEv || !validMapped(m_pWindow) || m_touchId != 0)
+    if (m_bDragPending && !m_bTouchEv && validMapped(m_pWindow) && m_touchId == 0) {
+        m_bDragPending = false;
+        handleMovement();
         return;
+    }
 
-    m_bDragPending = false;
-    handleMovement();
+    if (!validMapped(m_pWindow) || isWindowMaximized()) {
+        if (m_bBorderHoverActive) {
+            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+            m_szCurrentCursorOverride.clear();
+            m_bBorderHoverActive = false;
+        }
+        return;
+    }
+
+    // If an active drag / resize operation is running, don't interfere with the active drag cursor
+    if (g_layoutManager && g_layoutManager->dragController() && g_layoutManager->dragController()->target()) {
+        if (m_bBorderHoverActive) {
+            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+            m_szCurrentCursorOverride.clear();
+            m_bBorderHoverActive = false;
+        }
+        return;
+    }
+
+    // Hit test: only the window under cursor should display border hover
+    Desktop::CViewHitTester hitTester{*Desktop::viewState()};
+    const auto              WINDOWATCURSOR = hitTester.windowAt(coords, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+
+    if (WINDOWATCURSOR != m_pWindow) {
+        if (m_bBorderHoverActive) {
+            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+            m_szCurrentCursorOverride.clear();
+            m_bBorderHoverActive = false;
+        }
+        return;
+    }
+
+    const auto resizeCorner = getResizeCorner(coords);
+    if (resizeCorner.has_value()) {
+        static auto PHOVERICON = CConfigValue<Config::INTEGER>("general:hover_icon_on_border");
+        if (*PHOVERICON) {
+            std::string shape = "top_side";
+            if (*resizeCorner == Layout::CORNER_TOPLEFT)
+                shape = "top_left_corner";
+            else if (*resizeCorner == Layout::CORNER_TOPRIGHT)
+                shape = "top_right_corner";
+            else if (*resizeCorner == Layout::CORNER_LEFT)
+                shape = "left_side";
+            else if (*resizeCorner == Layout::CORNER_RIGHT)
+                shape = "right_side";
+
+            if (m_szCurrentCursorOverride != shape) {
+                Pointer::Cursor::overrideController->setOverride(shape, Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+                m_szCurrentCursorOverride = shape;
+            }
+            m_bBorderHoverActive = true;
+        }
+    } else if (m_bBorderHoverActive) {
+        Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+        m_szCurrentCursorOverride.clear();
+        m_bBorderHoverActive = false;
+    }
 }
 
 void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
@@ -186,8 +399,33 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
         m_touchId = touchEvent.value().touchID;
 
     const auto PWINDOW = m_pWindow.lock();
+    if (!PWINDOW)
+        return;
 
-    auto       COORDS = cursorRelativeToBar();
+    // Check border resize first (mouse only, not touch)
+    if (!m_bTouchEv) {
+        const auto mousePos     = g_pInputManager->getMouseCoordsInternal();
+        const auto resizeCorner = getResizeCorner(mousePos);
+        if (resizeCorner.has_value()) {
+            if (Desktop::focusState()->window() != PWINDOW)
+                Desktop::focusState()->fullWindowFocus(PWINDOW, Desktop::FOCUS_REASON_CLICK);
+
+            if (PWINDOW->m_isFloating)
+                Desktop::windowState()->raise(PWINDOW);
+
+            info.cancelled   = true;
+            m_bCancelledDown = true;
+            m_bResizingThis  = true;
+            m_bDragPending   = false;
+            m_bDraggingThis  = false;
+
+            g_layoutManager->beginDragTarget(PWINDOW->layoutTarget(), MBIND_RESIZE, *resizeCorner);
+            Log::logger->log(Log::DEBUG, "[hyprbars] Border resize initiated on {:x} with corner {}", (uintptr_t)PWINDOW.get(), (int)*resizeCorner);
+            return;
+        }
+    }
+
+    auto COORDS = cursorRelativeToBar();
     if (m_bTouchEv) {
         ITouch::SDownEvent e        = touchEvent.value();
         PHLMONITOR         PMONITOR = nullptr;
@@ -238,7 +476,11 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 
     if (!ON_DOUBLE_CLICK.empty() &&
         std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
-        Config::Supplementary::executor()->spawn(ON_DOUBLE_CLICK);
+        if (ON_DOUBLE_CLICK == "hyprctl dispatch fullscreen 1" || ON_DOUBLE_CLICK == "fullscreen 1" || ON_DOUBLE_CLICK == "maximize") {
+            toggleMaximize();
+        } else {
+            Config::Supplementary::executor()->spawn(ON_DOUBLE_CLICK);
+        }
         m_bDragPending = false;
     } else {
         m_lastMouseDown = Time::steadyNow();
@@ -247,6 +489,17 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 }
 
 void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
+    if (m_bResizingThis) {
+        g_layoutManager->endDragTarget();
+        m_bResizingThis = false;
+        if (m_bBorderHoverActive) {
+            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+            m_szCurrentCursorOverride.clear();
+            m_bBorderHoverActive = false;
+        }
+        Log::logger->log(Log::DEBUG, "[hyprbars] Border resize ended on {:x}", (uintptr_t)m_pWindow.lock().get());
+    }
+
     if (m_pWindow.lock() != Desktop::focusState()->window())
         return;
 
@@ -294,10 +547,7 @@ bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButt
             }
 
             if (b.cmd == "fullscreen" || b.cmd == "maximize" || b.cmd.find("fullscreen") != std::string::npos) {
-                if (PWIN) {
-                    Desktop::focusState()->fullWindowFocus(PWIN, Desktop::FOCUS_REASON_CLICK);
-                    g_pKeybindManager->m_dispatchers["fullscreen"]("1");
-                }
+                toggleMaximize();
                 return true;
             }
 

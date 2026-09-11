@@ -37,6 +37,8 @@ text/javascript=dev.zed.Zed.desktop
 application/javascript=dev.zed.Zed.desktop
 application/x-zerosize=dev.zed.Zed.desktop
 text/x-diff=dev.zed.Zed.desktop
+x-scheme-handler/grokbot=grok-bot.desktop
+x-scheme-handler/sand=grok-bot.desktop
 
 [Added Associations]
 x-scheme-handler/http=zen.desktop;

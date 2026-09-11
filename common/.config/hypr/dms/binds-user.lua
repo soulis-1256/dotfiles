@@ -41,3 +41,13 @@ hl.unbind("SUPER + SHIFT + CTRL + L")
 
 hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/soulis/.local/bin/dms-game-overlay"), { release = true, description = "Toggle Game Control Center" })
 
+hl.unbind("SUPER + z")
+hl.unbind("SUPER + Z")
+local function toggle_floating()
+	if _G.floating_mode_toggle then
+		_G.floating_mode_toggle()
+	end
+end
+hl.bind("SUPER + z", toggle_floating, { description = "Toggle global floating mode" })
+
+
