@@ -84,7 +84,7 @@ Item {
 
                     // hyprbars blacklist: suppress top bars on apps that already have their own bars
                     if (/picture[- ]in[- ]picture/.test(title)) return false;
-                    if (/^(discord|zen|zen-alpha|chromium|google-chrome)$/.test(cls)) return false;
+                    if (/^(discord|zen|zen-alpha|chromium|google-chrome|localsend|org\.localsend\.localsend_app)$/.test(cls)) return false;
                     if (cls === "com.danklinux.dms") return false;
                     if (/^(steam_app_.*|.*\.exe.*)$/.test(cls)) return false;
                     if (/^steam.*/.test(cls) && /^notificationtoasts.*/.test(title)) return false;

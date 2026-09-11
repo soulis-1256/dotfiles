@@ -271,7 +271,7 @@ if f_bars then
 		local title = (w.title or ""):lower()
 		local has_bar = true
 		if title:match("picture[%- ]in[%- ]picture")
-			or cls:match("^(discord|zen|zen%-alpha|chromium|google%-chrome)$")
+			or cls:match("^(discord|zen|zen%-alpha|chromium|google%-chrome|localsend|org%.localsend%.localsend_app)$")
 			or cls == "com.danklinux.dms"
 			or cls:match("^steam_app_")
 			or cls:match("%.exe")

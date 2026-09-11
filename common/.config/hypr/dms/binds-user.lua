@@ -50,4 +50,13 @@ local function toggle_floating()
 end
 hl.bind("SUPER + z", toggle_floating, { description = "Toggle global floating mode" })
 
+hl.unbind("SUPER + x")
+hl.unbind("SUPER + X")
+local function toggle_workspace_floating()
+	if _G.workspace_floating_toggle then
+		_G.workspace_floating_toggle()
+	end
+end
+hl.bind("SUPER + x", toggle_workspace_floating, { description = "Toggle workspace floating mode" })
+
 

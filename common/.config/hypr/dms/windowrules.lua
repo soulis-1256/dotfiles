@@ -87,7 +87,7 @@ hl.on("window.open", frost_discord)
 
 -- hyprbars blacklist: suppress top bars on apps that already have their own bars
 hl.window_rule({
-	match = { class = "^(discord|zen|zen-alpha|chromium|google-chrome)$" },
+	match = { class = "^(discord|zen|zen-alpha|chromium|google-chrome|[lL]ocal[sS]end|org\\.localsend\\.localsend_app)$" },
 	["hyprbars:no_bar"] = true,
 })
 hl.window_rule({
