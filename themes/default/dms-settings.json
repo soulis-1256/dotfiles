@@ -558,6 +558,7 @@
   "notificationHistorySaveCritical": true,
   "notificationRules": [],
   "notificationFocusedMonitor": false,
+  "notificationCenterShowCalendar": false,
   "osdAlwaysShowValue": false,
   "osdPosition": 5,
   "osdVolumeEnabled": true,

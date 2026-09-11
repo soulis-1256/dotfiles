@@ -30,3 +30,7 @@ hl.animation({ leaf = "windowsIn", enabled = true, speed = 3, bezier = "default"
 hl.animation({ leaf = "windowsOut", enabled = true, speed = 3, bezier = "default" })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "default" })
 hl.animation({ leaf = "windowsMove", enabled = true, speed = 4, bezier = "default" })
+
+if _G.setup_hyprbars_buttons then
+	_G.setup_hyprbars_buttons("default")
+end

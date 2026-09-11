@@ -1,7 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -shared -fPIC --std=c++26 -O2
 INCLUDES = $(shell pkg-config --cflags hyprland)
-TARGET = hypr-snap-bridge-v2.so
+TARGET = hypr-snap-bridge-v3.so
 INSTALL_DIR = $(HOME)/.local/lib/hyprland
 
 all: $(TARGET)

@@ -33,3 +33,7 @@ hl.config({
 hl.animation({ leaf = "windowsIn", enabled = true, speed = 2.4, bezier = "default" })
 hl.animation({ leaf = "windowsOut", enabled = true, speed = 2.4, bezier = "default" })
 hl.animation({ leaf = "windowsMove", enabled = true, speed = 2.4, bezier = "default" })
+
+if _G.setup_hyprbars_buttons then
+	_G.setup_hyprbars_buttons("windows-11")
+end

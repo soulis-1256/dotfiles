@@ -226,13 +226,159 @@ end, { locked = true, description = "Wake laptop screen on lid open" })
 pcall(require, "desktop")
 pcall(require, "laptop")
 
--- Active theme overrides (managed by theme-switcher)
-pcall(require, "theme")
-
 -- Windows 11 Snap layout drag bridge
-local snap_bridge = (os.getenv("HOME") or "") .. "/.local/lib/hyprland/hypr-snap-bridge-v2.so"
+local snap_bridge = (os.getenv("HOME") or "") .. "/.local/lib/hyprland/hypr-snap-bridge-v3.so"
 local f = io.open(snap_bridge, "r")
 if f then
 	f:close()
 	pcall(hl.plugin.load, snap_bridge)
 end
+
+-- hyprbars window title bars plugin
+local hyprbars_plugin = (os.getenv("HOME") or "") .. "/.local/lib/hyprland/hyprbars.so"
+local f_bars = io.open(hyprbars_plugin, "r")
+if f_bars then
+	f_bars:close()
+	pcall(hl.plugin.load, hyprbars_plugin)
+
+	_G.hyprbars_buttons_configured = false
+	_G.setup_hyprbars_buttons = function(theme_style)
+		if _G.hyprbars_buttons_configured then
+			return
+		end
+		_G.hyprbars_buttons_configured = true
+		pcall(function()
+			if not (hl.plugin and hl.plugin.hyprbars and hl.plugin.hyprbars.add_button) then
+				return
+			end
+
+			if theme_style == "windows-11" or theme_style == "windows-10" then
+				local is_win10 = (theme_style == "windows-10")
+				hl.config({
+					plugin = {
+						hyprbars = {
+							bar_height = 30,
+							bar_color = is_win10 and "rgb(181818)" or "rgb(1e1e1e)",
+							["col.text"] = "rgb(cccccc)",
+							bar_text_font = "Inter Variable",
+							bar_text_size = 10,
+							bar_title_padding = 14,
+							bar_text_align = "left",
+							bar_padding = 0,
+							bar_button_padding = 0,
+							bar_part_of_window = true,
+							bar_precedence_over_border = true,
+							on_double_click = "hyprctl dispatch fullscreen 1",
+						},
+					},
+				})
+
+				-- Windows 11 / 10 wide rectangular caption buttons (46px wide, full bar height)
+				-- Close: red hover
+				hl.plugin.hyprbars.add_button({
+					bg_color = "rgba(00000000)",
+					fg_color = "rgb(e0e0e0)",
+					size = 14,
+					width = 46,
+					round = 0,
+					icon_size = 14,
+					icon = "\u{e1b2}",
+					action = "close",
+				})
+				-- Maximize / Restore
+				hl.plugin.hyprbars.add_button({
+					bg_color = "rgba(00000000)",
+					fg_color = "rgb(e0e0e0)",
+					size = 14,
+					width = 46,
+					round = 0,
+					icon_size = 14,
+					icon = "\u{e167}",
+					action = "fullscreen",
+				})
+				-- Minimize / Float
+				hl.plugin.hyprbars.add_button({
+					bg_color = "rgba(00000000)",
+					fg_color = "rgb(e0e0e0)",
+					size = 14,
+					width = 46,
+					round = 0,
+					icon_size = 14,
+					icon = "\u{e11c}",
+					action = "togglefloating",
+				})
+			else
+				-- Default theme: "rounded shit" (macOS / GNOME circular chiclets with glowing pills)
+				hl.config({
+					plugin = {
+						hyprbars = {
+							bar_height = 32,
+							bar_color = "rgb(1e1e2e)",
+							["col.text"] = "rgb(cdd6f4)",
+							bar_text_font = "Cantarell, Inter, Sans",
+							bar_text_size = 11,
+							bar_text_align = "left",
+							bar_padding = 10,
+							bar_button_padding = 8,
+							bar_part_of_window = true,
+							bar_precedence_over_border = true,
+							on_double_click = "hyprctl dispatch fullscreen 1",
+						},
+					},
+				})
+
+				-- Close: circular red chiclet
+				hl.plugin.hyprbars.add_button({
+					bg_color = "rgba(ff5f57dd)",
+					fg_color = "rgb(440000)",
+					size = 18,
+					width = 18,
+					height = 18,
+					round = 99,
+					icon_size = 12,
+					icon = "\u{e1b2}",
+					action = "close",
+				})
+				-- Maximize: circular green chiclet
+				hl.plugin.hyprbars.add_button({
+					bg_color = "rgba(40c940dd)",
+					fg_color = "rgb(003300)",
+					size = 18,
+					width = 18,
+					height = 18,
+					round = 99,
+					icon_size = 12,
+					icon = "\u{e167}",
+					action = "fullscreen",
+				})
+				-- Minimize: circular yellow chiclet
+				hl.plugin.hyprbars.add_button({
+					bg_color = "rgba(febc2edd)",
+					fg_color = "rgb(443300)",
+					size = 18,
+					width = 18,
+					height = 18,
+					round = 99,
+					icon_size = 12,
+					icon = "\u{e11c}",
+					action = "togglefloating",
+				})
+			end
+		end)
+	end
+end
+
+-- Active theme overrides (managed by theme-switcher)
+pcall(require, "theme")
+
+-- If theme didn't call setup_hyprbars_buttons, call it with fallback detection
+if _G.setup_hyprbars_buttons then
+	local f_th = io.open((os.getenv("HOME") or "") .. "/.config/.current_theme", "r")
+	local cur_theme = "default"
+	if f_th then
+		cur_theme = f_th:read("*l") or "default"
+		f_th:close()
+	end
+	_G.setup_hyprbars_buttons(cur_theme)
+end
+

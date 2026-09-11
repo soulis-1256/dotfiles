@@ -30,13 +30,85 @@ Item {
     readonly property color winAccent: Theme.primary
     readonly property color winBorder: Theme.outlineVariant
 
+    function normAddr(a) {
+        if (!a) return "";
+        var s = String(a).toLowerCase().trim();
+        return s.startsWith("0x") ? s.slice(2) : s;
+    }
+
+    function isWindowFloating(addr) {
+        if (!addr || addr === "") return false;
+        var clean = root.normAddr(addr);
+        if (Hyprland.toplevels && Hyprland.toplevels.values) {
+            for (var i = 0; i < Hyprland.toplevels.values.length; i++) {
+                var t = Hyprland.toplevels.values[i];
+                if (!t) continue;
+                var a1 = root.normAddr(t.address);
+                var a2 = (t.lastIpcObject && t.lastIpcObject.address) ? root.normAddr(t.lastIpcObject.address) : "";
+                if (a1 === clean || a2 === clean) {
+                    if (t.lastIpcObject && t.lastIpcObject.floating !== undefined) {
+                        return t.lastIpcObject.floating === true;
+                    }
+                    if (t.floating !== undefined) {
+                        return t.floating === true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    function windowHasBar(addr) {
+        if (!addr || addr === "") return true;
+        var clean = root.normAddr(addr);
+        if (Hyprland.toplevels && Hyprland.toplevels.values) {
+            for (var i = 0; i < Hyprland.toplevels.values.length; i++) {
+                var t = Hyprland.toplevels.values[i];
+                if (!t) continue;
+                var a1 = root.normAddr(t.address);
+                var a2 = (t.lastIpcObject && t.lastIpcObject.address) ? root.normAddr(t.lastIpcObject.address) : "";
+                if (a1 === clean || a2 === clean) {
+                    var cls = "";
+                    var title = "";
+                    if (t.lastIpcObject) {
+                        cls = t.lastIpcObject.class || t.lastIpcObject.initialClass || "";
+                        title = t.lastIpcObject.title || t.lastIpcObject.initialTitle || "";
+                    }
+                    if (!cls && t.wayland && t.wayland.appId) cls = t.wayland.appId;
+                    if (!title && t.wayland && t.wayland.title) title = t.wayland.title;
+                    if (!cls && t.class) cls = t.class;
+                    if (!title && t.title) title = t.title;
+
+                    cls = String(cls).toLowerCase().trim();
+                    title = String(title).toLowerCase().trim();
+
+                    // hyprbars blacklist: suppress top bars on apps that already have their own bars
+                    if (/picture[- ]in[- ]picture/.test(title)) return false;
+                    if (/^(discord|zen|zen-alpha|chromium|google-chrome)$/.test(cls)) return false;
+                    if (cls === "com.danklinux.dms") return false;
+                    if (/^(steam_app_.*|.*\.exe.*)$/.test(cls)) return false;
+                    if (/^steam.*/.test(cls) && /^notificationtoasts.*/.test(title)) return false;
+                    return true;
+                }
+            }
+        }
+        return true;
+    }
+
     Connections {
         target: Hyprland
 
         function onRawEvent(event) {
             if (!event) return;
             if (event.name === "dragstart") {
-                root.draggedWindowAddr = event.data || "";
+                var addr = event.data || "";
+                if (!root.isWindowFloating(addr)) {
+                    root.isDragging = false;
+                    root.draggedWindowAddr = "";
+                    root.forceCollapse();
+                    return;
+                }
+                root.draggedWindowAddr = addr;
                 root.isDragging = true;
                 root.isExpanded = false;
                 root.lastActiveZone = "";
@@ -45,6 +117,10 @@ Item {
                 root.dragStartMouseY = -1;
                 root.restoredThisDrag = false;
             } else if (event.name === "dragstop") {
+                if (!root.isDragging) {
+                    root.forceCollapse();
+                    return;
+                }
                 var targetZone = root.activeZone !== "" ? root.activeZone : root.lastActiveZone;
                 if (targetZone !== "") {
                     root.triggerSnap(targetZone);
@@ -112,6 +188,12 @@ Item {
     }
 
     function handleDragPos(data) {
+        if (!root.isDragging || !root.draggedWindowAddr) return;
+        if (!root.isWindowFloating(root.draggedWindowAddr)) {
+            root.forceCollapse();
+            root.isDragging = false;
+            return;
+        }
         if (!data || data === "") return;
         var parts = data.split(",");
         if (parts.length < 2) return;
@@ -310,29 +392,27 @@ Item {
 
             // 4. Position and size to exact snap layout bounds
             if (targetScreen) {
-                var bounds = root.getZoneBounds(zone, targetScreen.width, targetScreen.height);
+                var hasBar = root.windowHasBar(addr);
+                var bounds = root.getZoneBounds(zone, targetScreen.width, targetScreen.height, hasBar);
                 var globalX = targetScreen.x + bounds.x;
                 var globalY = targetScreen.y + bounds.y;
 
                 if (addr && addr !== "") {
                     var luaEnsureFloat = "(function() " +
                         "local w = hl.get_window(\"address:" + addr + "\"); " +
-                        "if w then " +
+                        "if w and w.floating then " +
                             "_G.win11_snap_cache = _G.win11_snap_cache or {}; " +
                             "if not _G.win11_snap_cache[\"" + addr + "\"] then " +
                                 "_G.win11_snap_cache[\"" + addr + "\"] = { w = w.size.x, h = w.size.y }; " +
                             "end; " +
                             "hl.dispatch(hl.dsp.focus({ window = \"address:" + addr + "\" })); " +
-                            "if not w.floating then " +
-                                "hl.dispatch(hl.dsp.window.float({ action = \"set\" })); " +
-                            "end; " +
+                            "hl.dispatch(hl.dsp.window.resize({ x = " + bounds.width + ", y = " + bounds.height + " })); " +
+                            "hl.dispatch(hl.dsp.window.move({ x = " + globalX + ", y = " + globalY + " })); " +
                         "end; " +
                         "return hl.dsp.no_op() " +
                     "end)()";
                     Hyprland.dispatch(luaEnsureFloat);
                 }
-                Hyprland.dispatch("hl.dsp.window.resize({ x = " + bounds.width + ", y = " + bounds.height + " })");
-                Hyprland.dispatch("hl.dsp.window.move({ x = " + globalX + ", y = " + globalY + " })");
             }
         }
     }
@@ -340,7 +420,8 @@ Item {
     function restoreWindowPreSnapSize(addr, posX, posY) {
         if (!addr || addr === "") return;
         var luaRestore = "(function() " +
-            "if _G.win11_snap_cache and _G.win11_snap_cache[\"" + addr + "\"] then " +
+            "local w = hl.get_window(\"address:" + addr + "\"); " +
+            "if w and w.floating and _G.win11_snap_cache and _G.win11_snap_cache[\"" + addr + "\"] then " +
                 "local s = _G.win11_snap_cache[\"" + addr + "\"]; " +
                 "_G.win11_snap_cache[\"" + addr + "\"] = nil; " +
                 "local newX = math.max(10, " + posX + " - math.floor(s.w / 2)); " +
@@ -370,8 +451,12 @@ Item {
         snapTimer.restart();
     }
 
-    function getZoneBounds(zone, screenWidth, screenHeight) {
+    function getZoneBounds(zone, screenWidth, screenHeight, hasBar) {
+        if (hasBar === undefined) {
+            hasBar = root.draggedWindowAddr ? root.windowHasBar(root.draggedWindowAddr) : true;
+        }
         var barH = 52;
+        var titleH = (hasBar === false) ? 0 : 30; // hyprbars window titlebar height
         var usableH = screenHeight - barH;
         var gap = 8;
         var w = screenWidth;
@@ -384,32 +469,116 @@ Item {
         switch (zone) {
         case "half-left":
         case "left":
-            return { x: gap, y: gap, width: halfW - (gap * 1.5), height: h - (gap * 2) };
+            return {
+                x: gap,
+                y: gap + titleH,
+                width: halfW - (gap * 1.5),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "half-right":
         case "right":
-            return { x: halfW + (gap * 0.5), y: gap, width: halfW - (gap * 1.5), height: h - (gap * 2) };
+            return {
+                x: halfW + (gap * 0.5),
+                y: gap + titleH,
+                width: halfW - (gap * 1.5),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "left-two-thirds":
-            return { x: gap, y: gap, width: twoThirdsW - (gap * 1.5), height: h - (gap * 2) };
+            return {
+                x: gap,
+                y: gap + titleH,
+                width: twoThirdsW - (gap * 1.5),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "right-one-third":
-            return { x: twoThirdsW + (gap * 0.5), y: gap, width: (w - twoThirdsW) - (gap * 1.5), height: h - (gap * 2) };
+            return {
+                x: twoThirdsW + (gap * 0.5),
+                y: gap + titleH,
+                width: (w - twoThirdsW) - (gap * 1.5),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "col-1":
-            return { x: gap, y: gap, width: oneThirdW - (gap * 1.5), height: h - (gap * 2) };
+            return {
+                x: gap,
+                y: gap + titleH,
+                width: oneThirdW - (gap * 1.5),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "col-2":
-            return { x: oneThirdW + (gap * 0.5), y: gap, width: oneThirdW - gap, height: h - (gap * 2) };
+            return {
+                x: oneThirdW + (gap * 0.5),
+                y: gap + titleH,
+                width: oneThirdW - gap,
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "col-3":
-            return { x: (oneThirdW * 2) + (gap * 0.5), y: gap, width: (w - (oneThirdW * 2)) - (gap * 1.5), height: h - (gap * 2) };
+            return {
+                x: (oneThirdW * 2) + (gap * 0.5),
+                y: gap + titleH,
+                width: (w - (oneThirdW * 2)) - (gap * 1.5),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         case "top-left":
-            return { x: gap, y: gap, width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
+            return {
+                x: gap,
+                y: gap + titleH,
+                width: halfW - (gap * 1.5),
+                height: halfH - (gap * 1.5) - titleH,
+                visualY: gap,
+                visualHeight: halfH - (gap * 1.5)
+            };
         case "top-right":
-            return { x: halfW + (gap * 0.5), y: gap, width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
+            return {
+                x: halfW + (gap * 0.5),
+                y: gap + titleH,
+                width: halfW - (gap * 1.5),
+                height: halfH - (gap * 1.5) - titleH,
+                visualY: gap,
+                visualHeight: halfH - (gap * 1.5)
+            };
         case "bottom-left":
-            return { x: gap, y: halfH + (gap * 0.5), width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
+            return {
+                x: gap,
+                y: halfH + (gap * 0.5) + titleH,
+                width: halfW - (gap * 1.5),
+                height: halfH - (gap * 1.5) - titleH,
+                visualY: halfH + (gap * 0.5),
+                visualHeight: halfH - (gap * 1.5)
+            };
         case "bottom-right":
-            return { x: halfW + (gap * 0.5), y: halfH + (gap * 0.5), width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
+            return {
+                x: halfW + (gap * 0.5),
+                y: halfH + (gap * 0.5) + titleH,
+                width: halfW - (gap * 1.5),
+                height: halfH - (gap * 1.5) - titleH,
+                visualY: halfH + (gap * 0.5),
+                visualHeight: halfH - (gap * 1.5)
+            };
         case "maximize":
-            return { x: gap, y: gap, width: w - (gap * 2), height: h - (gap * 2) };
+            return {
+                x: gap,
+                y: gap + titleH,
+                width: w - (gap * 2),
+                height: h - (gap * 2) - titleH,
+                visualY: gap,
+                visualHeight: h - (gap * 2)
+            };
         default:
-            return { x: 0, y: 0, width: 0, height: 0 };
+            return { x: 0, y: 0, width: 0, height: 0, visualY: 0, visualHeight: 0 };
         }
     }
 
@@ -448,14 +617,14 @@ Item {
                 bottom: true
             }
 
-            readonly property var bounds: root.getZoneBounds(root.activeZone, modelData.width, modelData.height)
+            readonly property var bounds: root.getZoneBounds(root.activeZone, modelData.width, modelData.height, root.windowHasBar(root.draggedWindowAddr))
 
             Rectangle {
                 id: ghostRect
                 x: previewWin.bounds.x
-                y: previewWin.bounds.y
+                y: (previewWin.bounds.visualY !== undefined) ? previewWin.bounds.visualY : previewWin.bounds.y
                 width: previewWin.bounds.width
-                height: previewWin.bounds.height
+                height: (previewWin.bounds.visualHeight !== undefined) ? previewWin.bounds.visualHeight : previewWin.bounds.height
                 radius: 12
                 color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.18)
                 border.color: root.winAccent

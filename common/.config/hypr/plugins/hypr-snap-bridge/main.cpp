@@ -29,6 +29,17 @@ void checkDragState() {
         return;
     const auto& drag = g_layoutManager->dragController();
     bool isDragging = drag && drag->mode() == MBIND_MOVE;
+    if (isDragging) {
+        auto target = drag->target();
+        if (!target) {
+            isDragging = false;
+        } else {
+            auto win = target->window();
+            if (!win || !win->m_isFloating || drag->draggingTiled() || target->wasTiling()) {
+                isDragging = false;
+            }
+        }
+    }
     if (isDragging != wasDragging) {
         wasDragging = isDragging;
         if (isDragging) {

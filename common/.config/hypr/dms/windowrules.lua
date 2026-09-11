@@ -84,3 +84,25 @@ local function frost_discord(w)
 end
 
 hl.on("window.open", frost_discord)
+
+-- hyprbars blacklist: suppress top bars on apps that already have their own bars
+hl.window_rule({
+	match = { class = "^(discord|zen|zen-alpha|chromium|google-chrome)$" },
+	["hyprbars:no_bar"] = true,
+})
+hl.window_rule({
+	match = { class = "^(com\\.danklinux\\.dms)$" },
+	["hyprbars:no_bar"] = true,
+})
+hl.window_rule({
+	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
+	["hyprbars:no_bar"] = true,
+})
+hl.window_rule({
+	match = { class = "^(steam_app_.*|.*\\.exe.*)$" },
+	["hyprbars:no_bar"] = true,
+})
+hl.window_rule({
+	match = { class = "^([sS]team.*)$", title = "^(notificationtoasts.*)$" },
+	["hyprbars:no_bar"] = true,
+})
