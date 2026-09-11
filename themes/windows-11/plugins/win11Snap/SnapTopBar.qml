@@ -599,8 +599,16 @@ Item {
             id: previewWin
             required property var modelData
 
+            property real targetX: 0
+            property real targetY: 0
+            property real targetWidth: 0
+            property real targetHeight: 0
+            property bool hasActiveTarget: false
+            property bool canGlide: false
+            property string lastZoneName: ""
+
             screen: modelData
-            visible: root.isDragging && root.activeZone !== "" && root.activeScreenName === modelData.name
+            visible: root.isDragging && (root.activeZone !== "" || ghostRect.opacity > 0.01) && root.activeScreenName === modelData.name
             mask: Region {}
 
             WlrLayershell.namespace: "dms:win11-snap-preview"
@@ -617,26 +625,77 @@ Item {
                 bottom: true
             }
 
-            readonly property var bounds: root.getZoneBounds(root.activeZone, modelData.width, modelData.height, root.windowHasBar(root.draggedWindowAddr))
+            function updateBounds() {
+                if (root.activeZone !== "" && root.activeScreenName === modelData.name) {
+                    var b = root.getZoneBounds(root.activeZone, modelData.width, modelData.height, root.windowHasBar(root.draggedWindowAddr));
+                    var vy = (b.visualY !== undefined) ? b.visualY : b.y;
+                    var vh = (b.visualHeight !== undefined) ? b.visualHeight : b.height;
+
+                    if (root.activeZoneName !== "") {
+                        previewWin.lastZoneName = root.activeZoneName;
+                    }
+
+                    if (!previewWin.hasActiveTarget || ghostRect.opacity <= 0.05) {
+                        // First entrance: snap coordinates instantly so it blossoms in place locally
+                        previewWin.canGlide = false;
+                        previewWin.targetX = b.x;
+                        previewWin.targetY = vy;
+                        previewWin.targetWidth = b.width;
+                        previewWin.targetHeight = vh;
+                    } else {
+                        // Switching between active zones: glide smoothly
+                        previewWin.canGlide = true;
+                        previewWin.targetX = b.x;
+                        previewWin.targetY = vy;
+                        previewWin.targetWidth = b.width;
+                        previewWin.targetHeight = vh;
+                    }
+                    previewWin.hasActiveTarget = true;
+                } else {
+                    // Outside zones: retain last position to fade out gracefully in place
+                    previewWin.hasActiveTarget = false;
+                    previewWin.canGlide = false;
+                }
+            }
+
+            Connections {
+                target: root
+                function onActiveZoneChanged() {
+                    previewWin.updateBounds();
+                }
+                function onActiveScreenNameChanged() {
+                    previewWin.updateBounds();
+                }
+                function onIsDraggingChanged() {
+                    if (!root.isDragging) {
+                        previewWin.hasActiveTarget = false;
+                        previewWin.canGlide = false;
+                    }
+                }
+            }
 
             Rectangle {
                 id: ghostRect
-                x: previewWin.bounds.x
-                y: (previewWin.bounds.visualY !== undefined) ? previewWin.bounds.visualY : previewWin.bounds.y
-                width: previewWin.bounds.width
-                height: (previewWin.bounds.visualHeight !== undefined) ? previewWin.bounds.visualHeight : previewWin.bounds.height
+                x: previewWin.targetX
+                y: previewWin.targetY
+                width: previewWin.targetWidth
+                height: previewWin.targetHeight
                 radius: 12
                 color: Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.18)
                 border.color: root.winAccent
                 border.width: 2
 
-                Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                transformOrigin: Item.Center
+                scale: (root.activeZone !== "" && root.activeScreenName === modelData.name) ? 1.0 : 0.96
+                opacity: (root.activeZone !== "" && root.activeScreenName === modelData.name) ? 1.0 : 0.0
 
-                opacity: root.activeZone !== "" ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                Behavior on x { enabled: previewWin.canGlide; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: previewWin.canGlide; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: previewWin.canGlide; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: previewWin.canGlide; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
                 Rectangle {
                     anchors.centerIn: parent
@@ -650,7 +709,7 @@ Item {
                     StyledText {
                         id: zoneBadgeText
                         anchors.centerIn: parent
-                        text: root.activeZoneName
+                        text: root.activeZoneName !== "" ? root.activeZoneName : previewWin.lastZoneName
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
                         color: root.winAccent
