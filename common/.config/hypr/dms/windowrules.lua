@@ -7,6 +7,12 @@ hl.window_rule({
 	match = { class = "^(steam)$", title = "^(Steam)$" },
 	tile = true,
 })
+-- Steam client on 8 (silent so it does not steal the active workspace)
+hl.window_rule({
+	match = { class = "^(steam)$" },
+	workspace = "8 silent",
+	no_initial_focus = true,
+})
 -- Remove borders and disable blur/shadow effects on Steam
 hl.window_rule({
 	match = { class = "^([sS]team.*)$" },
@@ -15,13 +21,13 @@ hl.window_rule({
 	no_shadow = true,
 })
 
--- Allow immediate presentation (tearing / direct scanout) for all games
-hl.window_rule({ match = { class = "^(steam_app_.*|.*\\.exe.*)$" }, immediate = true })
-
--- Automatically launch all games on dedicated gaming Workspace 9
+-- Games on workspace 9. Map-time workspace/monitor pins do not stick
+-- if the client later fullscreen-outputs onto another monitor.
 hl.window_rule({
 	match = { class = "^(steam_app_.*|.*\\.exe.*)$" },
+	immediate = true,
 	workspace = "9",
+	suppress_event = "fullscreenoutput",
 })
 
 -- Picture-in-Picture from any toolkit (float and pin across workspaces)
@@ -49,3 +55,32 @@ hl.window_rule({
 
 -- Win11-style floats: hovering them does not steal mouse/keyboard focus
 hl.window_rule({ match = { float = true }, no_follow_mouse = true })
+
+-- Electron reports Discord as fully opaque and sets no_blur, so Hyprland
+-- skips compositor frost even with Vencord transparency. The window rule
+-- is not enough; set_prop on open is what actually clears those flags.
+-- 0.99 opacity is the usual Electron alpha hack (not a visible fade).
+-- Needs decoration.blur.enabled (Win11 theme).
+hl.window_rule({
+	match = { class = "^(discord)$" },
+	opaque = false,
+	no_blur = false,
+	opacity = "0.99 override 0.99 override",
+})
+
+-- Electron advertises the window as fully opaque after map, which overrides
+-- the window_rule above. set_prop after open is what actually enables frost.
+local function frost_discord(w)
+	if not w or w.class ~= "discord" then
+		return
+	end
+	local function apply()
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "opaque", value = 0 }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "no_blur", value = 0 }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "opacity", value = 0.99 }))
+	end
+	apply()
+	hl.timer(apply, { timeout = 250, type = "oneshot" })
+end
+
+hl.on("window.open", frost_discord)

@@ -272,14 +272,58 @@ Item {
         return ws.id > 0 ? ws.id : "name:" + (ws.name ?? "");
     }
 
-    function showAppContextMenu(item, modelData) {
+    function contextMenuAllWindows(modelData) {
+        const sourceWindows = modelData?.windows || [];
+        const allWindows = [];
+        for (let i = 0; i < sourceWindows.length; i++) {
+            const win = sourceWindows[i];
+            if (!win)
+                continue;
+            const toplevel = win.wayland || win;
+            allWindows.push({
+                toplevel: toplevel,
+                index: i,
+                windowTitle: win.title || toplevel.title || "",
+                address: win.address || toplevel.address || ""
+            });
+        }
+        return allWindows;
+    }
+
+    function contextMenuWorkspaceWindows(workspace, appId) {
+        if (!workspace || !appId)
+            return [];
+        const icons = root.getWorkspaceIcons(workspace);
+        const windows = [];
+        const seen = {};
+        for (let i = 0; i < icons.length; i++) {
+            const icon = icons[i];
+            if (Paths.moddedAppId(icon.appId || "") !== appId)
+                continue;
+            const iconWindows = root.contextMenuAllWindows(icon);
+            for (let j = 0; j < iconWindows.length; j++) {
+                const win = iconWindows[j];
+                const key = win.address || (win.toplevel ? String(i) + ":" + j : "");
+                if (key && seen[key])
+                    continue;
+                if (key)
+                    seen[key] = true;
+                windows.push(win);
+            }
+        }
+        return windows;
+    }
+
+    function showAppContextMenu(item, modelData, workspace) {
         if (!item || !modelData)
             return;
 
         const moddedId = Paths.moddedAppId(modelData.appId || modelData.fallbackText || "");
+        const iconWindows = root.contextMenuAllWindows(modelData);
+        const windowId = modelData.windowId || iconWindows[0]?.address || "";
         if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
-            const currentAppId = appContextMenuLoader.item.appData?.appId;
-            if (currentAppId === moddedId) {
+            const current = appContextMenuLoader.item.appData;
+            if (current?.appId === moddedId && (current?.windowId || "") === windowId) {
                 appContextMenuLoader.item.close();
                 return;
             }
@@ -315,10 +359,20 @@ Item {
 
         const shouldHidePin = true;
         const desktopEntry = moddedId ? DesktopEntries.heuristicLookup(moddedId) : null;
+        let workspaceWindows = root.contextMenuWorkspaceWindows(workspace, moddedId);
+        if (workspaceWindows.length === 0)
+            workspaceWindows = iconWindows;
+        const isGroup = iconWindows.length > 1;
+        const first = iconWindows[0] || null;
         const appData = {
             appId: moddedId,
-            type: "grouped",
-            windowCount: modelData.count || (modelData.windows ? modelData.windows.length : 1)
+            type: isGroup ? "grouped" : "window",
+            windowCount: iconWindows.length,
+            windowId: windowId,
+            allWindows: iconWindows,
+            workspaceWindows: workspaceWindows,
+            toplevel: first?.toplevel || null,
+            address: first?.address || ""
         };
 
         appContextMenuLoader.item.showAt(x, y, isBarVertical, barEdge, appData, shouldHidePin, desktopEntry, root.parentScreen);
@@ -1178,6 +1232,7 @@ Item {
             Item {
                 id: delegateRoot
 
+                property var workspaceModel: modelData
                 property bool isDropTarget: root.dragTargetIndex === index
 
                 z: dragHandler.dragging ? 1000 : 1
@@ -2020,13 +2075,15 @@ Item {
                                             readonly property color appBorderColor: appHighlightActive ? focusedBorderColor : Theme.primarySelected
                                             readonly property color appGlyphColor: appHighlightActive ? focusedBorderColor : Theme.primary
                                             readonly property real appOpacity: modelData.active ? 1.0 : rowAppMouseArea.containsMouse ? 0.8 : 0.6
+                                            readonly property bool steamFileIcon: modelData.isSteamApp && Paths.isFileIconSource(modelData.icon || "")
+                                            readonly property bool showThemeIcon: !modelData.isQuickshell && !steamFileIcon
 
                                             IconImage {
                                                 id: rowAppIcon
                                                 anchors.fill: parent
-                                                source: modelData.icon || ""
+                                                source: showThemeIcon ? (modelData.icon || "") : ""
                                                 opacity: modelData.active ? 1.0 : rowAppMouseArea.containsMouse ? 0.8 : 0.6
-                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && status === Image.Ready
+                                                visible: showThemeIcon && status === Image.Ready
                                             }
 
                                             Rectangle {
@@ -2049,7 +2106,7 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: !modelData.isQuickshell && modelData.isSteamApp && rowSteamIcon.status !== Image.Ready
+                                                visible: !modelData.isQuickshell && modelData.isSteamApp && !rowSteamIcon.visible && !rowAppIcon.visible
                                                 color: Theme.surfaceContainer
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
                                                 border.width: 1
@@ -2067,7 +2124,7 @@ Item {
                                             IconImage {
                                                 id: rowQsIcon
                                                 anchors.fill: parent
-                                                source: modelData.icon
+                                                source: modelData.isQuickshell ? (modelData.icon || "") : ""
                                                 opacity: modelData.active ? 1.0 : rowAppMouseArea.containsMouse ? 0.8 : 0.6
                                                 visible: modelData.isQuickshell && status === Image.Ready
                                                 layer.enabled: true
@@ -2078,12 +2135,15 @@ Item {
                                                 }
                                             }
 
-                                            IconImage {
+                                            Image {
                                                 id: rowSteamIcon
                                                 anchors.fill: parent
-                                                source: modelData.icon
+                                                source: steamFileIcon ? modelData.icon : ""
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                                asynchronous: true
                                                 opacity: modelData.active ? 1.0 : rowAppMouseArea.containsMouse ? 0.8 : 0.6
-                                                visible: modelData.isSteamApp && modelData.icon
+                                                visible: steamFileIcon && status === Image.Ready
                                             }
 
                                             DankIcon {
@@ -2114,7 +2174,7 @@ Item {
                                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                 onClicked: mouse => {
                                                     if (mouse.button === Qt.RightButton) {
-                                                        root.showAppContextMenu(rowAppMouseArea.parent, modelData);
+                                                        root.showAppContextMenu(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
                                                     } else if (mouse.button === Qt.LeftButton) {
                                                         if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
                                                             appContextMenuLoader.item.close();
@@ -2202,13 +2262,15 @@ Item {
                                             readonly property color appBorderColor: appHighlightActive ? focusedBorderColor : Theme.primarySelected
                                             readonly property color appGlyphColor: appHighlightActive ? focusedBorderColor : Theme.primary
                                             readonly property real appOpacity: modelData.active ? 1.0 : colAppMouseArea.containsMouse ? 0.8 : 0.6
+                                            readonly property bool steamFileIcon: modelData.isSteamApp && Paths.isFileIconSource(modelData.icon || "")
+                                            readonly property bool showThemeIcon: !modelData.isQuickshell && !steamFileIcon
 
                                             IconImage {
                                                 id: colAppIcon
                                                 anchors.fill: parent
-                                                source: modelData.icon || ""
+                                                source: showThemeIcon ? (modelData.icon || "") : ""
                                                 opacity: modelData.active ? 1.0 : colAppMouseArea.containsMouse ? 0.8 : 0.6
-                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && status === Image.Ready
+                                                visible: showThemeIcon && status === Image.Ready
                                             }
 
                                             Rectangle {
@@ -2231,7 +2293,7 @@ Item {
 
                                             Rectangle {
                                                 anchors.fill: parent
-                                                visible: !modelData.isQuickshell && modelData.isSteamApp && colSteamIcon.status !== Image.Ready
+                                                visible: !modelData.isQuickshell && modelData.isSteamApp && !colSteamIcon.visible && !colAppIcon.visible
                                                 color: Theme.surfaceContainer
                                                 radius: Theme.cornerRadius * (root.appIconSize / 40)
                                                 border.width: 1
@@ -2249,7 +2311,7 @@ Item {
                                             IconImage {
                                                 id: colQsIcon
                                                 anchors.fill: parent
-                                                source: modelData.icon
+                                                source: modelData.isQuickshell ? (modelData.icon || "") : ""
                                                 opacity: modelData.active ? 1.0 : colAppMouseArea.containsMouse ? 0.8 : 0.6
                                                 visible: modelData.isQuickshell && status === Image.Ready
                                                 layer.enabled: true
@@ -2260,12 +2322,15 @@ Item {
                                                 }
                                             }
 
-                                            IconImage {
+                                            Image {
                                                 id: colSteamIcon
                                                 anchors.fill: parent
-                                                source: modelData.icon
+                                                source: steamFileIcon ? modelData.icon : ""
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                                asynchronous: true
                                                 opacity: modelData.active ? 1.0 : colAppMouseArea.containsMouse ? 0.8 : 0.6
-                                                visible: modelData.isSteamApp && modelData.icon
+                                                visible: steamFileIcon && status === Image.Ready
                                             }
 
                                             DankIcon {
@@ -2296,7 +2361,7 @@ Item {
                                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                 onClicked: mouse => {
                                                     if (mouse.button === Qt.RightButton) {
-                                                        root.showAppContextMenu(colAppMouseArea.parent, modelData);
+                                                        root.showAppContextMenu(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
                                                     } else if (mouse.button === Qt.LeftButton) {
                                                         if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
                                                             appContextMenuLoader.item.close();
@@ -2370,6 +2435,12 @@ Item {
                         delegateRoot.updateAllData();
                     }
                     function onWindowsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: Paths
+                    function onSteamIconRevisionChanged() {
                         delegateRoot.updateAllData();
                     }
                 }

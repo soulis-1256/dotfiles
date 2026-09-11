@@ -3144,15 +3144,15 @@ Item {
                 }
 
                 PowerRow {
-                    iconName: "power_settings_new"
-                    label: "Shut down"
-                    onClicked: root.doPower("poweroff")
-                }
-
-                PowerRow {
                     iconName: "restart_alt"
                     label: "Restart"
                     onClicked: root.doPower("reboot")
+                }
+
+                PowerRow {
+                    iconName: "power_settings_new"
+                    label: "Shut down"
+                    onClicked: root.doPower("poweroff")
                 }
 
                 PowerRow {

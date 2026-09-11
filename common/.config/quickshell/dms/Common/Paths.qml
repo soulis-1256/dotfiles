@@ -22,6 +22,12 @@ Singleton {
 
     readonly property url imagecache: `${cache}/imagecache`
 
+    property var _steamIconCache: ({})
+    property var _steamIconPending: ({})
+    property var _steamIconMisses: ({})
+    property int steamIconRevision: 0
+    property bool _steamBumpPending: false
+
     Component.onCompleted: mkdir(imagecache)
 
     function stringify(path: url): string {
@@ -52,6 +58,12 @@ Singleton {
         return path.startsWith("file://") ? path : "file://" + path;
     }
 
+    function isFileIconSource(source: string): bool {
+        if (!source)
+            return false;
+        return source.startsWith("file:") || source.startsWith("qrc:") || source.startsWith("/");
+    }
+
     function mkdir(path: url): void {
         Quickshell.execDetached(["mkdir", "-p", strip(path)]);
     }
@@ -60,8 +72,79 @@ Singleton {
         Quickshell.execDetached(["cp", strip(from), strip(to)]);
     }
 
+    function steamAppNumericId(appId: string): string {
+        const m = (appId || "").match(/^(?:steam_app_|steam_icon_)(\d+)$/);
+        return m ? m[1] : "";
+    }
+
     function isSteamApp(appId: string): bool {
-        return appId && /^steam_app_\d+$/.test(appId);
+        return steamAppNumericId(appId) !== "";
+    }
+
+    function _bumpSteamIcons() {
+        if (_steamBumpPending)
+            return;
+        _steamBumpPending = true;
+        Qt.callLater(() => {
+            _steamBumpPending = false;
+            steamIconRevision++;
+        });
+    }
+
+    function _findSteamIcon(id) {
+        const home = strip(root.home);
+        const script = "id='" + id + "'\n" +
+            "home='" + home + "'\n" +
+            "for root in \"$home/.local/share/Steam\" \"$home/.steam/steam\" \"$home/.steam/root\" \"$home/.var/app/com.valvesoftware.Steam/data/Steam\"; do\n" +
+            "  [ -d \"$root\" ] || continue\n" +
+            "  for f in \"$root/appcache/librarycache/${id}_icon.jpg\" \"$root/appcache/librarycache/${id}_icon.png\"; do\n" +
+            "    [ -f \"$f\" ] && echo \"$f\" && exit 0\n" +
+            "  done\n" +
+            "  lib=\"$root/appcache/librarycache/$id\"\n" +
+            "  [ -d \"$lib\" ] || continue\n" +
+            "  for f in \"$lib\"/*; do\n" +
+            "    [ -f \"$f\" ] || continue\n" +
+            "    base=$(basename \"$f\")\n" +
+            "    case \"$base\" in\n" +
+            "      header.jpg|header.jpeg|header.png|logo.png|logo.jpg|logo.jpeg|library_*) continue ;;\n" +
+            "    esac\n" +
+            "    case \"$base\" in\n" +
+            "      *.jpg|*.jpeg|*.png) echo \"$f\"; exit 0 ;;\n" +
+            "    esac\n" +
+            "  done\n" +
+            "done\n";
+        Proc.runCommand("steamIcon:" + id, ["sh", "-c", script], (out, code) => {
+            const path = ((out || "").trim().split("\n").filter(s => s)[0]) || "";
+            delete root._steamIconPending[id];
+            if (path) {
+                root._steamIconCache[id] = root.toFileUrl(path);
+                root._bumpSteamIcons();
+            } else {
+                root._steamIconMisses[id] = Date.now();
+            }
+        }, 0);
+    }
+
+    function getSteamGameIcon(appId: string): string {
+        const _dep = steamIconRevision;
+        const id = steamAppNumericId(appId);
+        if (!id)
+            return "";
+
+        const themed = (typeof IconThemeService !== "undefined") ? IconThemeService.resolve("steam_icon_" + id) : "";
+        if (themed)
+            return themed;
+
+        if (root._steamIconCache[id])
+            return root._steamIconCache[id];
+        if (root._steamIconPending[id])
+            return "";
+        const lastMiss = root._steamIconMisses[id];
+        if (lastMiss && (Date.now() - lastMiss < 30000))
+            return "";
+        root._steamIconPending[id] = true;
+        Qt.callLater(() => root._findSteamIcon(id));
+        return "";
     }
 
     function moddedAppId(appId: string): string {
@@ -95,8 +178,12 @@ Singleton {
     }
 
     function resolveIconPath(iconName: string): string {
+        const _dep = steamIconRevision;
         if (!iconName)
             return "";
+        const steam = getSteamGameIcon(iconName);
+        if (steam)
+            return steam;
         const moddedId = moddedAppId(iconName);
         if (moddedId !== iconName) {
             if (moddedId.startsWith("~") || moddedId.startsWith("/"))
@@ -124,9 +211,14 @@ Singleton {
     }
 
     function getAppIcon(appId: string, desktopEntry: var): string {
+        const _dep = steamIconRevision;
         if (appId === "org.quickshell" || appId === "com.danklinux.dms") {
             return Qt.resolvedUrl("../assets/danklogo.svg");
         }
+
+        const steam = getSteamGameIcon(appId);
+        if (steam)
+            return steam;
 
         const moddedId = moddedAppId(appId);
         if (moddedId !== appId)

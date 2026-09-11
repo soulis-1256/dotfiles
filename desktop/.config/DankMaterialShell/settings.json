@@ -1,7 +1,7 @@
 {
   "currentThemeName": "custom",
   "currentThemeCategory": "registry",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/peaceAndQuiet/theme.json",
+  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/crimsonVoltage/theme.json",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -685,7 +685,7 @@
           "id": "keyboard_layout_name",
           "enabled": true,
           "keyboardLayoutNameCompactMode": true,
-          "keyboardLayoutNameShowIcon": true
+          "keyboardLayoutNameShowIcon": false
         },
         {
           "id": "controlCenterButton",

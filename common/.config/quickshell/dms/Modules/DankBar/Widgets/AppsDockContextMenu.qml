@@ -30,6 +30,29 @@ PanelWindow {
     property bool isVertical: false
     property string edge: "top"
     property point anchorPos: Qt.point(0, 0)
+    readonly property bool workspaceScoped: Array.isArray(appData?.workspaceWindows)
+    readonly property int closeAllWindowCount: {
+        if (workspaceScoped)
+            return appData.workspaceWindows.length;
+        if (appData?.type === "grouped")
+            return appData.windowCount || (appData.allWindows || []).length || 0;
+        return 0;
+    }
+    readonly property bool showCloseWindowItem: {
+        if (!appData)
+            return false;
+        if (workspaceScoped)
+            return appData.type !== "grouped";
+        return appData.type === "window";
+    }
+    readonly property bool showCloseAllItem: {
+        if (!appData)
+            return false;
+        if (workspaceScoped)
+            return closeAllWindowCount > 1;
+        return appData.type === "grouped" && appData.windowCount > 0;
+    }
+    readonly property bool hasCloseItems: showCloseWindowItem || showCloseAllItem
 
     function showAt(x, y, vertical, barEdge, data, hidePinOption, entry, targetScreen) {
         if (targetScreen) {
@@ -57,6 +80,87 @@ PanelWindow {
         if (root.screen) {
             TrayMenuManager.unregisterMenu(root.screen.name);
         }
+    }
+
+    function resolveCloseableToplevel(win) {
+        if (!win)
+            return null;
+        if (win.toplevel && win.toplevel.close)
+            return win.toplevel;
+        if (win.wayland && win.wayland.close)
+            return win.wayland;
+        if (win.close)
+            return win;
+        return null;
+    }
+
+    function collectGroupedToplevels() {
+        if (!root.appData || root.appData.type !== "grouped")
+            return [];
+
+        const fromData = [];
+        const windows = root.appData.allWindows || [];
+        for (let i = 0; i < windows.length; i++) {
+            const toplevel = resolveCloseableToplevel(windows[i]);
+            if (toplevel)
+                fromData.push(toplevel);
+        }
+        if (fromData.length > 0)
+            return fromData;
+
+        const targetId = root.appData.appId;
+        if (!targetId)
+            return [];
+
+        const toplevels = [];
+        const allToplevels = ToplevelManager.toplevels.values;
+        for (let i = 0; i < allToplevels.length; i++) {
+            const toplevel = allToplevels[i];
+            const rawId = toplevel.appId || "";
+            if (rawId === targetId || Paths.moddedAppId(rawId) === targetId)
+                toplevels.push(toplevel);
+        }
+        return toplevels;
+    }
+
+    function closeToplevel(toplevel, address) {
+        if (toplevel && toplevel.close) {
+            toplevel.close();
+            return true;
+        }
+        const windowAddress = address || toplevel?.address;
+        if (CompositorService.isHyprland && windowAddress) {
+            HyprlandService.closeWindow(windowAddress);
+            return true;
+        }
+        return false;
+    }
+
+    function closeWindowsFromList(windows) {
+        if (!windows)
+            return;
+        for (let i = 0; i < windows.length; i++) {
+            const win = windows[i];
+            closeToplevel(win?.toplevel || win?.wayland || win, win?.address || win?.toplevel?.address);
+        }
+    }
+
+    function closeGroupedWindows() {
+        if (root.workspaceScoped) {
+            closeWindowsFromList(root.appData.workspaceWindows);
+            return;
+        }
+
+        const toplevels = collectGroupedToplevels();
+        let closed = 0;
+        for (let i = 0; i < toplevels.length; i++) {
+            if (closeToplevel(toplevels[i]))
+                closed++;
+        }
+        if (closed > 0)
+            return;
+
+        closeWindowsFromList(root.appData?.allWindows || []);
     }
 
     screen: null
@@ -156,18 +260,9 @@ PanelWindow {
             // Window list for grouped apps
             Repeater {
                 model: {
-                    if (!root.appData || root.appData.type !== "grouped")
-                        return [];
-
-                    const toplevels = [];
-                    const allToplevels = ToplevelManager.toplevels.values;
-                    for (let i = 0; i < allToplevels.length; i++) {
-                        const toplevel = allToplevels[i];
-                        if (toplevel.appId === root.appData.appId) {
-                            toplevels.push(toplevel);
-                        }
-                    }
-                    return toplevels;
+                    ToplevelManager.toplevels.values;
+                    root.appData;
+                    return root.collectGroupedToplevels();
                 }
 
                 Rectangle {
@@ -215,9 +310,7 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (modelData && modelData.close) {
-                                    modelData.close();
-                                }
+                                root.closeToplevel(modelData);
                                 root.close();
                             }
                         }
@@ -388,7 +481,7 @@ PanelWindow {
             Rectangle {
                 visible: {
                     const hasNvidia = !root.isDmsWindow && root.desktopEntry && SessionService.nvidiaCommand;
-                    const hasWindow = root.appData && (root.appData.type === "window" || (root.appData.type === "grouped" && root.appData.windowCount > 0));
+                    const hasWindow = root.hasCloseItems;
                     const hasPinOption = !root.hidePin;
                     const hasContentAbove = hasPinOption || hasNvidia;
                     return hasContentAbove && hasWindow;
@@ -442,53 +535,65 @@ PanelWindow {
                 }
             }
 
-            Rectangle {
-                visible: root.appData && (root.appData.type === "window" || (root.appData.type === "grouped" && root.appData.windowCount > 0))
-                implicitWidth: Theme.spacingS * 2 + closeLabel.implicitWidth
-                width: parent.width
-                height: 28
-                radius: Theme.cornerRadius
-                color: closeArea.containsMouse ? Theme.errorHover : Theme.withAlpha(Theme.errorHover, 0)
+            Repeater {
+                model: {
+                    const items = [];
+                    if (root.showCloseWindowItem)
+                        items.push({
+                                       "key": "close-window",
+                                       "closeAll": false,
+                                       "label": I18n.tr("Close Window")
+                                   });
+                    if (root.showCloseAllItem)
+                        items.push({
+                                       "key": "close-all",
+                                       "closeAll": true,
+                                       "label": I18n.tr("Close All Windows")
+                                   });
+                    return items;
+                }
 
-                StyledText {
-                    id: closeLabel
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.spacingS
-                    anchors.right: parent.right
-                    anchors.rightMargin: Theme.spacingS
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: {
-                        if (root.appData && root.appData.type === "grouped") {
-                            return I18n.tr("Close All Windows");
-                        }
-                        return I18n.tr("Close Window");
+                Rectangle {
+                    implicitWidth: Theme.spacingS * 2 + closeLabel.implicitWidth
+                    width: parent.width
+                    height: 28
+                    radius: Theme.cornerRadius
+                    color: closeArea.containsMouse ? Theme.errorHover : Theme.withAlpha(Theme.errorHover, 0)
+
+                    StyledText {
+                        id: closeLabel
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.spacingS
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacingS
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.label
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: closeArea.containsMouse ? Theme.error : Theme.surfaceText
+                        font.weight: Font.Normal
+                        elide: Text.ElideRight
+                        wrapMode: Text.NoWrap
                     }
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: closeArea.containsMouse ? Theme.error : Theme.surfaceText
-                    font.weight: Font.Normal
-                    elide: Text.ElideRight
-                    wrapMode: Text.NoWrap
-                }
 
-                DankRipple {
-                    id: closeRipple
-                    rippleColor: Theme.error
-                    cornerRadius: Theme.cornerRadius
-                }
+                    DankRipple {
+                        id: closeRipple
+                        rippleColor: Theme.error
+                        cornerRadius: Theme.cornerRadius
+                    }
 
-                MouseArea {
-                    id: closeArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onPressed: mouse => closeRipple.trigger(mouse.x, mouse.y)
-                    onClicked: {
-                        if (root.appData?.type === "window") {
-                            root.appData?.toplevel?.close();
-                        } else if (root.appData?.type === "grouped") {
-                            root.appData?.allWindows?.forEach(window => window.toplevel?.close());
+                    MouseArea {
+                        id: closeArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onPressed: mouse => closeRipple.trigger(mouse.x, mouse.y)
+                        onClicked: {
+                            if (modelData.closeAll)
+                                root.closeGroupedWindows();
+                            else
+                                root.closeToplevel(root.appData?.toplevel, root.appData?.address);
+                            root.close();
                         }
-                        root.close();
                     }
                 }
             }

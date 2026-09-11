@@ -229,22 +229,6 @@ DankPopout {
                         width: parent.width
                         editMode: root.editMode
                         onEditModeToggled: root.editMode = !root.editMode
-                        onPowerButtonClicked: {
-                            if (powerMenuModalLoader) {
-                                powerMenuModalLoader.active = true;
-                                if (powerMenuModalLoader.item) {
-                                    const bounds = Qt.rect(root.alignedX, root.alignedY, root.popupWidth, root.popupHeight);
-                                    powerMenuModalLoader.item.openFromControlCenter(bounds, root.screen);
-                                }
-                            }
-                        }
-                        onLockRequested: {
-                            root.close();
-                            root.lockRequested();
-                        }
-                        onSettingsButtonClicked: {
-                            root.close();
-                        }
                     }
 
                     DragDropGrid {

@@ -11,10 +11,7 @@ Rectangle {
 
     property bool editMode: false
 
-    signal powerButtonClicked
-    signal lockRequested
     signal editModeToggled
-    signal settingsButtonClicked
 
     Component.onCompleted: DgopService.addRef("system")
     Component.onDestruction: DgopService.removeRef("system")
@@ -67,52 +64,15 @@ Rectangle {
         }
     }
 
-    Row {
-        id: actionButtonsRow
+    DankActionButton {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: Theme.spacingXS
-        spacing: Theme.spacingXS
-
-        DankActionButton {
-            buttonSize: 36
-            iconName: "lock"
-            iconSize: Theme.iconSize - 4
-            iconColor: Theme.surfaceText
-            backgroundColor: "transparent"
-            onClicked: {
-                root.lockRequested();
-            }
-        }
-
-        DankActionButton {
-            buttonSize: 36
-            iconName: "power_settings_new"
-            iconSize: Theme.iconSize - 4
-            iconColor: Theme.surfaceText
-            backgroundColor: "transparent"
-            onClicked: root.powerButtonClicked()
-        }
-
-        DankActionButton {
-            buttonSize: 36
-            iconName: "settings"
-            iconSize: Theme.iconSize - 4
-            iconColor: Theme.surfaceText
-            backgroundColor: "transparent"
-            onClicked: {
-                root.settingsButtonClicked();
-                PopoutService.focusOrToggleSettings();
-            }
-        }
-
-        DankActionButton {
-            buttonSize: 36
-            iconName: editMode ? "done" : "edit"
-            iconSize: Theme.iconSize - 4
-            iconColor: editMode ? Theme.primary : Theme.surfaceText
-            backgroundColor: "transparent"
-            onClicked: root.editModeToggled()
-        }
+        buttonSize: 36
+        iconName: editMode ? "done" : "edit"
+        iconSize: Theme.iconSize - 4
+        iconColor: editMode ? Theme.primary : Theme.surfaceText
+        backgroundColor: "transparent"
+        onClicked: root.editModeToggled()
     }
 }
