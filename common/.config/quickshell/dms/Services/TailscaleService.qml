@@ -207,10 +207,18 @@ Singleton {
     }
 
     function isMine(peer) {
+        if (!peer)
+            return false;
+        if (selfNode) {
+            if (peer === selfNode)
+                return true;
+            if (peer.id && selfNode.id && peer.id === selfNode.id)
+                return true;
+            if (peer.hostname && selfNode.hostname && peer.hostname === selfNode.hostname)
+                return true;
+        }
         const myOwner = selfNode ? (selfNode.owner || "") : "";
-        if (peer.owner === myOwner && myOwner !== "")
-            return true;
-        if (peer.tags && peer.tags.length > 0)
+        if (myOwner !== "" && peer.owner === myOwner)
             return true;
         return false;
     }
