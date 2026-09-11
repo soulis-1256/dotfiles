@@ -197,8 +197,8 @@ hl.on("layer.opened", function(layer)
 end)
 
 -- Smart borders & gaps: disable gaps, borders, and rounding when only one tiled window is present
-hl.workspace_rule({ workspace = "w[tv1]", gaps_in = 0, gaps_out = 0 })
-hl.workspace_rule({ workspace = "f[1]", gaps_in = 0, gaps_out = 0 })
+hl.workspace_rule({ workspace = "w[tv1]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
+hl.workspace_rule({ workspace = "f[1]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
 hl.window_rule({
 	match = { float = false, workspace = "w[tv1]" },
 	border_size = 0,
@@ -247,6 +247,34 @@ if f_bars then
 	f_bars:close()
 	pcall(hl.plugin.load, hyprbars_plugin)
 
+	local function get_monitor_work_area(mon)
+		local is_rotated = (mon.transform and (mon.transform % 2 == 1))
+		local scale = (mon.scale and mon.scale > 0) and mon.scale or 1
+		local raw_w = is_rotated and mon.height or mon.width
+		local raw_h = is_rotated and mon.width or mon.height
+		local logical_w = math.floor(raw_w / scale + 0.5)
+		local logical_h = math.floor(raw_h / scale + 0.5)
+
+		local res = mon.reserved or {}
+		local res_top = (res.top ~= nil) and res.top or 0
+		local res_bottom = (res.bottom ~= nil) and res.bottom or 52
+		local res_left = (res.left ~= nil) and res.left or 0
+		local res_right = (res.right ~= nil) and res.right or 0
+
+		return {
+			x = mon.x + res_left,
+			y = mon.y + res_top,
+			w = logical_w - res_left - res_right,
+			h = logical_h - res_top - res_bottom,
+			screen_w = logical_w,
+			screen_h = logical_h,
+			res_top = res_top,
+			res_bottom = res_bottom,
+			res_left = res_left,
+			res_right = res_right,
+		}
+	end
+
 	_G.win11_toggle_maximize = function(target_addr)
 		local w = (target_addr and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
 		if not w then
@@ -258,32 +286,24 @@ if f_bars then
 		local clean_addr = raw_addr:gsub("^0x", "")
 		local full_addr = "0x" .. clean_addr
 
-		local mon = w.monitor
+		local mon = w.monitor or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
 		if not mon then
 			return
 		end
 
-		local bottom_res = (mon.reserved and mon.reserved.bottom) or 52
-		local usable_h = mon.height - bottom_res
+		local wa = get_monitor_work_area(mon)
 
-		-- Check whether window has hyprbars titlebar
-		local cls = (w.class or ""):lower()
-		local title = (w.title or ""):lower()
+		-- Check whether window has hyprbars titlebar using centralized helper
 		local has_bar = true
-		if title:match("picture[%- ]in[%- ]picture")
-			or cls:match("^(discord|zen|zen%-alpha|chromium|google%-chrome|localsend|org%.localsend%.localsend_app)$")
-			or cls == "com.danklinux.dms"
-			or cls:match("^steam_app_")
-			or cls:match("%.exe")
-			or (cls:match("^steam") and title:match("^notificationtoasts")) then
-			has_bar = false
+		if _G.window_has_hyprbar then
+			has_bar = _G.window_has_hyprbar(w)
 		end
 
 		local title_h = has_bar and 30 or 0
-		local max_x = mon.x
-		local max_y = mon.y + title_h
-		local max_w = mon.width
-		local max_h = usable_h - title_h
+		local max_x = wa.x
+		local max_y = wa.y + title_h
+		local max_w = wa.w
+		local max_h = wa.h - title_h
 
 		local is_currently_maximized = false
 		local cached = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
@@ -301,12 +321,12 @@ if f_bars then
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
 
-			local s = cached or { w = math.floor(mon.width * 0.6), h = math.floor(usable_h * 0.7) }
+			local s = cached or { w = math.floor(wa.w * 0.6), h = math.floor(wa.h * 0.7) }
 			_G.win11_snap_cache[full_addr] = nil
 			_G.win11_snap_cache[clean_addr] = nil
 
-			local newX = s.x or math.max(mon.x + 20, mon.x + math.floor((mon.width - s.w) / 2))
-			local newY = s.y or math.max(mon.y + 40, mon.y + math.floor((usable_h - s.h) / 2))
+			local newX = s.x or math.max(wa.x + 20, wa.x + math.floor((wa.w - s.w) / 2))
+			local newY = s.y or math.max(wa.y + 40, wa.y + math.floor((wa.h - s.h) / 2))
 
 			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
 			hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h }))
@@ -326,6 +346,183 @@ if f_bars then
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
 		end
+		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+	end
+
+	local function get_zone_geometry(mon, zone, has_bar)
+		local wa = get_monitor_work_area(mon)
+		local title_h = has_bar and 30 or 0
+		local gap = 8
+		local w = wa.w
+		local h = wa.h
+		local half_w = math.floor(w / 2 + 0.5)
+		local half_h = math.floor(h / 2 + 0.5)
+		local two_thirds_w = math.floor(w * 0.67 + 0.5)
+		local one_third_w = math.floor(w / 3 + 0.5)
+		local two_thirds_h = math.floor(h * 0.67 + 0.5)
+		local one_third_h = math.floor(h / 3 + 0.5)
+
+		local zx, zy, zw, zh = 0, 0, w, h
+		if zone == "maximize" then
+			zx, zy, zw, zh = 0, title_h, w, h - title_h
+		elseif zone == "half-left" or zone == "left" then
+			zx, zy = gap, gap + title_h
+			zw, zh = half_w - (gap * 1.5), h - (gap * 2) - title_h
+		elseif zone == "half-right" or zone == "right" then
+			zx, zy = half_w + (gap * 0.5), gap + title_h
+			zw, zh = half_w - (gap * 1.5), h - (gap * 2) - title_h
+		elseif zone == "half-top" or zone == "top" then
+			zx, zy = gap, gap + title_h
+			zw, zh = w - (gap * 2), half_h - (gap * 1.5) - title_h
+		elseif zone == "half-bottom" or zone == "bottom" then
+			zx, zy = gap, half_h + (gap * 0.5) + title_h
+			zw, zh = w - (gap * 2), half_h - (gap * 1.5) - title_h
+		elseif zone == "left-two-thirds" then
+			zx, zy = gap, gap + title_h
+			zw, zh = two_thirds_w - (gap * 1.5), h - (gap * 2) - title_h
+		elseif zone == "right-one-third" then
+			zx, zy = two_thirds_w + (gap * 0.5), gap + title_h
+			zw, zh = (w - two_thirds_w) - (gap * 1.5), h - (gap * 2) - title_h
+		elseif zone == "top-two-thirds" then
+			zx, zy = gap, gap + title_h
+			zw, zh = w - (gap * 2), two_thirds_h - (gap * 1.5) - title_h
+		elseif zone == "bottom-one-third" then
+			zx, zy = gap, two_thirds_h + (gap * 0.5) + title_h
+			zw, zh = w - (gap * 2), (h - two_thirds_h) - (gap * 1.5) - title_h
+		elseif zone == "col-1" then
+			zx, zy = gap, gap + title_h
+			zw, zh = one_third_w - (gap * 1.5), h - (gap * 2) - title_h
+		elseif zone == "col-2" then
+			zx, zy = one_third_w + (gap * 0.5), gap + title_h
+			zw, zh = one_third_w - gap, h - (gap * 2) - title_h
+		elseif zone == "col-3" then
+			zx, zy = (one_third_w * 2) + (gap * 0.5), gap + title_h
+			zw, zh = (w - (one_third_w * 2)) - (gap * 1.5), h - (gap * 2) - title_h
+		elseif zone == "row-1" then
+			zx, zy = gap, gap + title_h
+			zw, zh = w - (gap * 2), one_third_h - (gap * 1.5) - title_h
+		elseif zone == "row-2" then
+			zx, zy = gap, one_third_h + (gap * 0.5) + title_h
+			zw, zh = w - (gap * 2), one_third_h - gap - title_h
+		elseif zone == "row-3" then
+			zx, zy = gap, (one_third_h * 2) + (gap * 0.5) + title_h
+			zw, zh = w - (gap * 2), (h - (one_third_h * 2)) - (gap * 1.5) - title_h
+		elseif zone == "top-left" then
+			zx, zy = gap, gap + title_h
+			zw, zh = half_w - (gap * 1.5), half_h - (gap * 1.5) - title_h
+		elseif zone == "top-right" then
+			zx, zy = half_w + (gap * 0.5), gap + title_h
+			zw, zh = half_w - (gap * 1.5), half_h - (gap * 1.5) - title_h
+		elseif zone == "bottom-left" then
+			zx, zy = gap, half_h + (gap * 0.5) + title_h
+			zw, zh = half_w - (gap * 1.5), half_h - (gap * 1.5) - title_h
+		elseif zone == "bottom-right" then
+			zx, zy = half_w + (gap * 0.5), half_h + (gap * 0.5) + title_h
+			zw, zh = half_w - (gap * 1.5), half_h - (gap * 1.5) - title_h
+		end
+
+		return {
+			x = wa.x + math.floor(zx),
+			y = wa.y + math.floor(zy),
+			w = math.floor(zw),
+			h = math.floor(zh),
+		}
+	end
+
+	_G.win11_snap_window = function(target_addr, zone, screen_name)
+		if not zone or zone == "" then
+			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+		end
+		if zone == "maximize" then
+			if _G.win11_toggle_maximize then
+				return _G.win11_toggle_maximize(target_addr)
+			end
+			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+		end
+
+		local w = (target_addr and target_addr ~= "" and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
+		if not w then
+			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+		end
+
+		local raw_addr = w.address:lower()
+		local clean_addr = raw_addr:gsub("^0x", "")
+		local full_addr = "0x" .. clean_addr
+
+		local mon = nil
+		if screen_name and screen_name ~= "" then
+			for _, m in ipairs(hl.get_monitors() or {}) do
+				if m.name == screen_name then
+					mon = m
+					break
+				end
+			end
+		end
+		if not mon then
+			mon = w.monitor or (hl.get_monitors() and hl.get_monitors()[1])
+		end
+		if not mon then
+			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+		end
+
+		if not w.floating then
+			hl.dispatch(hl.dsp.window.float({ window = "address:" .. full_addr, action = "set" }))
+		end
+
+		_G.win11_snap_cache = _G.win11_snap_cache or {}
+		if not _G.win11_snap_cache[full_addr] and not _G.win11_snap_cache[clean_addr] then
+			_G.win11_snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
+			_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
+		end
+
+		local has_bar = true
+		if _G.window_has_hyprbar then
+			has_bar = _G.window_has_hyprbar(w)
+		end
+
+		local geom = get_zone_geometry(mon, zone, has_bar)
+
+		local defRound = hl.get_config("decoration:rounding") or 12
+		local defBorder = hl.get_config("general:border_size") or 2
+
+		hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
+		hl.dispatch(hl.dsp.window.resize({ x = geom.w, y = geom.h }))
+		hl.dispatch(hl.dsp.window.move({ x = geom.x, y = geom.y }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
+		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+	end
+
+	_G.win11_restore_window = function(target_addr, posX, posY)
+		local w = (target_addr and target_addr ~= "" and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
+		if not w or not w.floating then
+			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+		end
+
+		local raw_addr = w.address:lower()
+		local clean_addr = raw_addr:gsub("^0x", "")
+		local full_addr = "0x" .. clean_addr
+
+		local defRound = hl.get_config("decoration:rounding") or 12
+		local defBorder = hl.get_config("general:border_size") or 2
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
+
+		if _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]) then
+			local s = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
+			_G.win11_snap_cache[full_addr] = nil
+			_G.win11_snap_cache[clean_addr] = nil
+
+			local mon = w.monitor
+			local minX = mon and mon.x or 10
+			local minY = mon and mon.y or 10
+			local newX = math.max(minX, (posX or w.at.x) - math.floor(s.w / 2))
+			local newY = math.max(minY, (posY or w.at.y) - 20)
+			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
+			hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h }))
+			hl.dispatch(hl.dsp.window.move({ x = newX, y = newY }))
+		end
+		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 
 	_G.hyprbars_buttons_configured = false

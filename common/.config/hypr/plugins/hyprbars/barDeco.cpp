@@ -198,8 +198,9 @@ bool CHyprBar::isWindowMaximized() {
     if (PMONITOR) {
         const auto WINPOS  = PWIN->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
         const auto WINSIZE = PWIN->size(Desktop::View::IGeometric::GEOMETRIC_GOAL);
-        if (std::abs(WINPOS.x - PMONITOR->m_position.x) <= 4 && std::abs(WINSIZE.x - PMONITOR->m_size.x) <= 4) {
-            if (std::abs(WINPOS.y - PMONITOR->m_position.y) <= 35)
+        const auto monBox  = PMONITOR->logicalBox();
+        if (std::abs(WINPOS.x - monBox.x) <= 4 && std::abs(WINSIZE.x - monBox.w) <= 4) {
+            if (std::abs(WINPOS.y - monBox.y) <= 35)
                 return true;
         }
     }
@@ -922,16 +923,15 @@ CBox CHyprBar::assignedBoxGlobal() {
     box.translate(WORKSPACEOFFSET);
 
     if (PMONITOR) {
+        const auto monBox = PMONITOR->logicalBox();
         const auto winBox = PWIN->getWindowMainSurfaceBox();
-        const bool isFullscreen = (winBox.w >= PMONITOR->m_size.x && winBox.h >= PMONITOR->m_size.y &&
-                                   winBox.x == PMONITOR->m_position.x && winBox.y == PMONITOR->m_position.y);
+        const bool isFullscreen = (winBox.w >= monBox.w && winBox.h >= monBox.h &&
+                                   winBox.x == monBox.x && winBox.y == monBox.y);
         if (isFullscreen) {
-            box.x = PMONITOR->m_position.x;
-            box.y = PMONITOR->m_position.y;
-            box.w = PMONITOR->m_size.x;
+            box.x = monBox.x;
+            box.y = monBox.y;
+            box.w = monBox.w;
             box.h = HEIGHT;
-        } else if (box.y < PMONITOR->m_position.y && winBox.y >= PMONITOR->m_position.y) {
-            box.y = PMONITOR->m_position.y;
         }
     }
 

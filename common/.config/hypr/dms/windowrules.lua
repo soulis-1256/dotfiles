@@ -85,24 +85,69 @@ end
 
 hl.on("window.open", frost_discord)
 
--- hyprbars blacklist: suppress top bars on apps that already have their own bars
+-- hyprbars blacklist: single source of truth for apps without top bars
+_G.hyprbars_blacklist = {
+	classes = {
+		"discord",
+		"zen",
+		"zen-alpha",
+		"chromium",
+		"google-chrome",
+		"[lL]ocal[sS]end",
+		"org\\.localsend\\.localsend_app",
+		"com\\.danklinux\\.dms",
+		"steam_app_.*",
+		".*\\.exe.*",
+	},
+	titles = {
+		".*[Pp]icture[- ][iI]n[- ][pP]icture.*",
+	},
+}
+
+-- Register hyprbars:no_bar window rules dynamically with +nobar tag
 hl.window_rule({
-	match = { class = "^(discord|zen|zen-alpha|chromium|google-chrome|[lL]ocal[sS]end|org\\.localsend\\.localsend_app)$" },
+	match = { class = "^(" .. table.concat(_G.hyprbars_blacklist.classes, "|") .. ")$" },
 	["hyprbars:no_bar"] = true,
+	tag = "+nobar",
 })
-hl.window_rule({
-	match = { class = "^(com\\.danklinux\\.dms)$" },
-	["hyprbars:no_bar"] = true,
-})
-hl.window_rule({
-	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
-	["hyprbars:no_bar"] = true,
-})
-hl.window_rule({
-	match = { class = "^(steam_app_.*|.*\\.exe.*)$" },
-	["hyprbars:no_bar"] = true,
-})
+
+for _, t_pat in ipairs(_G.hyprbars_blacklist.titles) do
+	hl.window_rule({
+		match = { title = t_pat },
+		["hyprbars:no_bar"] = true,
+		tag = "+nobar",
+	})
+end
+
 hl.window_rule({
 	match = { class = "^([sS]team.*)$", title = "^(notificationtoasts.*)$" },
 	["hyprbars:no_bar"] = true,
+	tag = "+nobar",
 })
+
+-- Centralized helper used by maximize and snap geometry calculations
+_G.window_has_hyprbar = function(w)
+	if not w then
+		return true
+	end
+	local cls = (w.class or ""):lower()
+	local title = (w.title or ""):lower()
+
+	if title:match("picture[%- ]in[%- ]picture") then
+		return false
+	end
+	if cls:match("^steam") and title:match("^notificationtoasts") then
+		return false
+	end
+
+	for _, item in ipairs((_G.hyprbars_blacklist and _G.hyprbars_blacklist.classes) or {}) do
+		local pat = item:lower():gsub("%\\%.", "%%."):gsub("%[%w+%]", function(m)
+			return m:sub(2, 2):lower()
+		end)
+		if cls == pat or cls:match("^" .. pat .. "$") or cls:match(pat) then
+			return false
+		end
+	end
+
+	return true
+end

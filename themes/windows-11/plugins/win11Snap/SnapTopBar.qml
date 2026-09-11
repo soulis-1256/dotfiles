@@ -22,7 +22,11 @@ Item {
     property int lastDragGy: 0
     property int dragStartMouseX: -1
     property int dragStartMouseY: -1
+    property int dragStartWinY: -9999
+    property int dragGrabOffsetFromTop: 15
+    property bool draggedWindowHasBar: true
     property bool restoredThisDrag: false
+    property bool activeScreenIsPortrait: false
 
     readonly property color winBg: Theme.popupLayerColor(Theme.surfaceContainer)
     readonly property color winText: Theme.surfaceText
@@ -58,42 +62,6 @@ Item {
         return false;
     }
 
-    function windowHasBar(addr) {
-        if (!addr || addr === "") return true;
-        var clean = root.normAddr(addr);
-        if (Hyprland.toplevels && Hyprland.toplevels.values) {
-            for (var i = 0; i < Hyprland.toplevels.values.length; i++) {
-                var t = Hyprland.toplevels.values[i];
-                if (!t) continue;
-                var a1 = root.normAddr(t.address);
-                var a2 = (t.lastIpcObject && t.lastIpcObject.address) ? root.normAddr(t.lastIpcObject.address) : "";
-                if (a1 === clean || a2 === clean) {
-                    var cls = "";
-                    var title = "";
-                    if (t.lastIpcObject) {
-                        cls = t.lastIpcObject.class || t.lastIpcObject.initialClass || "";
-                        title = t.lastIpcObject.title || t.lastIpcObject.initialTitle || "";
-                    }
-                    if (!cls && t.wayland && t.wayland.appId) cls = t.wayland.appId;
-                    if (!title && t.wayland && t.wayland.title) title = t.wayland.title;
-                    if (!cls && t.class) cls = t.class;
-                    if (!title && t.title) title = t.title;
-
-                    cls = String(cls).toLowerCase().trim();
-                    title = String(title).toLowerCase().trim();
-
-                    // hyprbars blacklist: suppress top bars on apps that already have their own bars
-                    if (/picture[- ]in[- ]picture/.test(title)) return false;
-                    if (/^(discord|zen|zen-alpha|chromium|google-chrome|localsend|org\.localsend\.localsend_app)$/.test(cls)) return false;
-                    if (cls === "com.danklinux.dms") return false;
-                    if (/^(steam_app_.*|.*\.exe.*)$/.test(cls)) return false;
-                    if (/^steam.*/.test(cls) && /^notificationtoasts.*/.test(title)) return false;
-                    return true;
-                }
-            }
-        }
-        return true;
-    }
 
     Connections {
         target: Hyprland
@@ -113,9 +81,45 @@ Item {
                 root.isExpanded = false;
                 root.lastActiveZone = "";
                 root.activeScreenName = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
+                var isPort = false;
+                for (var si = 0; si < Quickshell.screens.length; si++) {
+                    if (Quickshell.screens[si].name === root.activeScreenName) {
+                        isPort = Quickshell.screens[si].height > Quickshell.screens[si].width;
+                        break;
+                    }
+                }
+                root.activeScreenIsPortrait = isPort;
                 root.dragStartMouseX = -1;
                 root.dragStartMouseY = -1;
+                root.dragStartWinY = -9999;
+                root.dragGrabOffsetFromTop = 15;
+                root.draggedWindowHasBar = true;
                 root.restoredThisDrag = false;
+
+                var clean = root.normAddr(addr);
+                if (Hyprland.toplevels && Hyprland.toplevels.values) {
+                    for (var i = 0; i < Hyprland.toplevels.values.length; i++) {
+                        var t = Hyprland.toplevels.values[i];
+                        if (!t) continue;
+                        var a1 = root.normAddr(t.address);
+                        var a2 = (t.lastIpcObject && t.lastIpcObject.address) ? root.normAddr(t.lastIpcObject.address) : "";
+                        if (a1 === clean || a2 === clean) {
+                            if (t.lastIpcObject) {
+                                if (t.lastIpcObject.at && t.lastIpcObject.at.length >= 2) {
+                                    root.dragStartWinY = t.lastIpcObject.at[1];
+                                }
+                                var tags = t.lastIpcObject.tags || [];
+                                for (var k = 0; k < tags.length; k++) {
+                                    if (String(tags[k]).indexOf("nobar") !== -1) {
+                                        root.draggedWindowHasBar = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
             } else if (event.name === "dragstop") {
                 if (!root.isDragging) {
                     root.forceCollapse();
@@ -146,27 +150,47 @@ Item {
 
     function detectFlyoutBox(relX, relY) {
         if (relY < 12 || relY > 72) return "";
+        var isPort = root.activeScreenIsPortrait;
 
-        // Card 1: 50 / 50
+        // Card 1: 50 / 50 Split
         if (relX >= 16 && relX <= 112) {
-            if (relX <= 62) return "half-left";
-            if (relX >= 66) return "half-right";
-            return "";
+            if (isPort) {
+                if (relY <= 40) return "half-top";
+                if (relY >= 44) return "half-bottom";
+                return "";
+            } else {
+                if (relX <= 62) return "half-left";
+                if (relX >= 66) return "half-right";
+                return "";
+            }
         }
 
-        // Card 2: 67 / 33
+        // Card 2: 67 / 33 Priority Split
         if (relX >= 120 && relX <= 216) {
-            if (relX <= 180) return "left-two-thirds";
-            if (relX >= 183) return "right-one-third";
-            return "";
+            if (isPort) {
+                if (relY <= 50) return "top-two-thirds";
+                if (relY >= 54) return "bottom-one-third";
+                return "";
+            } else {
+                if (relX <= 180) return "left-two-thirds";
+                if (relX >= 183) return "right-one-third";
+                return "";
+            }
         }
 
-        // Card 3: 3 Columns
+        // Card 3: 3 Columns (Landscape) or 3 Rows (Portrait)
         if (relX >= 224 && relX <= 320) {
-            if (relX <= 253) return "col-1";
-            if (relX >= 256 && relX <= 286) return "col-2";
-            if (relX >= 289) return "col-3";
-            return "";
+            if (isPort) {
+                if (relY <= 30) return "row-1";
+                if (relY >= 33 && relY <= 51) return "row-2";
+                if (relY >= 54) return "row-3";
+                return "";
+            } else {
+                if (relX <= 253) return "col-1";
+                if (relX >= 256 && relX <= 286) return "col-2";
+                if (relX >= 289) return "col-3";
+                return "";
+            }
         }
 
         // Card 4: 4 Quadrants
@@ -205,6 +229,18 @@ Item {
         if (root.dragStartMouseX < 0) {
             root.dragStartMouseX = gx;
             root.dragStartMouseY = gy;
+            var barH = root.draggedWindowHasBar ? 30 : 0;
+            if (root.dragStartWinY > -9000) {
+                var visualTopAtStart = root.dragStartWinY - barH;
+                var offset = gy - visualTopAtStart;
+                if (offset >= 0 && offset <= 60) {
+                    root.dragGrabOffsetFromTop = offset;
+                } else {
+                    root.dragGrabOffsetFromTop = root.draggedWindowHasBar ? 15 : 5;
+                }
+            } else {
+                root.dragGrabOffsetFromTop = root.draggedWindowHasBar ? 15 : 5;
+            }
         }
 
         // Mid-drag unsnap: if snapped window dragged away (> 20px), restore immediately
@@ -213,6 +249,9 @@ Item {
             if (dist > 20) {
                 root.restoreWindowPreSnapSize(root.draggedWindowAddr, gx, gy);
                 root.restoredThisDrag = true;
+                root.dragStartMouseX = gx;
+                root.dragStartMouseY = gy;
+                root.dragGrabOffsetFromTop = root.draggedWindowHasBar ? 15 : 5;
             }
         }
 
@@ -221,6 +260,7 @@ Item {
             if (gx >= s.x && gx < s.x + s.width && gy >= s.y && gy < s.y + s.height) {
                 if (root.activeScreenName !== s.name) {
                     root.activeScreenName = s.name;
+                    root.activeScreenIsPortrait = (s.height > s.width);
                     root.activeZone = "";
                     root.activeZoneName = "";
                     root.lastActiveZone = "";
@@ -228,6 +268,7 @@ Item {
 
                 var localX = gx - s.x;
                 var localY = gy - s.y;
+                var barTopOnScreen = localY - root.dragGrabOffsetFromTop;
                 var centerX = s.width / 2;
 
                 // 1. If flyout is currently expanded:
@@ -260,14 +301,15 @@ Item {
 
                 // 2. If flyout is collapsed:
                 // A. Check explicit hover on the collapsed pill handle (centered, top: 8, h: 22, w: 200)
-                if (localY >= 8 && localY <= 32 && Math.abs(localX - centerX) <= 100) {
+                if (localY >= 8 && localY <= 32 && Math.abs(localX - centerX) <= 100 && barTopOnScreen > 2) {
                     root.expand();
                     return;
                 }
 
                 // B. Edge & Corner Snapping (Windows 11):
-                // Top screen edge (above the flyout: localY <= 7) -> Maximize
-                if (localY <= 7) {
+                // Top screen edge: snaps when the top of the bar (or window) hits the top edge
+                // Snaps before the bar goes off-screen and shrinks!
+                if (barTopOnScreen <= 8 || localY <= 7) {
                     root.setZone("maximize");
                     return;
                 }
@@ -337,11 +379,18 @@ Item {
         switch (zone) {
         case "half-left": root.activeZoneName = "Left 50%"; break;
         case "half-right": root.activeZoneName = "Right 50%"; break;
+        case "half-top": root.activeZoneName = "Top 50%"; break;
+        case "half-bottom": root.activeZoneName = "Bottom 50%"; break;
         case "left-two-thirds": root.activeZoneName = "Left 67%"; break;
         case "right-one-third": root.activeZoneName = "Right 33%"; break;
+        case "top-two-thirds": root.activeZoneName = "Top 67%"; break;
+        case "bottom-one-third": root.activeZoneName = "Bottom 33%"; break;
         case "col-1": root.activeZoneName = "Column 1 (33%)"; break;
         case "col-2": root.activeZoneName = "Center 33%"; break;
         case "col-3": root.activeZoneName = "Column 3 (33%)"; break;
+        case "row-1": root.activeZoneName = "Row 1 (33%)"; break;
+        case "row-2": root.activeZoneName = "Row 2 (33%)"; break;
+        case "row-3": root.activeZoneName = "Row 3 (33%)"; break;
         case "top-left": root.activeZoneName = "Top-Left 25%"; break;
         case "top-right": root.activeZoneName = "Top-Right 25%"; break;
         case "bottom-left": root.activeZoneName = "Bottom-Left 25%"; break;
@@ -376,8 +425,9 @@ Item {
                 }
             }
             if (!targetScreen) {
+                var fName = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
                 for (var j = 0; j < Quickshell.screens.length; j++) {
-                    if (Quickshell.screens[j].name === Hyprland.focusedMonitor?.name) {
+                    if (fName !== "" && Quickshell.screens[j].name === fName) {
                         targetScreen = Quickshell.screens[j];
                         break;
                     }
@@ -395,65 +445,17 @@ Item {
             // 2. Always ensure fullscreen is unset so the bottom bar remains visible
             Hyprland.dispatch("hl.dsp.window.fullscreen({ action = \"unset\" })");
 
-            // 4. Position and size to exact snap layout bounds
-            if (targetScreen) {
-                var hasBar = root.windowHasBar(addr);
-                var bounds = root.getZoneBounds(zone, targetScreen.width, targetScreen.height, hasBar);
-                var globalX = targetScreen.x + bounds.x;
-                var globalY = targetScreen.y + bounds.y;
-
-                if (addr && addr !== "") {
-                    var isMax = (zone === "maximize");
-                    var luaEnsureFloat = "(function() " +
-                        "local w = hl.get_window(\"address:" + addr + "\"); " +
-                        "if w and w.floating then " +
-                            "_G.win11_snap_cache = _G.win11_snap_cache or {}; " +
-                            "if not _G.win11_snap_cache[\"" + addr + "\"] then " +
-                                "_G.win11_snap_cache[\"" + addr + "\"] = { w = w.size.x, h = w.size.y }; " +
-                            "end; " +
-                            "hl.dispatch(hl.dsp.focus({ window = \"address:" + addr + "\" })); " +
-                            "hl.dispatch(hl.dsp.window.resize({ x = " + bounds.width + ", y = " + bounds.height + " })); " +
-                            "hl.dispatch(hl.dsp.window.move({ x = " + globalX + ", y = " + globalY + " })); " +
-                            "local defRound = hl.get_config(\"decoration:rounding\") or 8; " +
-                            "local defBorder = hl.get_config(\"general:border_size\") or 1; " +
-                            "if " + (isMax ? "true" : "false") + " then " +
-                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"border_size\", value = 0 })); " +
-                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"rounding\", value = 0 })); " +
-                            "else " +
-                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"border_size\", value = defBorder })); " +
-                                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"rounding\", value = defRound })); " +
-                            "end; " +
-                        "end; " +
-                        "return hl.dsp.no_op() " +
-                    "end)()";
-                    Hyprland.dispatch(luaEnsureFloat);
-                }
+            // 3. Delegate precision placement, sizing, caching, and titlebar offsets to Hyprland Lua
+            if (addr && addr !== "") {
+                var sName = targetScreen ? targetScreen.name : (screenName || "");
+                Hyprland.dispatch("_G.win11_snap_window('" + addr + "', '" + zone + "', '" + sName + "')");
             }
         }
     }
 
     function restoreWindowPreSnapSize(addr, posX, posY) {
         if (!addr || addr === "") return;
-        var luaRestore = "(function() " +
-            "local w = hl.get_window(\"address:" + addr + "\"); " +
-            "if w and w.floating then " +
-                "local defRound = hl.get_config(\"decoration:rounding\") or 8; " +
-                "local defBorder = hl.get_config(\"general:border_size\") or 1; " +
-                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"border_size\", value = defBorder })); " +
-                "hl.dispatch(hl.dsp.window.set_prop({ window = \"address:" + addr + "\", prop = \"rounding\", value = defRound })); " +
-                "if _G.win11_snap_cache and _G.win11_snap_cache[\"" + addr + "\"] then " +
-                    "local s = _G.win11_snap_cache[\"" + addr + "\"]; " +
-                    "_G.win11_snap_cache[\"" + addr + "\"] = nil; " +
-                    "local newX = math.max(10, " + posX + " - math.floor(s.w / 2)); " +
-                    "local newY = math.max(10, " + posY + " - 20); " +
-                    "hl.dispatch(hl.dsp.focus({ window = \"address:" + addr + "\" })); " +
-                    "hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h })); " +
-                    "hl.dispatch(hl.dsp.window.move({ x = newX, y = newY })); " +
-                "end; " +
-            "end; " +
-            "return hl.dsp.no_op() " +
-        "end)()";
-        Hyprland.dispatch(luaRestore);
+        Hyprland.dispatch("_G.win11_restore_window('" + addr + "', " + (posX || 0) + ", " + (posY || 0) + ")");
     }
 
     function triggerSnap(zone) {
@@ -472,12 +474,8 @@ Item {
         snapTimer.restart();
     }
 
-    function getZoneBounds(zone, screenWidth, screenHeight, hasBar) {
-        if (hasBar === undefined) {
-            hasBar = root.draggedWindowAddr ? root.windowHasBar(root.draggedWindowAddr) : true;
-        }
+    function getZoneBounds(zone, screenWidth, screenHeight) {
         var barH = 52;
-        var titleH = (hasBar === false) ? 0 : 30; // hyprbars window titlebar height
         var usableH = screenHeight - barH;
         var gap = 8;
         var w = screenWidth;
@@ -486,120 +484,54 @@ Item {
         var halfH = Math.round(h / 2);
         var twoThirdsW = Math.round(w * 0.67);
         var oneThirdW = Math.round(w / 3);
+        var twoThirdsH = Math.round(h * 0.67);
+        var oneThirdH = Math.round(h / 3);
 
         switch (zone) {
         case "half-left":
         case "left":
-            return {
-                x: gap,
-                y: gap + titleH,
-                width: halfW - (gap * 1.5),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: gap, y: gap, width: halfW - (gap * 1.5), height: h - (gap * 2) };
         case "half-right":
         case "right":
-            return {
-                x: halfW + (gap * 0.5),
-                y: gap + titleH,
-                width: halfW - (gap * 1.5),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: halfW + (gap * 0.5), y: gap, width: halfW - (gap * 1.5), height: h - (gap * 2) };
+        case "half-top":
+        case "top":
+            return { x: gap, y: gap, width: w - (gap * 2), height: halfH - (gap * 1.5) };
+        case "half-bottom":
+        case "bottom":
+            return { x: gap, y: halfH + (gap * 0.5), width: w - (gap * 2), height: halfH - (gap * 1.5) };
         case "left-two-thirds":
-            return {
-                x: gap,
-                y: gap + titleH,
-                width: twoThirdsW - (gap * 1.5),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: gap, y: gap, width: twoThirdsW - (gap * 1.5), height: h - (gap * 2) };
         case "right-one-third":
-            return {
-                x: twoThirdsW + (gap * 0.5),
-                y: gap + titleH,
-                width: (w - twoThirdsW) - (gap * 1.5),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: twoThirdsW + (gap * 0.5), y: gap, width: (w - twoThirdsW) - (gap * 1.5), height: h - (gap * 2) };
+        case "top-two-thirds":
+            return { x: gap, y: gap, width: w - (gap * 2), height: twoThirdsH - (gap * 1.5) };
+        case "bottom-one-third":
+            return { x: gap, y: twoThirdsH + (gap * 0.5), width: w - (gap * 2), height: (h - twoThirdsH) - (gap * 1.5) };
         case "col-1":
-            return {
-                x: gap,
-                y: gap + titleH,
-                width: oneThirdW - (gap * 1.5),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: gap, y: gap, width: oneThirdW - (gap * 1.5), height: h - (gap * 2) };
         case "col-2":
-            return {
-                x: oneThirdW + (gap * 0.5),
-                y: gap + titleH,
-                width: oneThirdW - gap,
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: oneThirdW + (gap * 0.5), y: gap, width: oneThirdW - gap, height: h - (gap * 2) };
         case "col-3":
-            return {
-                x: (oneThirdW * 2) + (gap * 0.5),
-                y: gap + titleH,
-                width: (w - (oneThirdW * 2)) - (gap * 1.5),
-                height: h - (gap * 2) - titleH,
-                visualY: gap,
-                visualHeight: h - (gap * 2)
-            };
+            return { x: (oneThirdW * 2) + (gap * 0.5), y: gap, width: (w - (oneThirdW * 2)) - (gap * 1.5), height: h - (gap * 2) };
+        case "row-1":
+            return { x: gap, y: gap, width: w - (gap * 2), height: oneThirdH - (gap * 1.5) };
+        case "row-2":
+            return { x: gap, y: oneThirdH + (gap * 0.5), width: w - (gap * 2), height: oneThirdH - gap };
+        case "row-3":
+            return { x: gap, y: (oneThirdH * 2) + (gap * 0.5), width: w - (gap * 2), height: (h - (oneThirdH * 2)) - (gap * 1.5) };
         case "top-left":
-            return {
-                x: gap,
-                y: gap + titleH,
-                width: halfW - (gap * 1.5),
-                height: halfH - (gap * 1.5) - titleH,
-                visualY: gap,
-                visualHeight: halfH - (gap * 1.5)
-            };
+            return { x: gap, y: gap, width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
         case "top-right":
-            return {
-                x: halfW + (gap * 0.5),
-                y: gap + titleH,
-                width: halfW - (gap * 1.5),
-                height: halfH - (gap * 1.5) - titleH,
-                visualY: gap,
-                visualHeight: halfH - (gap * 1.5)
-            };
+            return { x: halfW + (gap * 0.5), y: gap, width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
         case "bottom-left":
-            return {
-                x: gap,
-                y: halfH + (gap * 0.5) + titleH,
-                width: halfW - (gap * 1.5),
-                height: halfH - (gap * 1.5) - titleH,
-                visualY: halfH + (gap * 0.5),
-                visualHeight: halfH - (gap * 1.5)
-            };
+            return { x: gap, y: halfH + (gap * 0.5), width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
         case "bottom-right":
-            return {
-                x: halfW + (gap * 0.5),
-                y: halfH + (gap * 0.5) + titleH,
-                width: halfW - (gap * 1.5),
-                height: halfH - (gap * 1.5) - titleH,
-                visualY: halfH + (gap * 0.5),
-                visualHeight: halfH - (gap * 1.5)
-            };
+            return { x: halfW + (gap * 0.5), y: halfH + (gap * 0.5), width: halfW - (gap * 1.5), height: halfH - (gap * 1.5) };
         case "maximize":
-            return {
-                x: 0,
-                y: titleH,
-                width: w,
-                height: h - titleH,
-                visualY: 0,
-                visualHeight: h
-            };
+            return { x: 0, y: 0, width: w, height: h };
         default:
-            return { x: 0, y: 0, width: 0, height: 0, visualY: 0, visualHeight: 0 };
+            return { x: gap, y: gap, width: halfW - (gap * 1.5), height: h - (gap * 2) };
         }
     }
 
@@ -648,9 +580,7 @@ Item {
 
             function updateBounds() {
                 if (root.activeZone !== "" && root.activeScreenName === modelData.name) {
-                    var b = root.getZoneBounds(root.activeZone, modelData.width, modelData.height, root.windowHasBar(root.draggedWindowAddr));
-                    var vy = (b.visualY !== undefined) ? b.visualY : b.y;
-                    var vh = (b.visualHeight !== undefined) ? b.visualHeight : b.height;
+                    var b = root.getZoneBounds(root.activeZone, modelData.width, modelData.height);
 
                     if (root.activeZoneName !== "") {
                         previewWin.lastZoneName = root.activeZoneName;
@@ -660,16 +590,16 @@ Item {
                         // First entrance: snap coordinates instantly so it blossoms in place locally
                         previewWin.canGlide = false;
                         previewWin.targetX = b.x;
-                        previewWin.targetY = vy;
+                        previewWin.targetY = b.y;
                         previewWin.targetWidth = b.width;
-                        previewWin.targetHeight = vh;
+                        previewWin.targetHeight = b.height;
                     } else {
                         // Switching between active zones: glide smoothly
                         previewWin.canGlide = true;
                         previewWin.targetX = b.x;
-                        previewWin.targetY = vy;
+                        previewWin.targetY = b.y;
                         previewWin.targetWidth = b.width;
-                        previewWin.targetHeight = vh;
+                        previewWin.targetHeight = b.height;
                     }
                     previewWin.hasActiveTarget = true;
                 } else {
@@ -862,6 +792,7 @@ Item {
                                         anchors.fill: parent
                                         anchors.margins: 4
                                         spacing: 3
+                                        visible: modelData.width >= modelData.height
 
                                         ZoneTile {
                                             width: (parent.width - 3) / 2
@@ -875,6 +806,25 @@ Item {
                                             zone: "half-right"
                                         }
                                     }
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 4
+                                        spacing: 3
+                                        visible: modelData.height > modelData.width
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: (parent.height - 3) / 2
+                                            zone: "half-top"
+                                        }
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: (parent.height - 3) / 2
+                                            zone: "half-bottom"
+                                        }
+                                    }
                                 }
 
                                 // Card 2: 67 / 33 Priority Split
@@ -886,6 +836,7 @@ Item {
                                         anchors.fill: parent
                                         anchors.margins: 4
                                         spacing: 3
+                                        visible: modelData.width >= modelData.height
 
                                         ZoneTile {
                                             width: Math.round((parent.width - 3) * 0.65)
@@ -899,9 +850,28 @@ Item {
                                             zone: "right-one-third"
                                         }
                                     }
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 4
+                                        spacing: 3
+                                        visible: modelData.height > modelData.width
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: Math.round((parent.height - 3) * 0.65)
+                                            zone: "top-two-thirds"
+                                        }
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: parent.height - 3 - Math.round((parent.height - 3) * 0.65)
+                                            zone: "bottom-one-third"
+                                        }
+                                    }
                                 }
 
-                                // Card 3: 3 Columns
+                                // Card 3: 3 Columns / 3 Rows
                                 LayoutCard {
                                     width: 96
                                     height: 60
@@ -910,6 +880,7 @@ Item {
                                         anchors.fill: parent
                                         anchors.margins: 4
                                         spacing: 3
+                                        visible: modelData.width >= modelData.height
 
                                         ZoneTile {
                                             width: (parent.width - 6) / 3
@@ -927,6 +898,31 @@ Item {
                                             width: (parent.width - 6) / 3
                                             height: parent.height
                                             zone: "col-3"
+                                        }
+                                    }
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 4
+                                        spacing: 3
+                                        visible: modelData.height > modelData.width
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: (parent.height - 6) / 3
+                                            zone: "row-1"
+                                        }
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: (parent.height - 6) / 3
+                                            zone: "row-2"
+                                        }
+
+                                        ZoneTile {
+                                            width: parent.width
+                                            height: (parent.height - 6) / 3
+                                            zone: "row-3"
                                         }
                                     }
                                 }
