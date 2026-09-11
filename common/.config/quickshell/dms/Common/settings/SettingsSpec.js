@@ -377,7 +377,6 @@ var SPEC = {
     matugenTemplateFirefox: { def: true },
     matugenTemplatePywalfox: { def: true },
     matugenTemplateZenBrowser: { def: true },
-    matugenTemplateVesktop: { def: true },
     matugenTemplateVencord: { def: true },
     matugenTemplateEquibop: { def: true },
     matugenTemplateGhostty: { def: true },

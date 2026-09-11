@@ -5009,24 +5009,6 @@
     ]
   },
   {
-    "section": "matugenTemplateVesktop",
-    "label": "vesktop",
-    "tabIndex": 10,
-    "category": "Theme & Colors",
-    "keywords": [
-      "appearance",
-      "colors",
-      "discord",
-      "look",
-      "matugen",
-      "scheme",
-      "style",
-      "template",
-      "theme",
-      "vesktop"
-    ]
-  },
-  {
     "section": "matugenTemplateZenBrowser",
     "label": "zenbrowser",
     "tabIndex": 10,

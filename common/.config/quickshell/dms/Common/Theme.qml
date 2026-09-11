@@ -1748,8 +1748,6 @@ Singleton {
                     skipTemplates.push("pywalfox");
                 if (!SettingsData.matugenTemplateZenBrowser)
                     skipTemplates.push("zenbrowser");
-                if (!SettingsData.matugenTemplateVesktop)
-                    skipTemplates.push("vesktop");
                 if (!SettingsData.matugenTemplateVencord)
                     skipTemplates.push("vencord");
                 if (!SettingsData.matugenTemplateEquibop)

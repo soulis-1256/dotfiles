@@ -2573,18 +2573,6 @@ Item {
 
                 SettingsToggleRow {
                     tab: "theme"
-                    tags: ["matugen", "vesktop", "discord", "template"]
-                    settingKey: "matugenTemplateVesktop"
-                    text: "vesktop"
-                    description: getTemplateDescription("vesktop", "")
-                    descriptionColor: getTemplateDescriptionColor("vesktop")
-                    visible: SettingsData.runDmsMatugenTemplates
-                    checked: SettingsData.matugenTemplateVesktop
-                    onToggled: checked => SettingsData.set("matugenTemplateVesktop", checked)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
                     tags: ["matugen", "vencord", "discord", "template"]
                     settingKey: "matugenTemplateVencord"
                     text: "vencord"

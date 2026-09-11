@@ -645,7 +645,7 @@ Item {
         for (let i = 0; i < g2Raw.length; i++) {
             const t = g2Raw[i];
             const lower = ((t.name || "") + " " + (t.id || "")).toLowerCase();
-            if (lower.indexOf("vesktop") !== -1 || lower.indexOf("discord") !== -1 || lower.indexOf("vlc") !== -1 || lower.indexOf("proton") !== -1) {
+            if (lower.indexOf("discord") !== -1 || lower.indexOf("vlc") !== -1 || lower.indexOf("proton") !== -1) {
                 folderCandidates.push(t);
             } else {
                 remainingG2.push(t);
