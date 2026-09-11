@@ -6,6 +6,7 @@
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/layout/supplementary/DragController.hpp>
+#include <hyprland/src/managers/KeybindManager.hpp>
 #include <format>
 #include <algorithm>
 
@@ -99,9 +100,17 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     });
 
     mouseButtonListener = Event::bus()->m_events.input.mouse.button.listen([](const IPointer::SButtonEvent& e, Event::SCallbackInfo& info) {
-        if (e.state == WL_POINTER_BUTTON_STATE_RELEASED && wasDragging) {
-            wasDragging = false;
-            g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
+        if (e.state == WL_POINTER_BUTTON_STATE_RELEASED) {
+            if (wasDragging) {
+                wasDragging = false;
+                g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
+            }
+            if (g_pKeybindManager && g_layoutManager) {
+                const auto& drag = g_layoutManager->dragController();
+                if (drag && drag->mode() == MBIND_MOVE) {
+                    g_pKeybindManager->changeMouseBindMode(MBIND_INVALID);
+                }
+            }
         } else {
             checkDragState();
         }

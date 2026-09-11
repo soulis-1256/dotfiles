@@ -501,14 +501,6 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         Log::logger->log(Log::DEBUG, "[hyprbars] Border resize ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }
 
-    if (m_pWindow.lock() != Desktop::focusState()->window())
-        return;
-
-    if (m_bCancelledDown)
-        info.cancelled = true;
-
-    m_bCancelledDown = false;
-
     if (m_bDraggingThis) {
         g_pKeybindManager->changeMouseBindMode(MBIND_INVALID);
         m_bDraggingThis = false;
@@ -518,6 +510,10 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         Log::logger->log(Log::DEBUG, "[hyprbars] Dragging ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }
 
+    if (m_bCancelledDown)
+        info.cancelled = true;
+
+    m_bCancelledDown = false;
     m_bDragPending = false;
     m_bTouchEv     = false;
     m_touchId      = 0;

@@ -200,16 +200,19 @@ end)
 hl.workspace_rule({ workspace = "w[tv1]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
 hl.workspace_rule({ workspace = "f[1]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
 hl.window_rule({
+	name = "smart-gaps-wtv1",
 	match = { float = false, workspace = "w[tv1]" },
 	border_size = 0,
 	rounding = 0,
 })
 hl.window_rule({
+	name = "smart-gaps-f1",
 	match = { float = false, workspace = "f[1]" },
 	border_size = 0,
 	rounding = 0,
 })
 hl.window_rule({
+	name = "smart-gaps-fullscreen",
 	match = { fullscreen = true },
 	border_size = 0,
 	rounding = 0,
@@ -318,8 +321,8 @@ if f_bars then
 
 		if is_currently_maximized then
 			-- RESTORE (to pre-snap size and position)
-			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
-			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 
 			local s = cached or { w = math.floor(wa.w * 0.6), h = math.floor(wa.h * 0.7) }
 			_G.win11_snap_cache[full_addr] = nil
@@ -488,8 +491,8 @@ if f_bars then
 		hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
 		hl.dispatch(hl.dsp.window.resize({ x = geom.w, y = geom.h }))
 		hl.dispatch(hl.dsp.window.move({ x = geom.x, y = geom.y }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 
@@ -503,10 +506,8 @@ if f_bars then
 		local clean_addr = raw_addr:gsub("^0x", "")
 		local full_addr = "0x" .. clean_addr
 
-		local defRound = hl.get_config("decoration:rounding") or 12
-		local defBorder = hl.get_config("general:border_size") or 2
-		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = defBorder }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = defRound }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 
 		if _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]) then
 			local s = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]

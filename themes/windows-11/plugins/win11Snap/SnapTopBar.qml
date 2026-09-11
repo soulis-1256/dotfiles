@@ -149,63 +149,49 @@ Item {
     }
 
     function detectFlyoutBox(relX, relY) {
-        if (relY < 12 || relY > 72) return "";
+        if (relY < 10 || relY > 74) return "";
         var isPort = root.activeScreenIsPortrait;
 
         // Card 1: 50 / 50 Split
-        if (relX >= 16 && relX <= 112) {
+        if (relX >= 10 && relX < 116) {
             if (isPort) {
-                if (relY <= 40) return "half-top";
-                if (relY >= 44) return "half-bottom";
-                return "";
+                return (relY <= 42) ? "half-top" : "half-bottom";
             } else {
-                if (relX <= 62) return "half-left";
-                if (relX >= 66) return "half-right";
-                return "";
+                return (relX <= 64) ? "half-left" : "half-right";
             }
         }
 
         // Card 2: 67 / 33 Priority Split
-        if (relX >= 120 && relX <= 216) {
+        if (relX >= 116 && relX < 220) {
             if (isPort) {
-                if (relY <= 50) return "top-two-thirds";
-                if (relY >= 54) return "bottom-one-third";
-                return "";
+                return (relY <= 52) ? "top-two-thirds" : "bottom-one-third";
             } else {
-                if (relX <= 180) return "left-two-thirds";
-                if (relX >= 183) return "right-one-third";
-                return "";
+                return (relX <= 182) ? "left-two-thirds" : "right-one-third";
             }
         }
 
         // Card 3: 3 Columns (Landscape) or 3 Rows (Portrait)
-        if (relX >= 224 && relX <= 320) {
+        if (relX >= 220 && relX < 324) {
             if (isPort) {
-                if (relY <= 30) return "row-1";
-                if (relY >= 33 && relY <= 51) return "row-2";
-                if (relY >= 54) return "row-3";
-                return "";
+                if (relY <= 31) return "row-1";
+                if (relY <= 52) return "row-2";
+                return "row-3";
             } else {
-                if (relX <= 253) return "col-1";
-                if (relX >= 256 && relX <= 286) return "col-2";
-                if (relX >= 289) return "col-3";
-                return "";
+                if (relX <= 254) return "col-1";
+                if (relX <= 288) return "col-2";
+                return "col-3";
             }
         }
 
         // Card 4: 4 Quadrants
-        if (relX >= 328 && relX <= 424) {
-            var isLeft = relX <= 373;
-            var isRight = relX >= 376;
-            if (!isLeft && !isRight) return "";
-
-            if (relY >= 14 && relY <= 40) {
+        if (relX >= 324 && relX <= 430) {
+            var isLeft = relX <= 376;
+            var isTop = relY <= 42;
+            if (isTop) {
                 return isLeft ? "top-left" : "top-right";
-            }
-            if (relY >= 44 && relY <= 70) {
+            } else {
                 return isLeft ? "bottom-left" : "bottom-right";
             }
-            return "";
         }
 
         return "";
@@ -360,6 +346,9 @@ Item {
     function expand() {
         collapseTimer.stop();
         root.isExpanded = true;
+        root.activeZone = "";
+        root.activeZoneName = "";
+        root.lastActiveZone = "";
     }
 
     function collapse() {
@@ -1002,7 +991,7 @@ Item {
             component ZoneTile: Rectangle {
                 id: tile
                 property string zone: ""
-                readonly property bool isTargeted: (root.activeZone === tile.zone) || tileMouse.containsMouse
+                readonly property bool isTargeted: (tile.zone !== "" && root.activeZone === tile.zone)
 
                 radius: 3
                 color: isTargeted ? root.winAccent : Qt.rgba(root.winText.r, root.winText.g, root.winText.b, 0.12)
