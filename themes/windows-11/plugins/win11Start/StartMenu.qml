@@ -3109,173 +3109,187 @@ Item {
         // ==========================================
         // POWER FLYOUT (Directly above Power button)
         // ==========================================
-        Rectangle {
+        Item {
             id: powerFlyout
 
-            visible: root.powerMenuOpen
             width: 220
             height: powerCol.implicitHeight + 8
             x: parent.width - width - 12
             y: footerBar.y - height - 6
-            radius: root.winRadius
-            color: Theme.surfaceContainer
-            border.color: root.winBorder
-            border.width: 1
             z: 60
-            clip: true
+            visible: root.powerMenuOpen || powerFlyoutPanel.opacity > 0.01
 
-            HoverHandler {
-                id: powerFlyoutHover
+            Rectangle {
+                id: powerFlyoutPanel
+                width: parent.width
+                height: parent.height
+                radius: root.winRadius
+                color: Theme.surfaceContainer
+                border.color: root.winBorder
+                border.width: 1
+                clip: true
+                opacity: 0
+                scale: 0.88
+                transformOrigin: Item.BottomRight
+                property real yOffset: 8
+                transform: Translate { y: powerFlyoutPanel.yOffset }
+
+                HoverHandler {
+                    id: powerFlyoutHover
+                }
+
+                Column {
+                    id: powerCol
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 4
+                    spacing: 0
+
+                    PowerRow {
+                        iconName: "bedtime"
+                        label: "Sleep"
+                        onClicked: root.doPower("suspend")
+                    }
+
+                    PowerRow {
+                        iconName: "restart_alt"
+                        label: "Restart"
+                        onClicked: root.doPower("reboot")
+                    }
+
+                    PowerRow {
+                        iconName: "power_settings_new"
+                        label: "Shut down"
+                        onClicked: root.doPower("poweroff")
+                    }
+
+                    PowerRow {
+                        iconName: "lock"
+                        label: "Lock"
+                        onClicked: root.doPower("lock")
+                    }
+                }
             }
 
-            Column {
-                id: powerCol
-
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 4
-                spacing: 0
-
-                PowerRow {
-                    iconName: "bedtime"
-                    label: "Sleep"
-                    onClicked: root.doPower("suspend")
-                }
-
-                PowerRow {
-                    iconName: "restart_alt"
-                    label: "Restart"
-                    onClicked: root.doPower("reboot")
-                }
-
-                PowerRow {
-                    iconName: "power_settings_new"
-                    label: "Shut down"
-                    onClicked: root.doPower("poweroff")
-                }
-
-                PowerRow {
-                    iconName: "lock"
-                    label: "Lock"
-                    onClicked: root.doPower("lock")
-                }
-
+            ParallelAnimation {
+                id: powerOpenAnim
+                NumberAnimation { target: powerFlyoutPanel; property: "opacity"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+                NumberAnimation { target: powerFlyoutPanel; property: "scale"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+                NumberAnimation { target: powerFlyoutPanel; property: "yOffset"; to: 0; duration: 220; easing.type: Easing.OutCubic }
             }
 
+            ParallelAnimation {
+                id: powerCloseAnim
+                NumberAnimation { target: powerFlyoutPanel; property: "opacity"; to: 0; duration: 120; easing.type: Easing.InCubic }
+                NumberAnimation { target: powerFlyoutPanel; property: "scale"; to: 0.88; duration: 120; easing.type: Easing.InCubic }
+                NumberAnimation { target: powerFlyoutPanel; property: "yOffset"; to: 8; duration: 120; easing.type: Easing.InCubic }
+            }
         }
 
-        // Elevation shadows for power flyout (outer top and right edges)
-        Rectangle {
-            anchors.left: powerFlyout.right
-            anchors.top: powerFlyout.top
-            anchors.bottom: powerFlyout.bottom
-            width: 12
-            z: 59
-            visible: root.powerMenuOpen
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.4) }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
-        }
-
-        Rectangle {
-            anchors.left: powerFlyout.left
-            anchors.right: powerFlyout.right
-            anchors.bottom: powerFlyout.top
-            height: 8
-            z: 59
-            visible: root.powerMenuOpen
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.25) }
+        Connections {
+            target: root
+            function onPowerMenuOpenChanged() {
+                if (root.powerMenuOpen) {
+                    powerCloseAnim.stop();
+                    powerOpenAnim.restart();
+                } else {
+                    powerOpenAnim.stop();
+                    powerCloseAnim.restart();
+                }
             }
         }
 
         // ==========================================
         // USER FLYOUT (Directly above User button)
         // ==========================================
-        Rectangle {
+        Item {
             id: userFlyout
 
-            visible: root.userMenuOpen
             width: 220
             height: userCol.implicitHeight + 8
             x: 16
             y: footerBar.y - height - 6
-            radius: root.winRadius
-            color: Theme.surfaceContainer
-            border.color: root.winBorder
-            border.width: 1
             z: 60
-            clip: true
+            visible: root.userMenuOpen || userFlyoutPanel.opacity > 0.01
 
-            HoverHandler {
-                id: userFlyoutHover
-            }
+            Rectangle {
+                id: userFlyoutPanel
+                width: parent.width
+                height: parent.height
+                radius: root.winRadius
+                color: Theme.surfaceContainer
+                border.color: root.winBorder
+                border.width: 1
+                clip: true
+                opacity: 0
+                scale: 0.88
+                transformOrigin: Item.BottomLeft
+                property real yOffset: 8
+                transform: Translate { y: userFlyoutPanel.yOffset }
 
-            Column {
-                id: userCol
+                HoverHandler {
+                    id: userFlyoutHover
+                }
 
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 4
-                spacing: 0
+                Column {
+                    id: userCol
 
-                PowerRow {
-                    iconName: "manage_accounts"
-                    label: "Account settings"
-                    onClicked: {
-                        PopoutService.openSettingsWithTab("users");
-                        root.closeMenu();
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 4
+                    spacing: 0
+
+                    PowerRow {
+                        iconName: "manage_accounts"
+                        label: "Account settings"
+                        onClicked: {
+                            PopoutService.openSettingsWithTab("users");
+                            root.closeMenu();
+                        }
+                    }
+
+                    PowerRow {
+                        iconName: "lock"
+                        label: "Lock"
+                        onClicked: root.doPower("lock")
+                    }
+
+                    PowerRow {
+                        iconName: "logout"
+                        label: "Sign out"
+                        onClicked: root.doPower("logout")
                     }
                 }
-
-                PowerRow {
-                    iconName: "lock"
-                    label: "Lock"
-                    onClicked: root.doPower("lock")
-                }
-
-                PowerRow {
-                    iconName: "logout"
-                    label: "Sign out"
-                    onClicked: root.doPower("logout")
-                }
-
             }
 
-        }
+            ParallelAnimation {
+                id: userOpenAnim
+                NumberAnimation { target: userFlyoutPanel; property: "opacity"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+                NumberAnimation { target: userFlyoutPanel; property: "scale"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+                NumberAnimation { target: userFlyoutPanel; property: "yOffset"; to: 0; duration: 220; easing.type: Easing.OutCubic }
+            }
 
-        // Elevation shadows for user flyout (outer top and right edges)
-        Rectangle {
-            anchors.left: userFlyout.right
-            anchors.top: userFlyout.top
-            anchors.bottom: userFlyout.bottom
-            width: 12
-            z: 59
-            visible: root.userMenuOpen
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.4) }
-                GradientStop { position: 1.0; color: "transparent" }
+            ParallelAnimation {
+                id: userCloseAnim
+                NumberAnimation { target: userFlyoutPanel; property: "opacity"; to: 0; duration: 120; easing.type: Easing.InCubic }
+                NumberAnimation { target: userFlyoutPanel; property: "scale"; to: 0.88; duration: 120; easing.type: Easing.InCubic }
+                NumberAnimation { target: userFlyoutPanel; property: "yOffset"; to: 8; duration: 120; easing.type: Easing.InCubic }
             }
         }
 
-        Rectangle {
-            anchors.left: userFlyout.left
-            anchors.right: userFlyout.right
-            anchors.bottom: userFlyout.top
-            height: 8
-            z: 59
-            visible: root.userMenuOpen
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.25) }
+        Connections {
+            target: root
+            function onUserMenuOpenChanged() {
+                if (root.userMenuOpen) {
+                    userCloseAnim.stop();
+                    userOpenAnim.restart();
+                } else {
+                    userOpenAnim.stop();
+                    userCloseAnim.restart();
+                }
             }
         }
 

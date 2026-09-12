@@ -2,7 +2,7 @@
     "id": "win11Start",
     "name": "Windows 11 Start",
     "description": "Windows 11 Start button and centered Start Menu (Pinned + All apps, folders)",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "author": "soulis",
     "type": "widget",
     "capabilities": ["dankbar-widget"],

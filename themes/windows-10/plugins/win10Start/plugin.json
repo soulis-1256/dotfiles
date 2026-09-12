@@ -2,7 +2,7 @@
     "id": "win10Start",
     "name": "Windows 10 Start",
     "description": "Windows 10 Start button and two-column Start Menu (Most used + tiles)",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "author": "soulis",
     "type": "widget",
     "capabilities": ["dankbar-widget"],
