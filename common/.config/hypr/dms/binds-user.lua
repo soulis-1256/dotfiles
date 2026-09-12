@@ -15,27 +15,65 @@ hl.unbind("SUPER + grave")
 hl.bind("SUPER + grave", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
 hl.unbind("SUPER + asciitilde")
 hl.bind("SUPER + asciitilde", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
-local function raise_active_window()
+local function addr_of(w)
+	if not w or not w.address then
+		return nil
+	end
+	local a = tostring(w.address):lower()
+	if a:find("^0x") then
+		return a
+	end
+	return "0x" .. a
+end
+
+local function alt_tab(back)
+	local ws = hl.get_active_workspace()
+	local ws_id = ws and ws.id
+	local prev_addr = addr_of(hl.get_active_window())
+	if back then
+		hl.dispatch(hl.dsp.window.cycle_next({ next = false }))
+	else
+		hl.dispatch(hl.dsp.window.cycle_next())
+	end
 	local w = hl.get_active_window()
+	if not w or addr_of(w) == prev_addr then
+		-- cycle_next often no-ops when the other window is under an
+		-- xdg-maximized client. Pick another mapped window on this workspace.
+		for _, c in ipairs(hl.get_windows() or {}) do
+			local ok, take = pcall(function()
+				return c.mapped and not c.hidden and not c.pinned
+					and c.workspace and c.workspace.id == ws_id
+					and addr_of(c) ~= prev_addr
+			end)
+			if ok and take then
+				w = c
+				pcall(function()
+					hl.dispatch(hl.dsp.focus({ window = w }))
+				end)
+				break
+			end
+		end
+	end
 	if not w then
 		return
 	end
-	pcall(function()
-		hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
-	end)
-	pcall(function()
-		hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
-	end)
+	if _G.win11_raise_window then
+		_G.win11_raise_window(w)
+	else
+		pcall(function()
+			hl.dispatch(hl.dsp.focus({ window = w }))
+			hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
+			hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
+		end)
+	end
 end
 hl.unbind("ALT + SHIFT + TAB")
 hl.bind("ALT + SHIFT + TAB", function()
-	hl.dispatch(hl.dsp.window.cycle_next({ next = false }))
-	raise_active_window()
+	alt_tab(true)
 end, { description = "Switch to previous window" })
 hl.unbind("ALT + TAB")
 hl.bind("ALT + TAB", function()
-	hl.dispatch(hl.dsp.window.cycle_next())
-	raise_active_window()
+	alt_tab(false)
 end, { description = "Switch to next window" })
 hl.unbind("SUPER + F")
 hl.bind("SUPER + F", hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })

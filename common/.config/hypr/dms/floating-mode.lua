@@ -478,6 +478,53 @@ local function resolve_window(w)
 	return w, addr
 end
 
+-- Keyboard focus does not restack floats. xdg-maximize (Zen after Super+Z)
+-- also ignores bring_to_top; re-set maximize so it covers the window we
+-- just raised above it.
+-- Floats default to allowedOverFullscreen, so bring_to_top paints them above
+-- an xdg-maxed Zen while focus (and XWayland input) stay on Zen. Alt-tab to a
+-- maxed window must lower the others; alt-tab to a small one must focus it.
+_G.win11_raise_window = function(w)
+	if not w then
+		return
+	end
+	local addr
+	w, addr = resolve_window(w)
+	if not w then
+		return
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.focus({ window = w }))
+	end)
+	local fs, maxed, ws_id = 0, false, nil
+	pcall(function()
+		fs = w.fullscreen or 0
+		maxed = is_window_maximized(w)
+		ws_id = w.workspace and w.workspace.id
+	end)
+	if fs == 1 or fs == 3 or maxed then
+		for _, o in ipairs(hl.get_windows() or {}) do
+			pcall(function()
+				if o.floating and not o.pinned and o.workspace and o.workspace.id == ws_id
+					and window_addr(o) ~= addr then
+					hl.dispatch(hl.dsp.window.alter_zorder({ mode = "bottom", window = o }))
+				end
+			end)
+		end
+		if fs == 1 or fs == 3 then
+			pcall(function()
+				hl.dispatch(hl.dsp.window.fullscreen({
+					window = w, mode = "maximized", action = "set",
+				}))
+			end)
+		end
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
+		hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
+	end)
+end
+
 local function dispatch_float(w, action)
 	if not w then
 		return
@@ -1102,26 +1149,22 @@ hl.on("window.active", function(active_win)
 		record_window_state(active_win, "window.active")
 	end
 
-	local now = os.clock()
-	if now - last_raise < 0.05 then
-		return
-	end
-	last_raise = now
-	-- Keyboard focus (alt-tab) does not raise floats by itself.
+	-- Always raise the focused float. Debouncing this is why the second
+	-- alt-tab left Spotify painted on top of a focused maximized Zen.
 	if active_win then
 		local floating = false
 		pcall(function()
 			floating = active_win.floating and true or false
 		end)
-		if floating then
-			pcall(function()
-				hl.dispatch(hl.dsp.window.bring_to_top({ window = active_win }))
-			end)
-			pcall(function()
-				hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = active_win }))
-			end)
+		if floating and _G.win11_raise_window then
+			_G.win11_raise_window(active_win)
 		end
 	end
+	local now = os.clock()
+	if now - last_raise < 0.05 then
+		return
+	end
+	last_raise = now
 	for _, w in ipairs(hl.get_windows() or {}) do
 		local pinned = false
 		pcall(function()

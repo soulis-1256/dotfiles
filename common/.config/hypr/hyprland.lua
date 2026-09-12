@@ -636,17 +636,8 @@ if f_bars then
 					icon = "\u{e167}",
 					action = "fullscreen",
 				})
-				-- Minimize / Float
-				hl.plugin.hyprbars.add_button({
-					bg_color = "rgba(00000000)",
-					fg_color = "rgb(e0e0e0)",
-					size = 14,
-					width = 46,
-					round = 0,
-					icon_size = 14,
-					icon = "\u{e11c}",
-					action = "togglefloating",
-				})
+				-- No minimize: Hyprland has no window hide, and this used to
+				-- toggle tiled/floating. Close + maximize only.
 			else
 				-- Default theme: "rounded shit" (macOS / GNOME circular chiclets with glowing pills)
 				hl.config({
@@ -690,18 +681,6 @@ if f_bars then
 					icon_size = 12,
 					icon = "\u{e167}",
 					action = "fullscreen",
-				})
-				-- Minimize: circular yellow chiclet
-				hl.plugin.hyprbars.add_button({
-					bg_color = "rgba(febc2edd)",
-					fg_color = "rgb(443300)",
-					size = 18,
-					width = 18,
-					height = 18,
-					round = 99,
-					icon_size = 12,
-					icon = "\u{e11c}",
-					action = "togglefloating",
 				})
 			end
 		end)
