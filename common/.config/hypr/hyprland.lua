@@ -146,7 +146,7 @@ if not pcall(require, "dms.outputs") then
 	hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 end
 require("dms.layout")
-require("dms.cursor")
+pcall(require, "dms.cursor")
 require("dms.floating-mode")
 require("dms.binds")
 require("dms.binds-user")

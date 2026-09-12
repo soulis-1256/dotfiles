@@ -33,6 +33,7 @@ secrets.fish
 *.local.lua
 outputs.lua
 dms/outputs.lua
+dms/cursor.lua
 # Runtime generated Matugen & DMS theme palettes
 dms/colors.lua
 colors/dms.lua
