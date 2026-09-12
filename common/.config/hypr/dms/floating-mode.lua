@@ -563,15 +563,18 @@ end
 -- immediately re-max after we unset. Off again whenever any workspace is
 -- floating (CSD maximize must work there). Mixed Super+X is handled in
 -- window.fullscreen by rejecting maximize only on tiled workspaces.
-local suppress_maximize_rule
+-- Reuse the rule across reloads: hyprctl reload does not drop the old one,
+-- and a leftover enabled copy swallows Zen's button even while floating.
+local suppress_maximize_rule = _G.floating_mode_suppress_maximize_rule
 pcall(function()
-	suppress_maximize_rule = hl.window_rule({
-		name = "tiled-mode-no-maximize",
-		match = { class = ".*" },
-		suppress_event = "maximize",
-	})
-	-- Created enabled; flip immediately so a floating-mode reload doesn't
-	-- eat Zen's CSD maximize before sync_mode_guards runs.
+	if not suppress_maximize_rule then
+		suppress_maximize_rule = hl.window_rule({
+			name = "tiled-mode-no-maximize",
+			match = { class = ".*" },
+			suppress_event = "maximize",
+		})
+		_G.floating_mode_suppress_maximize_rule = suppress_maximize_rule
+	end
 	if suppress_maximize_rule then
 		suppress_maximize_rule:set_enabled(not any_floating_mode())
 	end
@@ -594,6 +597,23 @@ local function sync_mode_guards()
 		pcall(function()
 			suppress_maximize_rule:set_enabled(not any_floating_mode())
 		end)
+	end
+	-- Geometry-filled CSD with fullscreen=0 shows maximize and the click
+	-- does nothing. Re-arm xdg so the native button is restore.
+	if floating_here then
+		for _, w in ipairs(hl.get_windows() or {}) do
+			pcall(function()
+				local ws_id = w.workspace and w.workspace.id
+				if M.is_active(ws_id) and uses_xdg_maximize(w) and w.floating
+					and not is_real_fullscreen(w) and geometry_is_maximized(w)
+					and not has_xdg_maximize(w) then
+					log(string.format("arm csd xdg class=%s", tostring(w.class)))
+					hl.dispatch(hl.dsp.window.fullscreen({
+						window = w, mode = "maximized", action = "set",
+					}))
+				end
+			end)
+		end
 	end
 end
 
@@ -689,22 +709,29 @@ local function apply_maximized(w)
 		set_snap_restore(addr, restore)
 	end
 
-	if not uses_xdg_maximize(w) then
-		-- Clear xdg maximize *before* filling geometry. Doing it after
-		-- undoes the compositor-side maximize for hyprbar apps.
-		force_unmaximize(w)
-		w = select(1, resolve_window(w)) or w
+	-- CSD (Zen/Discord): xdg maximize only. Filling geometry first poisons
+	-- the restore size, so the native button returns to the same full window.
+	if uses_xdg_maximize(w) then
+		pcall(function()
+			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
+		end)
+		if not has_xdg_maximize(w) then
+			set_xdg_maximize(w)
+		end
+		return
 	end
+
+	-- Clear xdg maximize *before* filling geometry. Doing it after
+	-- undoes the compositor-side maximize for hyprbar apps.
+	force_unmaximize(w)
+	w = select(1, resolve_window(w)) or w
 
 	pcall(function()
 		set_window_geometry(w, g.x, g.y, g.w, g.h)
 		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
 		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
 	end)
-
-	if uses_xdg_maximize(w) and not has_xdg_maximize(w) then
-		set_xdg_maximize(w)
-	end
 end
 
 local function apply_centered_default(w)
@@ -1178,6 +1205,7 @@ hl.on("window.active", function(active_win)
 	end
 end)
 
+local csd_restore_lock = false
 hl.on("window.fullscreen", function(w)
 	if not from_this_load() or not w then
 		return
@@ -1190,12 +1218,24 @@ hl.on("window.fullscreen", function(w)
 		unset_maximize_only(w)
 		return
 	end
-	if record_suppress > 0 then
+	if record_suppress > 0 or csd_restore_lock then
 		return
 	end
 	record_window_state(w, "window.fullscreen")
 	if cache_dirty then
 		save_float_state()
+	end
+	-- Floating CSD restore. Last floating size is often already the work
+	-- area, so unset alone is a visual no-op; slam to the binary default.
+	if M.is_active(ws_id) and uses_xdg_maximize(w) and w.floating
+		and not is_real_fullscreen(w) and not has_xdg_maximize(w) then
+		log(string.format("csd restore class=%s addr=%s",
+			tostring(w.class), tostring(window_addr(w))))
+		csd_restore_lock = true
+		apply_centered_default(w)
+		hl.timer(function()
+			csd_restore_lock = false
+		end, { timeout = 200, type = "oneshot" })
 	end
 end)
 

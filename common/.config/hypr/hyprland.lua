@@ -320,6 +320,9 @@ if f_bars then
 			and math.abs(w.at.x - max_x) <= 4 and math.abs(w.at.y - max_y) <= 4 then
 			is_currently_maximized = true
 		end
+		if w.fullscreen == 1 or w.fullscreen == 3 then
+			is_currently_maximized = true
+		end
 
 		local function targeted_resize_move(win, x, y, width, height)
 			if not win then
@@ -365,11 +368,22 @@ if f_bars then
 			_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
 
 			w = hl.get_window("address:" .. full_addr) or w
-			targeted_resize_move(w, max_x, max_y, max_w, max_h)
-			pcall(function()
-				hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
-				hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
-			end)
+			if not has_bar then
+				-- CSD: xdg maximize only. Geometry fill poisons native restore.
+				pcall(function()
+					hl.dispatch(hl.dsp.window.fullscreen({
+						window = "address:" .. full_addr, mode = "maximized", action = "set",
+					}))
+					hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
+					hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
+				end)
+			else
+				targeted_resize_move(w, max_x, max_y, max_w, max_h)
+				pcall(function()
+					hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
+					hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
+				end)
+			end
 
 			if _G.set_app_float_maximized then
 				_G.set_app_float_maximized(w, true, "win11_toggle_maximize")
