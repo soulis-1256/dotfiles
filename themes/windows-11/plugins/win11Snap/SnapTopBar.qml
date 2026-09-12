@@ -22,8 +22,11 @@ Item {
     property int lastDragGy: 0
     property int dragStartMouseX: -1
     property int dragStartMouseY: -1
+    property int dragStartWinX: -9999
     property int dragStartWinY: -9999
     property int dragGrabOffsetFromTop: 15
+    property int dragGrabOffsetX: -99999
+    property int dragGrabOffsetY: -99999
     property bool draggedWindowHasBar: true
     property bool restoredThisDrag: false
     property bool activeScreenIsPortrait: false
@@ -121,8 +124,11 @@ Item {
                 root.activeScreenIsPortrait = isPort;
                 root.dragStartMouseX = -1;
                 root.dragStartMouseY = -1;
+                root.dragStartWinX = -9999;
                 root.dragStartWinY = -9999;
                 root.dragGrabOffsetFromTop = 15;
+                root.dragGrabOffsetX = -99999;
+                root.dragGrabOffsetY = -99999;
                 root.draggedWindowHasBar = true;
                 root.restoredThisDrag = false;
 
@@ -136,6 +142,7 @@ Item {
                         if (a1 === clean || a2 === clean) {
                             if (t.lastIpcObject) {
                                 if (t.lastIpcObject.at && t.lastIpcObject.at.length >= 2) {
+                                    root.dragStartWinX = t.lastIpcObject.at[0];
                                     root.dragStartWinY = t.lastIpcObject.at[1];
                                 }
                                 var tags = t.lastIpcObject.tags || [];
@@ -246,7 +253,10 @@ Item {
             root.dragStartMouseX = gx;
             root.dragStartMouseY = gy;
             var barH = root.draggedWindowHasBar ? 30 : 0;
+            if (root.dragStartWinX > -9000)
+                root.dragGrabOffsetX = gx - root.dragStartWinX;
             if (root.dragStartWinY > -9000) {
+                root.dragGrabOffsetY = gy - root.dragStartWinY;
                 var visualTopAtStart = root.dragStartWinY - barH;
                 var offset = gy - visualTopAtStart;
                 if (offset >= 0 && offset <= 60) {
@@ -269,7 +279,6 @@ Item {
                 root.restoredThisDrag = true;
                 root.dragStartMouseX = gx;
                 root.dragStartMouseY = gy;
-                root.dragGrabOffsetFromTop = root.draggedWindowHasBar ? 15 : 5;
                 root.activeZone = "";
                 root.activeZoneName = "";
                 root.lastActiveZone = "";
@@ -478,7 +487,9 @@ Item {
 
     function restoreWindowPreSnapSize(addr, posX, posY) {
         if (!addr || addr === "") return;
-        Hyprland.dispatch("_G.win11_restore_window('" + addr + "', " + (posX || 0) + ", " + (posY || 0) + ")");
+        var gx = (posX !== undefined && posX !== null) ? posX : 0;
+        var gy = (posY !== undefined && posY !== null) ? posY : 0;
+        Hyprland.dispatch("_G.win11_restore_window('" + addr + "', " + gx + ", " + gy + ", " + root.dragGrabOffsetX + ", " + root.dragGrabOffsetY + ")");
     }
 
     function triggerSnap(zone) {

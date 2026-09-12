@@ -1278,7 +1278,7 @@ hl.on("window.fullscreen", function(w)
 		unset_maximize_only(w)
 		return
 	end
-	if record_suppress > 0 or csd_restore_lock then
+	if record_suppress > 0 or csd_restore_lock or _G.win11_drag_restore then
 		return
 	end
 	record_window_state(w, "window.fullscreen")

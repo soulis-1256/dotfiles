@@ -541,7 +541,31 @@ if f_bars then
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 
-	_G.win11_restore_window = function(target_addr, posX, posY)
+	-- Keep the drag grab under the cursor after unmax/unsnap.
+	-- X is proportional (grab 30% from the left of a maxed window stays 30%
+	-- from the left of the restored size). Y is the original titlebar offset
+	-- (hyprbar grabs sit above the window, so this can be negative).
+	local function follow_cursor_restore_pos(cursorX, cursorY, grabX, grabY, oldW, newW)
+		cursorX = tonumber(cursorX) or 0
+		cursorY = tonumber(cursorY) or 0
+		grabX = tonumber(grabX) or 0
+		grabY = tonumber(grabY) or 0
+		oldW = tonumber(oldW) or 0
+		newW = tonumber(newW) or 0
+		local ratio = 0.5
+		if oldW > 1 then
+			ratio = grabX / oldW
+		end
+		if ratio < 0.05 then
+			ratio = 0.05
+		elseif ratio > 0.95 then
+			ratio = 0.95
+		end
+		local offsetX = (newW > 0) and (newW * ratio) or 0
+		return math.floor(cursorX - offsetX + 0.5), math.floor(cursorY - grabY + 0.5)
+	end
+
+	_G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY)
 		local w = (target_addr and target_addr ~= "" and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
 		if not w or not w.floating then
 			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
@@ -562,8 +586,28 @@ if f_bars then
 			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 		end
 
+		-- Capture grab against the pre-unmax geometry. Unset / CSD restore
+		-- would otherwise make cursor-window look like a center grab.
+		local live = hl.get_cursor_pos()
+		local cursorX = (live and live.x) or tonumber(posX) or 0
+		local cursorY = (live and live.y) or tonumber(posY) or 0
+		local winX, winY, oldW = w.at.x, w.at.y, w.size.x
+		local usedGrabX = tonumber(grabX)
+		local usedGrabY = tonumber(grabY)
+		if not usedGrabX or usedGrabX < -90000 then
+			usedGrabX = cursorX - winX
+		end
+		if not usedGrabY or usedGrabY < -90000 then
+			usedGrabY = cursorY - winY
+		end
+
+		_G.win11_drag_restore = true
+
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
+		pcall(function()
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "no_anim", value = "1" }))
+		end)
 
 		-- Geometry-only transients (PiP) must not xdg-unmax: that unmaxes the parent.
 		if use_xdg and (w.fullscreen == 1 or w.fullscreen == 3) then
@@ -591,12 +635,18 @@ if f_bars then
 		local dh = math.min(800, math.max(300, math.floor(wa.h * 0.7)))
 		local s = cached or { w = dw, h = dh }
 
-		local minX = (mon and mon.x) or 10
-		local minY = (mon and mon.y) or 10
-		local newX = math.max(minX, (posX or w.at.x) - math.floor(s.w / 2))
-		local newY = math.max(minY, (posY or w.at.y) - 20)
-		hl.dispatch(hl.dsp.window.resize({ window = w, x = s.w, y = s.h, relative = false }))
-		hl.dispatch(hl.dsp.window.move({ window = w, x = newX, y = newY }))
+		w = hl.get_window("address:" .. full_addr) or w
+		local newX, newY = follow_cursor_restore_pos(cursorX, cursorY, usedGrabX, usedGrabY, oldW, s.w)
+		pcall(function()
+			hl.dispatch(hl.dsp.window.resize({ window = w, x = s.w, y = s.h, relative = false }))
+			hl.dispatch(hl.dsp.window.move({ window = w, x = newX, y = newY }))
+		end)
+		pcall(function()
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "no_anim", value = "unset" }))
+		end)
+		hl.timer(function()
+			_G.win11_drag_restore = false
+		end, { timeout = 200, type = "oneshot" })
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 

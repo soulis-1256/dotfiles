@@ -1,6 +1,7 @@
 #include <hyprland/src/plugins/PluginAPI.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/managers/EventManager.hpp>
+#include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
@@ -19,13 +20,36 @@ static bool wasDragging = false;
 static Vector2D dragStartMousePos = {0, 0};
 static Vector2D dragStartWinPos = {0, 0};
 static Vector2D dragStartWinSize = {0, 0};
-static double dragClickRatio = 0.5;
+static Vector2D dragGrabOffset = {0, 0};
+static bool dragGrabReady = false;
 static bool dragReanchored = false;
 static CHyprSignalListener mouseMoveListener;
 static CHyprSignalListener mouseButtonListener;
 static CHyprSignalListener windowActiveListener;
 
-void checkDragState() {
+// Proportional X: grab 30% from the left of a maxed window stays 30% from
+// the left after restore. Y is the original titlebar offset (can be negative
+// when grabbing a hyprbar above the window).
+static double followGrabX(double grabX, double oldW, double newW) {
+    if (newW <= 1.0)
+        return 0.0;
+    double ratio = (oldW > 1.0) ? (grabX / oldW) : 0.5;
+    ratio = std::clamp(ratio, 0.05, 0.95);
+    return newW * ratio;
+}
+
+static void captureDragGrab(SP<Layout::ITarget> target, const Vector2D& mouse) {
+    if (!target)
+        return;
+    dragStartWinPos = target->position().pos();
+    dragStartWinSize = target->position().size();
+    dragStartMousePos = mouse;
+    dragGrabOffset = Vector2D{mouse.x - dragStartWinPos.x, mouse.y - dragStartWinPos.y};
+    dragGrabReady = true;
+    dragReanchored = false;
+}
+
+void checkDragState(const Vector2D* mousePos = nullptr) {
     if (!g_layoutManager)
         return;
     const auto& drag = g_layoutManager->dragController();
@@ -50,14 +74,16 @@ void checkDragState() {
                 auto win = target->window();
                 if (win)
                     addr = std::format("0x{:x}", (uintptr_t)win.get());
-                dragStartWinPos = target->position().pos();
-                dragStartWinSize = target->position().size();
-                dragStartMousePos = {0, 0};
-                dragClickRatio = 0.5;
-                dragReanchored = false;
+                Vector2D mouse = {0, 0};
+                if (mousePos)
+                    mouse = *mousePos;
+                else if (g_pInputManager)
+                    mouse = g_pInputManager->getMouseCoordsInternal();
+                captureDragGrab(target, mouse);
             }
             g_pEventManager->postEvent(SHyprIPCEvent{"dragstart", addr});
         } else {
+            dragGrabReady = false;
             g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
         }
     }
@@ -67,23 +93,21 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     PHANDLE = handle;
 
     mouseMoveListener = Event::bus()->m_events.input.mouse.move.listen([](Vector2D pos, Event::SCallbackInfo& info) {
-        checkDragState();
+        checkDragState(&pos);
         if (wasDragging && g_layoutManager) {
             const auto& drag = g_layoutManager->dragController();
             if (drag) {
                 auto target = drag->target();
                 if (target) {
-                    if (dragStartMousePos.x == 0 && dragStartMousePos.y == 0) {
-                        dragStartMousePos = pos;
-                        if (dragStartWinSize.x > 0)
-                            dragClickRatio = std::clamp((pos.x - dragStartWinPos.x) / dragStartWinSize.x, 0.05, 0.95);
-                    }
+                    if (!dragGrabReady)
+                        captureDragGrab(target, pos);
                     if (!dragReanchored) {
                         Vector2D curSize = target->position().size();
-                        if (curSize.x > 0 && dragStartWinSize.x > 0 && std::abs(curSize.x - dragStartWinSize.x) > 50) {
+                        if (curSize.x > 0 && dragStartWinSize.x > 0 &&
+                            (std::abs(curSize.x - dragStartWinSize.x) > 50 || std::abs(curSize.y - dragStartWinSize.y) > 50)) {
                             dragReanchored = true;
-                            double newX = pos.x - (curSize.x * dragClickRatio);
-                            double newY = std::max(10.0, pos.y - 18.0);
+                            double newX = pos.x - followGrabX(dragGrabOffset.x, dragStartWinSize.x, curSize.x);
+                            double newY = pos.y - dragGrabOffset.y;
                             CBox newBox{newX, newY, curSize.x, curSize.y};
                             g_layoutManager->setTargetGeom(newBox, target);
                             target->warpPositionSize();
@@ -112,7 +136,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                 }
             }
         } else {
-            checkDragState();
+            checkDragState(nullptr);
         }
     });
 
