@@ -646,12 +646,17 @@ hl.layer_rule({
     property var floatingWorkspaces: ({})
 
     function isWorkspaceFloating(id) {
-        if (root.floatingModeActive)
-            return true;
         if (id === undefined || id === null)
-            return false;
+            return root.floatingModeActive;
         const map = root.floatingWorkspaces || {};
-        return map[String(id)] === true || map[id] === true;
+        let override = map[String(id)];
+        if (override === undefined)
+            override = map[id];
+        if (override === true)
+            return true;
+        if (override === false)
+            return false;
+        return root.floatingModeActive;
     }
 
     FileView {
