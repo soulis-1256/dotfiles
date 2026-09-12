@@ -91,7 +91,7 @@ body {
 
     --online: {{colors.inverse_primary.default.hex}};
     --dnd: {{colors.error.default.hex}};
-    --idle: {{colors.tertiary_container.default.hex}};
+    --idle: #f0b232; /* Discord idle amber; tertiary_container is too dark */
     --streaming: {{colors.on_primary.default.hex}};
     --offline: var(--text-4);
 
