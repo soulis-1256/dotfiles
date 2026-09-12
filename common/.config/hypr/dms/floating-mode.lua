@@ -302,17 +302,23 @@ local function default_float_size(wa)
 	return math.floor(w), math.floor(h)
 end
 
-local function max_geometry(w, wa)
-	local has_bar = true
-	if _G.window_has_hyprbar then
-		has_bar = _G.window_has_hyprbar(w)
+-- Hyprbar is drawn *above* the client rect (y is content top). CSD apps
+-- include their own titlebar in the client, so the same (x, y, w, h) does
+-- not mean the same visual box.
+local function titlebar_h(w)
+	if _G.window_has_hyprbar and _G.window_has_hyprbar(w) then
+		return TITLEBAR_H
 	end
-	local title_h = has_bar and TITLEBAR_H or 0
+	return 0
+end
+
+local function max_geometry(w, wa)
+	local th = titlebar_h(w)
 	return {
 		x = wa.x,
-		y = wa.y + title_h,
+		y = wa.y + th,
 		w = wa.w,
-		h = wa.h - title_h,
+		h = wa.h - th,
 	}
 end
 
@@ -995,8 +1001,12 @@ local function apply_centered_default(w)
 	end
 	local wa = get_monitor_work_area(mon)
 	local dw, dh = default_float_size(wa)
+	local th = titlebar_h(w)
 	local dx = wa.x + math.floor((wa.w - dw) / 2)
-	local dy = wa.y + math.floor((wa.h - dh) / 2)
+	-- Same content size for every window. Shift hyprbar windows down by the
+	-- bar so the visual top matches a CSD window (Zen) of that size. Otherwise
+	-- Spotify's bar pokes out above Zen and reads as Zen's titlebar.
+	local dy = wa.y + math.floor((wa.h - dh) / 2) + th
 	clear_snap_cache(addr)
 	set_window_geometry(w, dx, dy, dw, dh)
 end
