@@ -122,6 +122,7 @@ var SPEC = {
     controlCenterShowScreenSharingIcon: { def: true },
     controlCenterShowIdleInhibitorIcon: { def: false },
     controlCenterShowDoNotDisturbIcon: { def: false },
+    controlCenterShowFloatingModeIcon: { def: true },
 
     showPrivacyButton: { def: true },
     privacyShowMicIcon: { def: false },
@@ -137,7 +138,7 @@ var SPEC = {
             { id: "audioOutput", enabled: true, width: 50 },
             { id: "audioInput", enabled: true, width: 50 },
             { id: "nightMode", enabled: true, width: 50 },
-            { id: "darkMode", enabled: true, width: 50 }
+            { id: "floatingMode", enabled: true, width: 50 }
         ]
     },
 

@@ -130,6 +130,7 @@
   "controlCenterShowScreenSharingIcon": true,
   "controlCenterShowIdleInhibitorIcon": false,
   "controlCenterShowDoNotDisturbIcon": false,
+  "controlCenterShowFloatingModeIcon": true,
   "showPrivacyButton": true,
   "privacyShowMicIcon": false,
   "privacyShowCameraIcon": false,
@@ -169,7 +170,7 @@
       "showMountPath": true
     },
     {
-      "id": "darkMode",
+      "id": "floatingMode",
       "enabled": true,
       "width": 50
     },

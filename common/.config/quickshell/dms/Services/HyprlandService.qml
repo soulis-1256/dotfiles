@@ -5,6 +5,7 @@ import QtCore
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import qs.Common
 import qs.Services
 
@@ -639,5 +640,34 @@ hl.layer_rule({
         } else {
             Hyprland.dispatch("dpms on");
         }
+    }
+
+    property bool floatingModeActive: false
+
+    FileView {
+        id: floatingModeFile
+        path: "file:///tmp/hypr_floating_mode"
+        watchChanges: true
+        printErrors: false
+        blockLoading: false
+        preload: true
+
+        function syncFromFile() {
+            const raw = (text() || "").trim();
+            root.floatingModeActive = raw.length > 0 && raw.charAt(0) === "1";
+        }
+
+        onLoaded: syncFromFile()
+        onFileChanged: reload()
+        onLoadFailed: root.floatingModeActive = false
+    }
+
+    function toggleFloatingMode() {
+        root.floatingModeActive = !root.floatingModeActive;
+        Proc.runCommand("hypr-floating-mode-toggle", ["hyprctl", "eval", "_G.floating_mode_toggle()"], (output, exitCode) => {
+            if (exitCode !== 0)
+                log.warn("floating mode toggle failed:", output);
+            floatingModeFile.reload();
+        });
     }
 }

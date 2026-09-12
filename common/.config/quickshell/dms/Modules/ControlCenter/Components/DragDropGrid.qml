@@ -736,6 +736,8 @@ Column {
                     return DisplayService.nightModeEnabled ? "nightlight" : "dark_mode";
                 case "darkMode":
                     return "contrast";
+                case "floatingMode":
+                    return HyprlandService.floatingModeActive ? "layers" : "grid_view";
                 case "idleInhibitor":
                     return "motion_sensor_active";
                 default:
@@ -749,6 +751,8 @@ Column {
                     return I18n.tr("Night Mode");
                 case "darkMode":
                     return I18n.tr("Dark Mode");
+                case "floatingMode":
+                    return I18n.tr("Floating Mode");
                 case "idleInhibitor":
                     return SessionService.idleInhibited ? I18n.tr("Keeping Awake") : I18n.tr("Keep Awake");
                 default:
@@ -771,6 +775,8 @@ Column {
                     return DisplayService.nightModeEnabled || false;
                 case "darkMode":
                     return !SessionData.isLightMode;
+                case "floatingMode":
+                    return HyprlandService.floatingModeActive || false;
                 case "idleInhibitor":
                     return SessionService.idleInhibited || false;
                 default:
@@ -778,7 +784,7 @@ Column {
                 }
             }
 
-            enabled: !root.editMode
+            enabled: !root.editMode && (widgetData.id !== "floatingMode" || CompositorService.isHyprland)
 
             onClicked: {
                 if (root.editMode)
@@ -795,6 +801,11 @@ Column {
                         const newMode = !SessionData.isLightMode;
                         Theme.screenTransition();
                         Theme.setLightMode(newMode);
+                        break;
+                    }
+                case "floatingMode":
+                    {
+                        HyprlandService.toggleFloatingMode();
                         break;
                     }
                 case "idleInhibitor":
@@ -821,6 +832,8 @@ Column {
                     return DisplayService.nightModeEnabled ? "nightlight" : "dark_mode";
                 case "darkMode":
                     return "contrast";
+                case "floatingMode":
+                    return HyprlandService.floatingModeActive ? "layers" : "grid_view";
                 case "doNotDisturb":
                     return "do_not_disturb_on";
                 case "idleInhibitor":
@@ -845,6 +858,8 @@ Column {
                     return DisplayService.nightModeEnabled || false;
                 case "darkMode":
                     return !SessionData.isLightMode;
+                case "floatingMode":
+                    return HyprlandService.floatingModeActive || false;
                 case "doNotDisturb":
                     return SessionData.doNotDisturb || false;
                 case "idleInhibitor":
@@ -854,7 +869,7 @@ Column {
                 }
             }
 
-            enabled: !root.editMode
+            enabled: !root.editMode && (widgetData.id !== "floatingMode" || CompositorService.isHyprland)
 
             onClicked: {
                 if (root.editMode)
@@ -871,6 +886,11 @@ Column {
                         const newMode = !SessionData.isLightMode;
                         Theme.screenTransition();
                         Theme.setLightMode(newMode);
+                        break;
+                    }
+                case "floatingMode":
+                    {
+                        HyprlandService.toggleFloatingMode();
                         break;
                     }
                 case "doNotDisturb":

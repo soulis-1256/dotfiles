@@ -1,6 +1,6 @@
 -- Global Floating Mode for Hyprland
--- Remembers last floating size and position per application (Windows 11 behavior)
--- and cleanly floats/tiles windows according to active workspace/global state.
+-- Every window is floated in floating mode. Restore is binary:
+--   maximized (last drag-to-top / hyprbar maximize) or a fixed centered size.
 
 local M = {}
 
@@ -33,14 +33,51 @@ end
 
 log("floating-mode loaded. Current active = " .. tostring(_G.floating_mode.active))
 
+-- hyprctl reload does not unregister hl.on / hl.timer from the previous
+-- load. Ignore callbacks that belong to an older copy of this file.
+_G.floating_mode_epoch = (_G.floating_mode_epoch or 0) + 1
+local EPOCH = _G.floating_mode_epoch
+local function from_this_load()
+	return _G.floating_mode_epoch == EPOCH
+end
+
+local function write_mode_indicator(active)
+	local f = io.open("/tmp/hypr_floating_mode", "w")
+	if f then
+		f:write(active and "1\n" or "0\n")
+		f:close()
+	end
+end
+
+write_mode_indicator(_G.floating_mode.active)
+
 --------------------------------------------------------------------------------
--- App Geometry Persistence (Windows 11-style size & position memory)
+-- Maximized-state persistence
+--
+-- Hyprland does not persist "was this window maximized?" across close.
+-- `persistent_size` is session-only, size-only, and matches class+title.
+-- Live windows expose `fullscreen` (0/1/2/3) and current `size`/`at`, but
+-- Windows-style maximize (drag to top / hyprbar) is custom geometry, not
+-- xdg/Hyprland maximize. See README.
 --------------------------------------------------------------------------------
 
-local CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_app_geometry.json"
-_G.app_geometry_cache = _G.app_geometry_cache or {}
+local CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_app_float_state.json"
+local DEFAULT_FLOAT_W = 1280
+local DEFAULT_FLOAT_H = 800
+local DEFAULT_MARGIN = 24
+local TITLEBAR_H = 30
+local MAX_SLOP = 8
+
+_G.app_float_state = _G.app_float_state or {}
 local cache_dirty = false
 local known_windows = {}
+local apply_gen = 0
+local record_suppress = 0
+
+local SKIP_GEOMETRY_CLASS = {
+	["com.danklinux.dms"] = true,
+	["org.gnome.loupe"] = true,
+}
 
 local function is_special_overlay(w)
 	if not w then return false end
@@ -51,13 +88,24 @@ local function is_special_overlay(w)
 	return false
 end
 
+local function skip_geometry(w)
+	if not w or is_special_overlay(w) then
+		return true
+	end
+	local cls = (w.class or ""):lower()
+	if SKIP_GEOMETRY_CLASS[cls] then
+		return true
+	end
+	return false
+end
+
 local function get_app_key(w)
 	if not w then return nil end
 	local cls = w.class or ""
 	if cls ~= "" then
 		return cls:lower()
 	end
-	local icls = w.initialClass or w.initial_class or ""
+	local icls = w.initial_class or w.initialClass or ""
 	if icls ~= "" then
 		return icls:lower()
 	end
@@ -68,34 +116,48 @@ local function get_app_key(w)
 	return nil
 end
 
-local function load_geometry_cache()
+local function window_addr(w)
+	if not w or not w.address then
+		return nil
+	end
+	local raw = tostring(w.address):lower()
+	if raw:find("^0x") then
+		return raw
+	end
+	return "0x" .. raw
+end
+
+local function addr_variants(addr)
+	if not addr or addr == "" then
+		return {}
+	end
+	local clean = addr:gsub("^0x", "")
+	return { addr, clean, "0x" .. clean }
+end
+
+local function load_float_state()
 	local f = io.open(CACHE_PATH, "r")
 	if not f then return end
 	local content = f:read("*a")
 	f:close()
 	if not content or content == "" then return end
-	for app, w, h, x, y, mon in content:gmatch('"([^"]+)":%s*{[^}]*"w":%s*(%-?%d+)[^}]*"h":%s*(%-?%d+)[^}]*"x":%s*(%-?%d+)[^}]*"y":%s*(%-?%d+)[^}]*"mon":%s*"([^"]*)"[^}]*}') do
-		_G.app_geometry_cache[app] = {
-			w = tonumber(w),
-			h = tonumber(h),
-			x = tonumber(x),
-			y = tonumber(y),
-			mon = mon,
-		}
+	for app, val in content:gmatch('"([^"]+)"%s*:%s*{[^}]*"maximized"%s*:%s*(true|false)') do
+		_G.app_float_state[app] = { maximized = (val == "true") }
 	end
 end
 
-local function save_geometry_cache()
-	if not _G.app_geometry_cache then return end
+local function save_float_state()
+	if not _G.app_float_state then return end
 	local entries = {}
-	for k, v in pairs(_G.app_geometry_cache) do
-		if v and v.w and v.h and v.x and v.y and v.w > 100 and v.h > 100 then
+	for k, v in pairs(_G.app_float_state) do
+		if v and v.maximized ~= nil then
 			table.insert(entries, string.format(
-				'  %q: {"w": %d, "h": %d, "x": %d, "y": %d, "mon": %q}',
-				k, math.floor(v.w), math.floor(v.h), math.floor(v.x), math.floor(v.y), tostring(v.mon or "")
+				'  %q: {"maximized": %s}',
+				k, v.maximized and "true" or "false"
 			))
 		end
 	end
+	table.sort(entries)
 	local str = "{\n" .. table.concat(entries, ",\n") .. "\n}\n"
 	local f = io.open(CACHE_PATH, "w")
 	if f then
@@ -105,13 +167,7 @@ local function save_geometry_cache()
 	end
 end
 
--- Initialize persistent cache
-load_geometry_cache()
-
--- Initial scan of currently active windows
-hl.timer(function()
-	record_all_windows()
-end, { timeout = 200, type = "oneshot" })
+load_float_state()
 
 local function get_monitor_work_area(mon)
 	local is_rotated = (mon.transform and (mon.transform % 2 == 1))
@@ -141,182 +197,557 @@ local function get_monitor_work_area(mon)
 	}
 end
 
-local function record_window_geometry(w)
-	if not w or not w.floating or w.pinned or is_special_overlay(w) then
-		return
-	end
-	if w.fullscreen and w.fullscreen ~= 0 then
-		return
-	end
+local function default_float_size(wa)
+	local w = math.min(DEFAULT_FLOAT_W, math.max(400, wa.w - DEFAULT_MARGIN * 2))
+	local h = math.min(DEFAULT_FLOAT_H, math.max(300, wa.h - DEFAULT_MARGIN * 2))
+	return math.floor(w), math.floor(h)
+end
 
+local function max_geometry(w, wa)
+	local has_bar = true
+	if _G.window_has_hyprbar then
+		has_bar = _G.window_has_hyprbar(w)
+	end
+	local title_h = has_bar and TITLEBAR_H or 0
+	return {
+		x = wa.x,
+		y = wa.y + title_h,
+		w = wa.w,
+		h = wa.h - title_h,
+	}
+end
+
+local function has_xdg_maximize(w)
+	return w and (w.fullscreen == 1 or w.fullscreen == 3)
+end
+
+local function is_real_fullscreen(w)
+	return w and w.fullscreen == 2
+end
+
+-- CSD apps (Zen, Discord, Chrome) maximize via xdg; hyprbar apps use geometry.
+local function uses_xdg_maximize(w)
+	if not w then
+		return false
+	end
+	if _G.window_has_hyprbar then
+		return not _G.window_has_hyprbar(w)
+	end
+	return false
+end
+
+local function geometry_is_maximized(w)
+	if not w or not w.floating or not w.size or not w.at then
+		return false
+	end
+	local mon = w.monitor or (hl.get_monitors() and hl.get_monitors()[1])
+	if not mon then
+		return false
+	end
+	local wa = get_monitor_work_area(mon)
+	local g = max_geometry(w, wa)
+	return math.abs((w.size.x or 0) - g.w) <= MAX_SLOP
+		and math.abs((w.size.y or 0) - g.h) <= MAX_SLOP
+		and math.abs((w.at.x or 0) - g.x) <= MAX_SLOP
+		and math.abs((w.at.y or 0) - g.y) <= MAX_SLOP
+end
+
+local function is_window_maximized(w)
+	if not w then
+		return false
+	end
+	-- Intent: xdg maximize counts even if Hyprland's size is mid-transition.
+	if has_xdg_maximize(w) then
+		return true
+	end
+	return geometry_is_maximized(w)
+end
+
+local function saved_state(w)
 	local app_key = get_app_key(w)
+	if not app_key then
+		return nil, nil
+	end
+	return app_key, _G.app_float_state[app_key]
+end
+
+local function set_saved_maximized(app_key, maximized)
 	if not app_key or app_key == "" then
 		return
 	end
-
-	local raw_addr = (w.address or ""):lower()
-	local full_addr = raw_addr:find("^0x") and raw_addr or ("0x" .. raw_addr)
-	local clean_addr = raw_addr:gsub("^0x", "")
-
-	local w_val = w.size and w.size.x
-	local h_val = w.size and w.size.y
-	local x_val = w.at and w.at.x
-	local y_val = w.at and w.at.y
-
-	-- If the window is currently snapped or maximized by Win11 Snap, record its restored floating bounds
-	if _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]) then
-		local s = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
-		if s and s.w and s.h and s.x and s.y then
-			w_val, h_val, x_val, y_val = s.w, s.h, s.x, s.y
-		end
-	end
-
-	if not w_val or not h_val or w_val < 150 or h_val < 150 then
-		return
-	end
-
-	local mon = w.monitor or (hl.get_monitors() and hl.get_monitors()[1])
-	local mon_name = mon and mon.name or ""
-
-	local prev = _G.app_geometry_cache[app_key]
-	if not prev or prev.w ~= w_val or prev.h ~= h_val or prev.x ~= x_val or prev.y ~= y_val or prev.mon ~= mon_name then
-		_G.app_geometry_cache[app_key] = {
-			w = w_val,
-			h = h_val,
-			x = x_val,
-			y = y_val,
-			mon = mon_name,
-		}
+	local prev = _G.app_float_state[app_key]
+	if not prev or prev.maximized ~= maximized then
+		_G.app_float_state[app_key] = { maximized = maximized and true or false }
 		cache_dirty = true
 	end
+end
 
-	known_windows[full_addr] = {
-		app_key = app_key,
-		w = w_val,
-		h = h_val,
-		x = x_val,
-		y = y_val,
-		mon = mon_name,
-	}
+local function record_window_state(w)
+	if record_suppress > 0 then
+		return
+	end
+	if not w or is_special_overlay(w) or w.pinned then
+		return
+	end
+	-- Real fullscreen (games): don't clobber the last floating maximize bit
+	if w.fullscreen == 2 then
+		return
+	end
+	-- Tiled windows keep whatever was last recorded while floating
+	if not w.floating then
+		return
+	end
+	local app_key = get_app_key(w)
+	if not app_key then
+		return
+	end
+	local maximized = is_window_maximized(w)
+	set_saved_maximized(app_key, maximized)
+	local addr = window_addr(w)
+	if addr then
+		known_windows[addr] = { app_key = app_key, maximized = maximized }
+	end
 end
 
 local function record_all_windows()
 	local windows = hl.get_windows() or {}
 	for _, w in ipairs(windows) do
-		record_window_geometry(w)
+		record_window_state(w)
 	end
 	if cache_dirty then
-		save_geometry_cache()
+		save_float_state()
 	end
 end
 
-function M.restore_geometry(w)
-	if not w or is_special_overlay(w) then
+local function clear_snap_cache(addr)
+	if not _G.win11_snap_cache or not addr then
 		return
 	end
-	local app_key = get_app_key(w)
-	if not app_key or app_key == "" then
+	for _, key in ipairs(addr_variants(addr)) do
+		_G.win11_snap_cache[key] = nil
+	end
+end
+
+local function set_snap_restore(addr, restore)
+	_G.win11_snap_cache = _G.win11_snap_cache or {}
+	for _, key in ipairs(addr_variants(addr)) do
+		_G.win11_snap_cache[key] = restore
+	end
+end
+
+-- Prefer the live window object. String selectors that fail to match
+-- make resize/move silently target the *active* window instead.
+local function resolve_window(w)
+	if not w then
+		return nil
+	end
+	local addr = window_addr(w)
+	if addr then
+		local live = hl.get_window("address:" .. addr)
+		if live then
+			return live, addr
+		end
+	end
+	return w, addr
+end
+
+local function dispatch_float(w, action)
+	if not w then
 		return
 	end
+	hl.dispatch(hl.dsp.window.float({ window = w, action = action }))
+end
+
+local function suppress_record(ms)
+	record_suppress = record_suppress + 1
+	hl.timer(function()
+		record_suppress = math.max(0, record_suppress - 1)
+	end, { timeout = ms or 600, type = "oneshot" })
+end
+
+local function bump_gen()
+	apply_gen = apply_gen + 1
+	return apply_gen
+end
+
+local function any_floating_mode()
+	local state = _G.floating_mode
+	if state and state.active == true then
+		return true
+	end
+	if state and state.workspaces then
+		for _, v in pairs(state.workspaces) do
+			if v then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- While fully tiled, ignore client maximize requests so Zen/Discord cannot
+-- immediately re-max after we unset. Off again whenever any workspace is
+-- floating (CSD maximize must work there). Mixed Super+X is handled in
+-- window.fullscreen by rejecting maximize only on tiled workspaces.
+local suppress_maximize_rule
+pcall(function()
+	suppress_maximize_rule = hl.window_rule({
+		name = "tiled-mode-no-maximize",
+		match = { class = ".*" },
+		suppress_event = "maximize",
+	})
+	-- Created enabled; flip immediately so a floating-mode reload doesn't
+	-- eat Zen's CSD maximize before sync_mode_guards runs.
+	if suppress_maximize_rule then
+		suppress_maximize_rule:set_enabled(not any_floating_mode())
+	end
+end)
+
+local function focused_workspace_id()
+	local ws = hl.get_active_workspace()
+	return ws and ws.id
+end
+
+local function sync_mode_guards()
+	-- on_focus_under_fullscreen is compositor-global. Follow the focused
+	-- workspace: 0 = don't unmax when focusing a sibling (floating Zen);
+	-- default 2 = unmax (normal tiled).
+	local floating_here = M.is_active(focused_workspace_id())
+	pcall(function()
+		hl.config({ misc = { on_focus_under_fullscreen = floating_here and 0 or 2 } })
+	end)
+	if suppress_maximize_rule then
+		pcall(function()
+			suppress_maximize_rule:set_enabled(not any_floating_mode())
+		end)
+	end
+end
+
+-- `action = "unset"` with no mode does not clear xdg maximize (Zen stays
+-- fullscreen=1 after tiling). Set both compositor and client state to none.
+local function force_unmaximize(w)
+	w = select(1, resolve_window(w)) or w
+	if not w then
+		return
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.window.fullscreen({
+			window = w, mode = "maximized", action = "unset", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.fullscreen({
+			window = w, mode = "fullscreen", action = "unset", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.fullscreen_state({
+			window = w, internal = 0, client = 0, action = "set", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = "unset" }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = "unset" }))
+	end)
+end
+
+local function set_xdg_maximize(w)
+	w = select(1, resolve_window(w)) or w
+	if not w then
+		return
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.window.fullscreen({ window = w, mode = "maximized", action = "set" }))
+	end)
+end
+
+-- Tiled-mode CSD bounce: drop maximize only. Do not touch real fullscreen
+-- (Super+Shift+F) and do not zero fullscreen_state (that also clears it).
+local function unset_maximize_only(w)
+	w = select(1, resolve_window(w)) or w
+	if not w or is_real_fullscreen(w) then
+		return
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.window.fullscreen({
+			window = w, mode = "maximized", action = "unset", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = "unset" }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = "unset" }))
+	end)
+end
+
+-- Pass the window object. Do not steal focus: focusing a sibling under an
+-- xdg-maximized window (Zen) is what made restore non-deterministic.
+local function set_window_geometry(w, x, y, width, height)
+	w = select(1, resolve_window(w))
+	if not w then
+		return
+	end
+	hl.dispatch(hl.dsp.window.resize({ window = w, x = width, y = height, relative = false }))
+	hl.dispatch(hl.dsp.window.move({ window = w, x = x, y = y }))
+end
+
+local function snapshot_floating_except(except_addr)
+	local snaps = {}
+	for _, w in ipairs(hl.get_windows() or {}) do
+		local addr = window_addr(w)
+		if addr and addr ~= except_addr and w.floating and w.size and w.at then
+			snaps[addr] = {
+				x = w.at.x,
+				y = w.at.y,
+				w = w.size.x,
+				h = w.size.y,
+				maximized = is_window_maximized(w),
+			}
+		end
+	end
+	return snaps
+end
+
+local function apply_maximized(w)
+	local addr
+	w, addr = resolve_window(w)
+	if not w or not addr then
+		return
+	end
+	if not w.floating then
+		pcall(function()
+			dispatch_float(w, "set")
+		end)
+		w = select(1, resolve_window(w)) or w
+	end
+
+	-- CSD apps (Zen, Discord): xdg maximize. Geometry resize is ignored
+	-- while fullscreen=1, so don't mix the two.
+	if uses_xdg_maximize(w) then
+		if not (has_xdg_maximize(w) and geometry_is_maximized(w)) then
+			set_xdg_maximize(w)
+		end
+		return
+	end
+
+	force_unmaximize(w)
+	w = select(1, resolve_window(w)) or w
 
 	local mon = w.monitor or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
 	if not mon then
 		return
 	end
 	local wa = get_monitor_work_area(mon)
-
-	local saved = _G.app_geometry_cache and _G.app_geometry_cache[app_key]
-	local target_w, target_h, target_x, target_y
-
-	if saved and saved.w and saved.h and saved.w > 100 and saved.h > 100 then
-		target_w = math.min(saved.w, wa.w - 16)
-		target_h = math.min(saved.h, wa.h - 16)
-
-		-- If saved position is within work area on the same monitor
-		if saved.mon == mon.name and saved.x and saved.y
-		   and saved.x >= (wa.x - 100) and saved.x <= (wa.x + wa.w - 100)
-		   and saved.y >= (wa.y - 100) and saved.y <= (wa.y + wa.h - 100) then
-			target_x = math.max(wa.x + 8, math.min(saved.x, wa.x + wa.w - target_w - 8))
-			target_y = math.max(wa.y + 8, math.min(saved.y, wa.y + wa.h - target_h - 8))
-		else
-			-- Center on current monitor
-			target_x = wa.x + math.floor((wa.w - target_w) / 2)
-			target_y = wa.y + math.floor((wa.h - target_h) / 2)
-		end
-	else
-		-- First time seeing this app in floating mode: proportional Windows 11 defaults
-		if app_key:find("ghostty") or app_key:find("terminal") then
-			target_w = math.min(960, math.floor(wa.w * 0.55))
-			target_h = math.min(640, math.floor(wa.h * 0.55))
-		else
-			target_w = math.min(1280, math.floor(wa.w * 0.65))
-			target_h = math.min(820, math.floor(wa.h * 0.70))
-		end
-		target_x = wa.x + math.floor((wa.w - target_w) / 2)
-		target_y = wa.y + math.floor((wa.h - target_h) / 2)
+	local g = max_geometry(w, wa)
+	local dw, dh = default_float_size(wa)
+	local restore = {
+		w = dw,
+		h = dh,
+		x = wa.x + math.floor((wa.w - dw) / 2),
+		y = wa.y + math.floor((wa.h - dh) / 2),
+	}
+	local existing = _G.win11_snap_cache and (_G.win11_snap_cache[addr] or _G.win11_snap_cache[addr:gsub("^0x", "")])
+	if not existing then
+		set_snap_restore(addr, restore)
 	end
 
-	target_w = math.floor(target_w)
-	target_h = math.floor(target_h)
-	target_x = math.floor(target_x)
-	target_y = math.floor(target_y)
+	set_window_geometry(w, g.x, g.y, g.w, g.h)
+	hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
+	hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
+end
 
-	local raw_addr = (w.address or ""):lower()
-	local full_addr = raw_addr:find("^0x") and raw_addr or ("0x" .. raw_addr)
+local function restore_clobbered(snaps, except_addr)
+	if not snaps then
+		return
+	end
+	for _, w in ipairs(hl.get_windows() or {}) do
+		local addr = window_addr(w)
+		local s = addr and snaps[addr]
+		if s and addr ~= except_addr then
+			if s.maximized then
+				if not is_window_maximized(w) or (uses_xdg_maximize(w) and not geometry_is_maximized(w)) then
+					log(string.format(
+						"restore maximized sibling class=%s addr=%s",
+						tostring(w.class), addr
+					))
+					apply_maximized(w)
+				end
+			elseif w.size and w.at then
+				local changed = math.abs((w.size.x or 0) - s.w) > MAX_SLOP
+					or math.abs((w.size.y or 0) - s.h) > MAX_SLOP
+					or math.abs((w.at.x or 0) - s.x) > MAX_SLOP
+					or math.abs((w.at.y or 0) - s.y) > MAX_SLOP
+				if changed then
+					log(string.format(
+						"restore clobbered window class=%s addr=%s (was %dx%d @ %d,%d)",
+						tostring(w.class), addr, s.w, s.h, s.x, s.y
+					))
+					set_window_geometry(w, s.x, s.y, s.w, s.h)
+				end
+			end
+		end
+	end
+end
 
-	hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
-	hl.dispatch(hl.dsp.window.resize({ x = target_w, y = target_h }))
-	hl.dispatch(hl.dsp.window.move({ x = target_x, y = target_y }))
+local function apply_centered_default(w)
+	local addr
+	w, addr = resolve_window(w)
+	if not w or not addr then
+		return
+	end
+	force_unmaximize(w)
+	local mon = w.monitor or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
+	if not mon then
+		return
+	end
+	local wa = get_monitor_work_area(mon)
+	local dw, dh = default_float_size(wa)
+	local dx = wa.x + math.floor((wa.w - dw) / 2)
+	local dy = wa.y + math.floor((wa.h - dh) / 2)
+	clear_snap_cache(addr)
+	set_window_geometry(w, dx, dy, dw, dh)
+end
 
-	_G.app_geometry_cache[app_key] = {
-		w = target_w,
-		h = target_h,
-		x = target_x,
-		y = target_y,
-		mon = mon.name,
-	}
-	cache_dirty = true
+function M.apply_floating_state(w, want_maximized)
+	if not w or is_special_overlay(w) then
+		return
+	end
+	local addr
+	w, addr = resolve_window(w)
+	if not w or not addr then
+		return
+	end
+	if not w.floating then
+		pcall(function()
+			dispatch_float(w, "set")
+		end)
+		w = select(1, resolve_window(w)) or w
+	end
+	if skip_geometry(w) then
+		return
+	end
+	if want_maximized then
+		apply_maximized(w)
+	else
+		apply_centered_default(w)
+	end
+end
+
+local function should_maximize(w)
+	if is_window_maximized(w) then
+		return true
+	end
+	local _, saved = saved_state(w)
+	return saved and saved.maximized == true
 end
 
 --------------------------------------------------------------------------------
 -- Floating / Tiling Mode Toggle & State Management
 --------------------------------------------------------------------------------
 
-function M.toggle()
-	local state = _G.floating_mode
-	state.active = not state.active
-	state.workspaces = {}
+local function settle_mode(gen, want_floating, ws_id)
+	local function pass()
+		if not from_this_load() or apply_gen ~= gen then
+			return
+		end
+		for _, w in ipairs(hl.get_windows() or {}) do
+			local on_ws = not ws_id or (w.workspace and w.workspace.id == ws_id)
+			if on_ws and not is_special_overlay(w) then
+				pcall(function()
+					if want_floating then
+						if is_real_fullscreen(w) then
+							return
+						end
+						if not M.is_active(w.workspace and w.workspace.id) then
+							return
+						end
+						local maximize = should_maximize(w)
+						if maximize then
+							if not is_window_maximized(w) or (uses_xdg_maximize(w) and not geometry_is_maximized(w)) then
+								log(string.format("settle re-max class=%s fs=%s float=%s",
+									tostring(w.class), tostring(w.fullscreen), tostring(w.floating)))
+								M.apply_floating_state(w, true)
+							end
+						elseif not w.floating then
+							M.apply_floating_state(w, false)
+						end
+					else
+						local still_fs = w.fullscreen and w.fullscreen ~= 0
+						if w.floating or still_fs then
+							log(string.format("settle re-tile class=%s fs=%s float=%s",
+								tostring(w.class), tostring(w.fullscreen), tostring(w.floating)))
+							force_unmaximize(w)
+							dispatch_float(w, "unset")
+						end
+					end
+				end)
+			end
+		end
+	end
+	hl.timer(pass, { timeout = 80, type = "oneshot" })
+	hl.timer(pass, { timeout = 220, type = "oneshot" })
+end
 
-	log("==================================================================")
-	log(">>> TOGGLE ACTIVATED: Mode is now " .. (state.active and "FLOATING" or "TILED"))
-
-	local windows = hl.get_windows() or {}
+local function apply_mode_to_windows(windows, want_floating, gen, ws_id)
 	local count = 0
+	if not want_floating then
+		for _, w in ipairs(windows) do
+			if not is_special_overlay(w) then
+				record_window_state(w)
+			end
+		end
+		if cache_dirty then
+			save_float_state()
+		end
+	end
+
+	-- Suppress client maximize *before* we unset, so Zen cannot bounce back.
+	-- Only when nothing is in floating mode; mixed Super+X uses window.fullscreen.
+	if suppress_maximize_rule then
+		pcall(function()
+			suppress_maximize_rule:set_enabled(not any_floating_mode())
+		end)
+	end
+
+	suppress_record(700)
 
 	for _, w in ipairs(windows) do
 		if not is_special_overlay(w) then
 			pcall(function()
-				if state.active then
-					-- Floating mode: Float and restore saved geometry
-					hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
-					M.restore_geometry(w)
+				local maximize = should_maximize(w)
+				log(string.format(
+					"  %s class=%s addr=%s float=%s fs=%s maximize=%s xdg=%s",
+					want_floating and "float" or "tile",
+					tostring(w.class), tostring(window_addr(w)),
+					tostring(w.floating), tostring(w.fullscreen),
+					tostring(maximize), tostring(uses_xdg_maximize(w))
+				))
+				if want_floating then
+					if is_real_fullscreen(w) then
+						log(string.format("skip real-fullscreen class=%s", tostring(w.class)))
+						return
+					end
+					M.apply_floating_state(w, maximize)
 				else
-					-- Tiled mode: Record current floating geometry, then tile
-					record_window_geometry(w)
-					hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
+					force_unmaximize(w)
+					dispatch_float(w, "unset")
 				end
 			end)
 			count = count + 1
 		end
 	end
 
-	log(string.format("Dispatched float=%s to %d windows", tostring(state.active), count))
-
-	local f = io.open("/tmp/hypr_floating_mode", "w")
-	if f then
-		f:write(state.active and "1\n" or "0\n")
-		f:close()
+	if cache_dirty then
+		save_float_state()
 	end
+	settle_mode(gen, want_floating, ws_id)
+	return count
+end
+
+function M.toggle()
+	local state = _G.floating_mode
+	state.active = not state.active
+	state.workspaces = {}
+
+	local gen = bump_gen()
+	log("==================================================================")
+	log(">>> TOGGLE ACTIVATED: Mode is now " .. (state.active and "FLOATING" or "TILED") .. " gen=" .. tostring(gen))
+
+	local count = apply_mode_to_windows(hl.get_windows() or {}, state.active, gen)
+	log(string.format("Dispatched float=%s to %d windows", tostring(state.active), count))
+	write_mode_indicator(state.active)
+	sync_mode_guards()
 end
 
 function M.toggle_workspace(ws_id)
@@ -354,26 +785,12 @@ function M.toggle_workspace(ws_id)
 	local target_floating = not is_floating
 	state.workspaces[id] = target_floating
 
-	log(string.format(">>> WORKSPACE TOGGLE: WS %s is now %s", tostring(id), target_floating and "FLOATING" or "TILED"))
+	local gen = bump_gen()
+	log(string.format(">>> WORKSPACE TOGGLE: WS %s is now %s gen=%s", tostring(id), target_floating and "FLOATING" or "TILED", tostring(gen)))
 
-	local windows = hl.get_workspace_windows(id) or {}
-	local count = 0
-	for _, w in ipairs(windows) do
-		if not is_special_overlay(w) then
-			pcall(function()
-				if target_floating then
-					hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
-					M.restore_geometry(w)
-				else
-					record_window_geometry(w)
-					hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
-				end
-			end)
-			count = count + 1
-		end
-	end
-
+	local count = apply_mode_to_windows(hl.get_workspace_windows(id) or {}, target_floating, gen, id)
 	log(string.format("Dispatched float=%s to %d windows on workspace %s", tostring(target_floating), count, tostring(id)))
+	sync_mode_guards()
 end
 
 function M.is_active(ws_id)
@@ -402,7 +819,9 @@ end
 local handled_windows = {}
 
 local function handle_new_window(w)
-	if not w then return end
+	if not from_this_load() or not w then
+		return
+	end
 	local title = (w.title or ""):lower()
 	if title:match("picture[%- ]in[%- ]picture") then
 		if not w.pinned then
@@ -418,70 +837,99 @@ local function handle_new_window(w)
 		return
 	end
 
-	local addr = w.address
+	local addr = window_addr(w)
 	if not addr or handled_windows[addr] or is_special_overlay(w) then
 		return
 	end
 	handled_windows[addr] = true
 
-	local raw_addr = addr:lower()
-	local full_addr = raw_addr:find("^0x") and raw_addr or ("0x" .. raw_addr)
+	local snaps = snapshot_floating_except(addr)
+	local mygen = apply_gen
+	local ws_at_open = ws_id
+	suppress_record(400)
 
-	local function apply_floating_and_geometry()
-		local win = hl.get_window("address:" .. full_addr) or w
-		if not win.floating then
-			pcall(function()
-				hl.dispatch(hl.dsp.window.float({ window = win, action = "set" }))
-			end)
+	local function apply()
+		if not from_this_load() or apply_gen ~= mygen then
+			return
 		end
-		M.restore_geometry(win)
+		if not M.is_active(ws_at_open) then
+			return
+		end
+		local win = hl.get_window("address:" .. addr) or w
+		if not win then
+			return
+		end
+		local win_addr = window_addr(win)
+		if win_addr and win_addr ~= addr then
+			log(string.format("skip apply, addr mismatch want=%s got=%s", addr, win_addr))
+			return
+		end
+		local ok_mapped, mapped = pcall(function()
+			return win.mapped
+		end)
+		if not ok_mapped or not mapped then
+			return
+		end
+		local maximize = should_maximize(win)
+		log(string.format(
+			"new window class=%s addr=%s maximize=%s fs=%s",
+			tostring(win.class), addr, tostring(maximize), tostring(win.fullscreen)
+		))
+		M.apply_floating_state(win, maximize)
+		restore_clobbered(snaps, addr)
+		pcall(function()
+			hl.dispatch(hl.dsp.focus({ window = win }))
+		end)
 	end
 
-	-- Dispatch immediately on map
-	apply_floating_and_geometry()
-
-	-- Secondary check at 80ms to ensure post-map geometry is settled
-	hl.timer(function()
-		local win = hl.get_window("address:" .. full_addr) or w
-		if win then
-			apply_floating_and_geometry()
-		end
-	end, { timeout = 80, type = "oneshot" })
+	-- Do not resize on the open event itself. The new window is often not a
+	-- valid target yet, so Hyprland would resize the previously focused window.
+	hl.timer(apply, { timeout = 16, type = "oneshot" })
+	hl.timer(apply, { timeout = 80, type = "oneshot" })
 end
 
 hl.on("window.open", handle_new_window)
 
 hl.on("window.close", function(w)
-	if w and w.address then
-		local raw_addr = w.address:lower()
-		local full_addr = raw_addr:find("^0x") and raw_addr or ("0x" .. raw_addr)
+	if not from_this_load() or not w then
+		return
+	end
+	local addr = window_addr(w)
+	if addr then
+		handled_windows[addr] = nil
 		handled_windows[w.address] = nil
-		handled_windows[full_addr] = nil
+	end
 
-		if known_windows[full_addr] then
-			local k = known_windows[full_addr]
-			if k.app_key and k.w and k.h and k.x and k.y then
-				_G.app_geometry_cache = _G.app_geometry_cache or {}
-				_G.app_geometry_cache[k.app_key] = {
-					w = k.w,
-					h = k.h,
-					x = k.x,
-					y = k.y,
-					mon = k.mon or "",
-				}
-				save_geometry_cache()
-			end
-			known_windows[full_addr] = nil
-		end
+	local app_key = get_app_key(w)
+	local maximized = nil
+	if w.floating and w.fullscreen ~= 2 then
+		maximized = is_window_maximized(w)
+	end
+	if maximized == nil and addr and known_windows[addr] then
+		app_key = app_key or known_windows[addr].app_key
+		maximized = known_windows[addr].maximized
+	end
+	if app_key and maximized ~= nil then
+		set_saved_maximized(app_key, maximized)
+		save_float_state()
+	end
+	if addr then
+		known_windows[addr] = nil
+		clear_snap_cache(addr)
 	end
 end)
 
--- Keep pinned windows (Picture-in-Picture) on top and track active window geometry
+-- Keep pinned windows (Picture-in-Picture) on top and track active window state
 local last_raise = 0
 hl.on("window.active", function(active_win)
+	if not from_this_load() then
+		return
+	end
 	local ws_id = active_win and active_win.workspace and active_win.workspace.id
 	if M.is_active(ws_id) and active_win then
-		record_window_geometry(active_win)
+		record_window_state(active_win)
+	elseif active_win and active_win.floating then
+		record_window_state(active_win)
 	end
 
 	local now = os.clock()
@@ -498,9 +946,71 @@ hl.on("window.active", function(active_win)
 	end
 end)
 
--- Periodic geometry tracker (1s timer) to continuously record window moves and resizes
+hl.on("window.fullscreen", function(w)
+	if not from_this_load() or not w then
+		return
+	end
+	local ws_id = w.workspace and w.workspace.id
+	-- Tiled workspace: CSD maximize is not a thing. Real fullscreen is.
+	if not M.is_active(ws_id) and has_xdg_maximize(w) then
+		log(string.format("tiled-mode reject maximize class=%s fs=%s",
+			tostring(w.class), tostring(w.fullscreen)))
+		unset_maximize_only(w)
+		return
+	end
+	if record_suppress > 0 then
+		return
+	end
+	record_window_state(w)
+	if cache_dirty then
+		save_float_state()
+	end
+end)
+
+hl.on("window.move_to_workspace", function(w, ws)
+	if not from_this_load() or not w then
+		return
+	end
+	local ws_id = (ws and ws.id) or (w.workspace and w.workspace.id)
+	if not M.is_active(ws_id) and has_xdg_maximize(w) then
+		unset_maximize_only(w)
+	end
+end)
+
+hl.on("workspace.active", function(ws)
+	if not from_this_load() then
+		return
+	end
+	-- Dual monitor: this fires per output. Only follow the focused one;
+	-- on_focus_under_fullscreen is a single global option.
+	local focused = hl.get_active_workspace()
+	if ws and focused and ws.id ~= focused.id then
+		return
+	end
+	sync_mode_guards()
+end)
+
+hl.on("monitor.focused", function()
+	if from_this_load() then
+		sync_mode_guards()
+	end
+end)
+
+-- If already in floating mode from a previous session, don't let tiled
+-- focus steal xdg-maximize off Zen/Discord.
+sync_mode_guards()
+
+-- Record maximize/restore after drag-to-top or hyprbar clicks
 hl.timer(function()
-	record_all_windows()
-end, { timeout = 1000, type = "repeat" })
+	if from_this_load() then
+		record_all_windows()
+	end
+end, { timeout = 400, type = "repeat" })
+
+hl.timer(function()
+	if from_this_load() then
+		record_all_windows()
+	end
+end, { timeout = 200, type = "oneshot" })
 
 return M

@@ -141,6 +141,15 @@ QtObject {
             "enabled": true
         },
         {
+            "id": "floatingMode",
+            "text": I18n.tr("Floating Mode"),
+            "description": I18n.tr("Float all windows, Windows-style"),
+            "icon": "layers",
+            "type": "toggle",
+            "enabled": CompositorService.isHyprland,
+            "warning": !CompositorService.isHyprland ? I18n.tr("Requires Hyprland") : undefined
+        },
+        {
             "id": "doNotDisturb",
             "text": I18n.tr("Do Not Disturb"),
             "description": I18n.tr("Block notifications"),

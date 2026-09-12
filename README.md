@@ -133,3 +133,31 @@ Since files in `~/.config/` are symlinks directly pointing into `~/dotfiles/`, a
 
 Private API keys, tokens, or machine-specific configurations should remain uncommitted.
 - For Fish shell overrides, create an uncommitted `~/.config/fish/secrets.fish` or `~/.config/fish/config.local.fish` (ignored by `.gitignore`).
+
+---
+
+## Floating mode and window state
+
+Global floating mode (`SUPER + Z`, or the Control Center tile) floats every window. Restore is binary, per application class:
+
+- **Maximized** if the window was last maximized by dragging to the top edge or by the hyprbar maximize button.
+- **Otherwise** a fixed 1280×800 window (clamped to the work area), centered on the current monitor.
+
+Hyprland does **not** currently expose enough for this to be native:
+
+| What exists | Why it is not enough |
+| --- | --- |
+| Live `size` / `at` / `floating` / `fullscreen` on the window object | Only for mapped windows. Gone after close. |
+| `fullscreen` 0/1/2/3 (`fullscreen_state_client` / `_internal`) | XDG / Hyprland maximize and fullscreen. Drag-to-top in this rice is custom geometry, so `fullscreen` stays 0. |
+| Window rule `persistent_size` | Session-only, size only, matches class **and** title. No position, no maximized bit, nothing written to disk. |
+| Internal last-floating size used by `togglefloating` | Per window instance, not queryable from Lua, not persisted. |
+
+This repo therefore keeps `~/.cache/hypr_app_float_state.json` (`{ "class": { "maximized": true } }`).
+
+A Hyprland PR would still be worth it. The useful surface is small:
+
+- `window.maximized` (boolean, distinct from fullscreen) covering both xdg maximize and a compositor-side “fills the work area” maximize.
+- `window.last_floating_size` and `window.last_floating_position` on the Lua window object (and over IPC).
+- Optionally persist those across close (or a `persistent_state` rule that stores size, position, and maximized — not only size).
+
+Without that, every rice that wants Windows-style reopen has to reverse-engineer maximize from geometry and keep its own cache.

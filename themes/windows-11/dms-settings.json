@@ -1,7 +1,7 @@
 {
   "currentThemeName": "custom",
   "currentThemeCategory": "registry",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/crimsonVoltage/theme.json",
+  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/steamDeck/theme.json",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -130,6 +130,7 @@
   "controlCenterShowScreenSharingIcon": true,
   "controlCenterShowIdleInhibitorIcon": false,
   "controlCenterShowDoNotDisturbIcon": false,
+  "controlCenterShowFloatingModeIcon": true,
   "showPrivacyButton": true,
   "privacyShowMicIcon": false,
   "privacyShowCameraIcon": false,
@@ -169,7 +170,7 @@
       "showMountPath": true
     },
     {
-      "id": "darkMode",
+      "id": "floatingMode",
       "enabled": true,
       "width": 50
     },
@@ -689,7 +690,21 @@
         },
         {
           "id": "controlCenterButton",
-          "enabled": true
+          "enabled": true,
+          "controlCenterGroupOrder": [
+            "network",
+            "floatingMode",
+            "vpn",
+            "bluetooth",
+            "audio",
+            "microphone",
+            "brightness",
+            "battery",
+            "printer",
+            "screenSharing",
+            "idleInhibitor",
+            "doNotDisturb"
+          ]
         },
         {
           "id": "win11Clock",
@@ -770,7 +785,21 @@
         },
         {
           "id": "controlCenterButton",
-          "enabled": true
+          "enabled": true,
+          "controlCenterGroupOrder": [
+            "network",
+            "floatingMode",
+            "vpn",
+            "bluetooth",
+            "audio",
+            "microphone",
+            "brightness",
+            "battery",
+            "printer",
+            "screenSharing",
+            "idleInhibitor",
+            "doNotDisturb"
+          ]
         },
         {
           "id": "win11Clock",

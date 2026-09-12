@@ -95,6 +95,7 @@ _G.hyprbars_blacklist = {
 		"google-chrome",
 		"[lL]ocal[sS]end",
 		"org\\.localsend\\.localsend_app",
+		"[sS]team.*",
 		"com\\.danklinux\\.dms",
 		"steam_app_.*",
 		".*\\.exe.*",

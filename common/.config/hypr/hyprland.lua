@@ -196,18 +196,20 @@ hl.on("layer.opened", function(layer)
 	end, { timeout = 1, type = "oneshot" })
 end)
 
--- Smart borders & gaps: disable gaps, borders, and rounding when only one tiled window is present
-hl.workspace_rule({ workspace = "w[tv1]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
-hl.workspace_rule({ workspace = "f[1]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
+-- Smart borders & gaps: only when the workspace has a single tiled window
+-- and no floating windows. `w[tv1]` alone still matches "1 tiled + N floating",
+-- which zeroed borders/gaps on both the remaining tiled window and the float.
+hl.workspace_rule({ workspace = "w[tv1] w[f0]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
+hl.workspace_rule({ workspace = "f[1] w[f0]", gaps_in = 0, gaps_out = 0, border_size = 0, no_border = true, no_rounding = true })
 hl.window_rule({
 	name = "smart-gaps-wtv1",
-	match = { float = false, workspace = "w[tv1]" },
+	match = { float = false, workspace = "w[tv1] w[f0]" },
 	border_size = 0,
 	rounding = 0,
 })
 hl.window_rule({
 	name = "smart-gaps-f1",
-	match = { float = false, workspace = "f[1]" },
+	match = { float = false, workspace = "f[1] w[f0]" },
 	border_size = 0,
 	rounding = 0,
 })

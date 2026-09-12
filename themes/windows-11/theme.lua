@@ -1,6 +1,7 @@
 -- Windows 11 Theme for Hyprland
 -- 8px rounding, mica-style blur, soft shadows.
--- Outer gaps apply only with 2+ tiled windows (hyprland.lua zeros them for a single window).
+-- Outer gaps apply only with 2+ windows. A single tiled window with no floats
+-- gets zero gaps/borders (hyprland.lua smart-gaps: w[tv1] w[f0]).
 
 hl.config({
 	general = {

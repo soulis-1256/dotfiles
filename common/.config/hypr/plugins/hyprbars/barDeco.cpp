@@ -131,13 +131,14 @@ bool CHyprBar::inputIsValid() {
 }
 
 void CHyprBar::onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent e) {
-    if (!inputIsValid())
-        return;
-
     if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
-        handleUpEvent(info);
+        if (m_iPressedButton >= 0 || m_bCancelledDown || m_bDraggingThis || m_bResizingThis || inputIsValid())
+            handleUpEvent(info);
         return;
     }
+
+    if (!inputIsValid())
+        return;
 
     handleDownEvent(info, std::nullopt);
 }
@@ -151,13 +152,13 @@ void CHyprBar::onTouchDown(Event::SCallbackInfo& info, ITouch::SDownEvent e) {
 }
 
 void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
-    if (!m_bDragPending || !m_bTouchEv || e.touchID != m_touchId)
+    if (!m_bTouchEv || e.touchID != m_touchId)
         return;
 
     handleUpEvent(info);
 }
 
-bool CHyprBar::isOverButton(const Vector2D& COORDS) {
+int CHyprBar::buttonIndexAt(const Vector2D& COORDS) {
     const auto barHeight        = g_pGlobalState->config.barHeight->value();
     const auto barPadding       = g_pGlobalState->config.barPadding->value();
     const auto barButtonPadding = g_pGlobalState->config.barButtonPadding->value();
@@ -166,6 +167,7 @@ bool CHyprBar::isOverButton(const Vector2D& COORDS) {
     const auto barW             = assignedBoxGlobal().w;
 
     float offset = barPadding;
+    int   i      = 0;
     for (auto& b : g_pGlobalState->buttons) {
         const float bWidth  = (b.width > 0) ? b.width : b.size;
         const float bHeight = (b.height > 0) ? b.height : (b.width > 0 ? (float)barHeight : b.size);
@@ -174,11 +176,16 @@ bool CHyprBar::isOverButton(const Vector2D& COORDS) {
             Vector2D{(buttonsRight ? BARBUF.x - barButtonPadding - bWidth - offset : offset), (BARBUF.y - bHeight) / 2.0}.floor();
 
         if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + bWidth, currentPos.y + bHeight))
-            return true;
+            return i;
 
         offset += barButtonPadding + bWidth;
+        ++i;
     }
-    return false;
+    return -1;
+}
+
+bool CHyprBar::isOverButton(const Vector2D& COORDS) {
+    return buttonIndexAt(COORDS) >= 0;
 }
 
 bool CHyprBar::isWindowMaximized() {
@@ -440,13 +447,8 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
         COORDS   = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y) - assignedBoxGlobal().pos();
     }
 
-    const auto HEIGHT           = g_pGlobalState->config.barHeight->value();
-    const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
-    const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
-    const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
-    const auto ON_DOUBLE_CLICK  = g_pGlobalState->config.onDoubleClick->value();
-
-    const bool BUTTONSRIGHT = ALIGNBUTTONS != "left";
+    const auto HEIGHT          = g_pGlobalState->config.barHeight->value();
+    const auto ON_DOUBLE_CLICK = g_pGlobalState->config.onDoubleClick->value();
 
     if (!VECINRECT(COORDS, 0, 0, assignedBoxGlobal().w, HEIGHT - 1)) {
 
@@ -457,9 +459,10 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
             Log::logger->log(Log::DEBUG, "[hyprbars] Dragging ended on {:x}", (uintptr_t)PWINDOW.get());
         }
 
-        m_bDraggingThis = false;
-        m_bDragPending  = false;
-        m_bTouchEv      = false;
+        m_bDraggingThis  = false;
+        m_bDragPending   = false;
+        m_bTouchEv       = false;
+        m_iPressedButton = -1;
         return;
     }
 
@@ -472,8 +475,13 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     info.cancelled   = true;
     m_bCancelledDown = true;
 
-    if (doButtonPress(BARPADDING, BARBUTTONPADDING, HEIGHT, COORDS, BUTTONSRIGHT))
+    // Caption buttons fire on release, like Windows. Press only arms the
+    // button; dragging the titlebar must not start from a button hit.
+    m_iPressedButton = buttonIndexAt(COORDS);
+    if (m_iPressedButton >= 0) {
+        m_bDragPending = false;
         return;
+    }
 
     if (!ON_DOUBLE_CLICK.empty() &&
         std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
@@ -501,6 +509,13 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         Log::logger->log(Log::DEBUG, "[hyprbars] Border resize ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }
 
+    if (m_iPressedButton >= 0) {
+        const int idx = buttonIndexAt(cursorRelativeToBar());
+        if (idx == m_iPressedButton)
+            executeButton(idx);
+        m_iPressedButton = -1;
+    }
+
     if (m_bDraggingThis) {
         g_pKeybindManager->changeMouseBindMode(MBIND_INVALID);
         m_bDraggingThis = false;
@@ -514,9 +529,10 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         info.cancelled = true;
 
     m_bCancelledDown = false;
-    m_bDragPending = false;
-    m_bTouchEv     = false;
-    m_touchId      = 0;
+    m_bDragPending   = false;
+    m_bTouchEv       = false;
+    m_touchId        = 0;
+    m_iPressedButton = -1;
 }
 
 void CHyprBar::handleMovement() {
@@ -526,46 +542,37 @@ void CHyprBar::handleMovement() {
     return;
 }
 
-bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButtonPadding, Config::INTEGER barHeight, Vector2D COORDS, const bool BUTTONSRIGHT) {
-    float offset = barPadding;
+bool CHyprBar::executeButton(int index) {
+    if (index < 0 || index >= (int)g_pGlobalState->buttons.size())
+        return false;
+
     const auto PWIN = m_pWindow.lock();
+    auto&      b    = g_pGlobalState->buttons[index];
 
-    for (auto& b : g_pGlobalState->buttons) {
-        const float bWidth = (b.width > 0) ? b.width : b.size;
-        const float bHeight = (b.height > 0) ? b.height : (b.width > 0 ? (float)barHeight : b.size);
-        const auto BARBUF     = Vector2D{(int)assignedBoxGlobal().w, (int)barHeight};
-        Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - barButtonPadding - bWidth - offset : offset), (BARBUF.y - bHeight) / 2.0}.floor();
-
-        if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + bWidth, currentPos.y + bHeight)) {
-            if (b.cmd == "close" || b.cmd.find("killactive") != std::string::npos || b.cmd.find("close") != std::string::npos) {
-                if (PWIN)
-                    PWIN->sendClose();
-                return true;
-            }
-
-            if (b.cmd == "fullscreen" || b.cmd == "maximize" || b.cmd.find("fullscreen") != std::string::npos) {
-                toggleMaximize();
-                return true;
-            }
-
-            if (b.cmd == "togglefloating" || b.cmd == "minimize" || b.cmd.find("togglefloating") != std::string::npos) {
-                if (PWIN) {
-                    Desktop::focusState()->fullWindowFocus(PWIN, Desktop::FOCUS_REASON_CLICK);
-                    g_pKeybindManager->m_dispatchers["togglefloating"]("");
-                }
-                return true;
-            }
-
-            if (g_pKeybindManager->m_dispatchers.contains(b.cmd))
-                g_pKeybindManager->m_dispatchers[b.cmd]("");
-            else
-                Config::Supplementary::executor()->spawn(b.cmd);
-            return true;
-        }
-
-        offset += barButtonPadding + bWidth;
+    if (b.cmd == "close" || b.cmd.find("killactive") != std::string::npos || b.cmd.find("close") != std::string::npos) {
+        if (PWIN)
+            PWIN->sendClose();
+        return true;
     }
-    return false;
+
+    if (b.cmd == "fullscreen" || b.cmd == "maximize" || b.cmd.find("fullscreen") != std::string::npos) {
+        toggleMaximize();
+        return true;
+    }
+
+    if (b.cmd == "togglefloating" || b.cmd == "minimize" || b.cmd.find("togglefloating") != std::string::npos) {
+        if (PWIN) {
+            Desktop::focusState()->fullWindowFocus(PWIN, Desktop::FOCUS_REASON_CLICK);
+            g_pKeybindManager->m_dispatchers["togglefloating"]("");
+        }
+        return true;
+    }
+
+    if (g_pKeybindManager->m_dispatchers.contains(b.cmd))
+        g_pKeybindManager->m_dispatchers[b.cmd]("");
+    else
+        Config::Supplementary::executor()->spawn(b.cmd);
+    return true;
 }
 
 void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {

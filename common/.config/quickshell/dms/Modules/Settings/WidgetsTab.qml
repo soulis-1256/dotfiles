@@ -478,7 +478,8 @@ Item {
             widgetObj.showScreenSharingIcon = SettingsData.controlCenterShowScreenSharingIcon;
             widgetObj.showIdleInhibitorIcon = SettingsData.controlCenterShowIdleInhibitorIcon;
             widgetObj.showDoNotDisturbIcon = SettingsData.controlCenterShowDoNotDisturbIcon;
-            widgetObj.controlCenterGroupOrder = ["network", "vpn", "bluetooth", "audio", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"];
+            widgetObj.showFloatingModeIcon = SettingsData.controlCenterShowFloatingModeIcon;
+            widgetObj.controlCenterGroupOrder = ["network", "vpn", "bluetooth", "audio", "floatingMode", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"];
         }
         if (widgetId === "battery") {
             widgetObj.showBatteryPercent = SettingsData.showBatteryPercent;
@@ -526,7 +527,7 @@ Item {
             "id": widget.id,
             "enabled": widget.enabled
         };
-        var keys = ["size", "selectedGpuIndex", "pciId", "mountPath", "diskUsageMode", "minimumWidth", "showSwap", "showInGb", "mediaSize", "clockCompactMode", "focusedWindowSize", "focusedWindowCompactMode", "focusedWindowShowIcon", "runningAppsCompactMode", "keyboardLayoutNameCompactMode", "keyboardLayoutNameShowIcon", "runningAppsGroupByApp", "runningAppsCurrentWorkspace", "runningAppsCurrentMonitor", "showNetworkIcon", "showBluetoothIcon", "showAudioIcon", "showAudioPercent", "showVpnIcon", "showBrightnessIcon", "showBrightnessPercent", "showMicIcon", "showMicPercent", "showBatteryIcon", "showBatteryPercent", "showBatteryPercentOnlyOnBattery", "showBatteryTime", "showBatteryTimeOnlyOnBattery", "batteryPillStyle", "batteryPillPercentSign", "showPrinterIcon", "showScreenSharingIcon", "showIdleInhibitorIcon", "showDoNotDisturbIcon", "controlCenterGroupOrder", "barMaxVisibleApps", "barMaxVisibleRunningApps", "barShowOverflowBadge", "trayUseInlineExpansion", "trayPopupSingleLine", "trayAutoOverflow", "trayMaxVisibleItems", "hideWhenIdle"];
+        var keys = ["size", "selectedGpuIndex", "pciId", "mountPath", "diskUsageMode", "minimumWidth", "showSwap", "showInGb", "mediaSize", "clockCompactMode", "focusedWindowSize", "focusedWindowCompactMode", "focusedWindowShowIcon", "runningAppsCompactMode", "keyboardLayoutNameCompactMode", "keyboardLayoutNameShowIcon", "runningAppsGroupByApp", "runningAppsCurrentWorkspace", "runningAppsCurrentMonitor", "showNetworkIcon", "showBluetoothIcon", "showAudioIcon", "showAudioPercent", "showVpnIcon", "showBrightnessIcon", "showBrightnessPercent", "showMicIcon", "showMicPercent", "showBatteryIcon", "showBatteryPercent", "showBatteryPercentOnlyOnBattery", "showBatteryTime", "showBatteryTimeOnlyOnBattery", "batteryPillStyle", "batteryPillPercentSign", "showPrinterIcon", "showScreenSharingIcon", "showIdleInhibitorIcon", "showDoNotDisturbIcon", "showFloatingModeIcon", "controlCenterGroupOrder", "barMaxVisibleApps", "barMaxVisibleRunningApps", "barShowOverflowBadge", "trayUseInlineExpansion", "trayPopupSingleLine", "trayAutoOverflow", "trayMaxVisibleItems", "hideWhenIdle"];
         for (var i = 0; i < keys.length; i++) {
             if (widget[keys[i]] !== undefined)
                 result[keys[i]] = widget[keys[i]];
@@ -1044,6 +1045,8 @@ Item {
                     item.showIdleInhibitorIcon = widget.showIdleInhibitorIcon;
                 if (widget.showDoNotDisturbIcon !== undefined)
                     item.showDoNotDisturbIcon = widget.showDoNotDisturbIcon;
+                if (widget.showFloatingModeIcon !== undefined)
+                    item.showFloatingModeIcon = widget.showFloatingModeIcon;
                 if (widget.controlCenterGroupOrder !== undefined)
                     item.controlCenterGroupOrder = widget.controlCenterGroupOrder;
                 if (widget.minimumWidth !== undefined)

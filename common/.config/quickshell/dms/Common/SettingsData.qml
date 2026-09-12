@@ -369,6 +369,7 @@ Singleton {
     property bool controlCenterShowScreenSharingIcon: true
     property bool controlCenterShowIdleInhibitorIcon: false
     property bool controlCenterShowDoNotDisturbIcon: false
+    property bool controlCenterShowFloatingModeIcon: true
     property bool showPrivacyButton: true
     property bool privacyShowMicIcon: false
     property bool privacyShowCameraIcon: false
@@ -411,7 +412,7 @@ Singleton {
             "width": 50
         },
         {
-            "id": "darkMode",
+            "id": "floatingMode",
             "enabled": true,
             "width": 50
         }
