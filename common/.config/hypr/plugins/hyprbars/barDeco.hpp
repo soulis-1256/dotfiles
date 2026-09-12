@@ -81,7 +81,7 @@ class CHyprBar : public IHyprWindowDecoration {
 
     void                       renderPass(PHLMONITOR, float const& a);
     void                       renderBarTitle(const Vector2D& bufferSize, const float scale);
-    void renderBarButtons(CBox* barBox, const float scale, const float a);
+    void renderBarButtons(CBox* barBox, const float scale, const float a, const CBox& chromeBox, int chromeRound, float chromeRoundPower, const CBox& barClip);
     void renderBarButtonsText(CBox* barBox, const float scale, const float a);
     void damageOnButtonHover();
 

@@ -627,7 +627,7 @@ size_t CHyprBar::getVisibleButtonCount(Config::INTEGER barButtonPadding, Config:
     return count;
 }
 
-void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a) {
+void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a, const CBox& chromeBox, int chromeRound, float chromeRoundPower, const CBox& barClip) {
     const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
     const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
     const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
@@ -672,19 +672,21 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a) 
                           bHeight};
         buttonBox.round();
 
-        int roundRadius = 0;
-        if (button.round >= 0) {
-            roundRadius = (button.round >= 50) ? static_cast<int>(std::round(std::min(bWidth, bHeight) / 2.0)) :
-                                                 static_cast<int>(std::round(button.round * scale));
-        } else if (button.width > 0) {
-            roundRadius = 0;
-        } else if (button.bgcol.a <= 0.01f) {
-            roundRadius = static_cast<int>(std::round(4 * scale));
-        } else {
-            roundRadius = static_cast<int>(std::round(std::min(bWidth, bHeight) / 2.0));
+        if (color.a > 0.001f) {
+            // renderRect ignores GL scissor and clips via clipBox. Fill the
+            // bar's rounded chrome, clipped to this button, so the close hover
+            // follows the window corner instead of a square (or the whole bar).
+            auto&      clipBox   = g_pHyprRenderer->m_renderData.clipBox;
+            const CBox savedClip = clipBox;
+            CBox       clip      = buttonBox;
+            if (!barClip.empty())
+                clip = clip.intersection(barClip);
+            if (!savedClip.empty())
+                clip = clip.intersection(savedClip);
+            clipBox = clip;
+            g_pHyprOpenGL->renderRect(chromeBox, color, {.round = chromeRound, .roundingPower = chromeRoundPower});
+            clipBox = savedClip;
         }
-
-        g_pHyprOpenGL->renderRect(buttonBox, color, {.round = roundRadius, .roundingPower = 2.F});
 
         offset += scaledButtonsPad + bWidth;
     }
@@ -853,7 +855,7 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
         g_pHyprOpenGL->renderTexture(m_pTextTex, titleBox, {.a = a});
     }
 
-    renderBarButtons(&textBox, pMonitor->m_scale, a);
+    renderBarButtons(&textBox, pMonitor->m_scale, a, titleBarBox, scaledRounding, m_pWindow->roundingPower(), barClipBox);
     m_bButtonsDirty = false;
 
     g_pHyprOpenGL->scissor(nullptr);
