@@ -606,14 +606,18 @@ if f_bars then
 				return
 			end
 
+			local hb = _G.dms_hyprbars or {}
+			local bar_color = hb.bar_color or "rgba(1e1e1ecc)"
+			local text_color = hb.text_color or "rgb(cccccc)"
+
 			if theme_style == "windows-11" or theme_style == "windows-10" then
-				local is_win10 = (theme_style == "windows-10")
 				hl.config({
 					plugin = {
 						hyprbars = {
 							bar_height = 30,
-							bar_color = is_win10 and "rgb(181818)" or "rgb(1e1e1e)",
-							["col.text"] = "rgb(cccccc)",
+							bar_color = bar_color,
+							["col.text"] = text_color,
+							bar_blur = true,
 							bar_text_font = "Inter Variable",
 							bar_text_size = 10,
 							bar_title_padding = 14,
@@ -631,7 +635,7 @@ if f_bars then
 				-- Close: red hover
 				hl.plugin.hyprbars.add_button({
 					bg_color = "rgba(00000000)",
-					fg_color = "rgb(e0e0e0)",
+					fg_color = text_color,
 					size = 14,
 					width = 46,
 					round = 0,
@@ -642,7 +646,7 @@ if f_bars then
 				-- Maximize / Restore
 				hl.plugin.hyprbars.add_button({
 					bg_color = "rgba(00000000)",
-					fg_color = "rgb(e0e0e0)",
+					fg_color = text_color,
 					size = 14,
 					width = 46,
 					round = 0,
@@ -658,8 +662,9 @@ if f_bars then
 					plugin = {
 						hyprbars = {
 							bar_height = 32,
-							bar_color = "rgb(1e1e2e)",
-							["col.text"] = "rgb(cdd6f4)",
+							bar_color = bar_color,
+							["col.text"] = text_color,
+							bar_blur = true,
 							bar_text_font = "Cantarell, Inter, Sans",
 							bar_text_size = 11,
 							bar_text_align = "left",

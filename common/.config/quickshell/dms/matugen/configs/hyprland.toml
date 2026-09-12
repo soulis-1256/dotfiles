@@ -1,3 +1,4 @@
 [templates.dmshyprland]
 input_path = 'SHELL_DIR/matugen/templates/hypr-colors.lua'
 output_path = 'CONFIG_DIR/hypr/dms/colors.lua'
+post_hook = 'sh -c "[ -n \"$HYPRLAND_INSTANCE_SIGNATURE\" ] && hyprctl reload || true"'

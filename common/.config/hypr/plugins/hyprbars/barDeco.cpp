@@ -778,8 +778,12 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
         *m_cRealBarColor = DEST_COLOR;
 
     CHyprColor color = m_cRealBarColor->value();
-    color.a          = 1.0F; // solid, opaque title bar
+    color.a *= a;
     const bool BUTTONSRIGHT = ALIGNBUTTONS != "left";
+    const bool hyprBlur     = ENABLEBLUR && *PENABLEBLURGLOBAL;
+    const bool SHOULDBLUR   = hyprBlur && color.a < 1.F;
+    if (!hyprBlur)
+        color.a = a; // follow Hyprland: no compositor blur → solid chrome
 
     if (HEIGHT < 1) {
         m_iLastHeight = HEIGHT;
@@ -812,7 +816,11 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
     barClipBox.translate(PWINDOW->m_floatingOffset).scale(pMonitor->m_scale).round();
     g_pHyprOpenGL->scissor(barClipBox);
 
-    g_pHyprOpenGL->renderRect(titleBarBox, color, {.round = scaledRounding, .roundingPower = m_pWindow->roundingPower()});
+    if (SHOULDBLUR)
+        g_pHyprOpenGL->renderRect(titleBarBox, color,
+                                  {.round = scaledRounding, .roundingPower = m_pWindow->roundingPower(), .blur = true, .blurA = a});
+    else
+        g_pHyprOpenGL->renderRect(titleBarBox, color, {.round = scaledRounding, .roundingPower = m_pWindow->roundingPower()});
 
     // render title
     if (ENABLETITLE && (m_szLastTitle != PWINDOW->m_title || m_bWindowSizeChanged || !m_pTextTex || m_pTextTex->m_texID == 0 || m_bTitleColorChanged)) {
