@@ -1,10 +1,10 @@
 # Compiled binaries
-.local/bin/agy
-.local/bin/uv
-.local/bin/uvx
-.local/bin/docker-compose
-.local/bin/argc
-.local/bin/aichat
+**/.local/bin/agy
+**/.local/bin/uv
+**/.local/bin/uvx
+**/.local/bin/docker-compose
+**/.local/bin/argc
+**/.local/bin/aichat
 *.so
 
 # Temporary & backup files
@@ -12,7 +12,7 @@
 *.bak.*
 *~
 .DS_Store
-.dms-backups/
+**/.dms-backups/
 .changelog-*
 .firstlaunch
 
@@ -21,7 +21,7 @@ fish_variables
 **/completions/
 .pulse-cookie
 .cache/
-.local/state/
+**/.local/state/
 __pycache__/
 *.log
 *.qslog
@@ -31,25 +31,19 @@ secrets.fish
 *.local.fish
 *.local.sh
 *.local.lua
+
+# Auto-generated DMS fragments
 outputs.lua
-dms/outputs.lua
-dms/cursor.lua
-# Runtime generated Matugen & DMS theme palettes
-dms/colors.lua
-colors/dms.lua
-dank-colors.css
-dankcolors
-dank-zed-theme.json
-zen.css
-gtk-3.0/assets
-gtk-3.0/colors.css
-gtk-4.0/colors.css
+cursor.lua
+layout.lua
+colors.lua
+**/dms/outputs.lua
+**/dms/cursor.lua
+**/dms/layout.lua
+**/dms/colors.lua
 
 # Theme-switcher runtime (plugins + snapshots live in the stowed DMS config)
 **/DankMaterialShell/settings.json
 **/DankMaterialShell/plugin_settings.json
 **/DankMaterialShell/theme-state/
 **/DankMaterialShell/plugins/
-
-
-
