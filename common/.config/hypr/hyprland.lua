@@ -291,7 +291,10 @@ if f_bars then
 		local clean_addr = raw_addr:gsub("^0x", "")
 		local full_addr = "0x" .. clean_addr
 
-		local mon = w.monitor or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
+		local mon = (_G.resolve_window_monitor and _G.resolve_window_monitor(w))
+			or (type(w.monitor) == "table" and w.monitor)
+			or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor())
+			or (hl.get_monitors() and hl.get_monitors()[1])
 		if not mon then
 			return
 		end
@@ -318,13 +321,26 @@ if f_bars then
 			is_currently_maximized = true
 		end
 
-		local defRound = hl.get_config("decoration:rounding") or 12
-		local defBorder = hl.get_config("general:border_size") or 2
+		local function targeted_resize_move(win, x, y, width, height)
+			if not win then
+				return
+			end
+			pcall(function()
+				hl.dispatch(hl.dsp.window.resize({ window = win, x = width, y = height, relative = false }))
+				hl.dispatch(hl.dsp.window.move({ window = win, x = x, y = y }))
+			end)
+		end
 
 		if is_currently_maximized then
 			-- RESTORE (to pre-snap size and position)
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
+
+			if w.fullscreen == 1 or w.fullscreen == 3 then
+				pcall(function()
+					hl.dispatch(hl.dsp.window.fullscreen({ window = "address:" .. full_addr, mode = "maximized", action = "unset", layout_aware = false }))
+				end)
+			end
 
 			local s = cached or { w = math.floor(wa.w * 0.6), h = math.floor(wa.h * 0.7) }
 			_G.win11_snap_cache[full_addr] = nil
@@ -333,9 +349,12 @@ if f_bars then
 			local newX = s.x or math.max(wa.x + 20, wa.x + math.floor((wa.w - s.w) / 2))
 			local newY = s.y or math.max(wa.y + 40, wa.y + math.floor((wa.h - s.h) / 2))
 
-			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
-			hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h }))
-			hl.dispatch(hl.dsp.window.move({ x = newX, y = newY }))
+			w = hl.get_window("address:" .. full_addr) or w
+			targeted_resize_move(w, newX, newY, s.w, s.h)
+
+			if _G.set_app_float_maximized then
+				_G.set_app_float_maximized(w, false, "win11_toggle_maximize")
+			end
 		else
 			-- MAXIMIZE (identical to dragging to top edge)
 			if not w.floating then
@@ -345,11 +364,16 @@ if f_bars then
 			_G.win11_snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
 			_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
 
-			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
-			hl.dispatch(hl.dsp.window.resize({ x = max_w, y = max_h }))
-			hl.dispatch(hl.dsp.window.move({ x = max_x, y = max_y }))
-			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
-			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
+			w = hl.get_window("address:" .. full_addr) or w
+			targeted_resize_move(w, max_x, max_y, max_w, max_h)
+			pcall(function()
+				hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = 0 }))
+				hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = 0 }))
+			end)
+
+			if _G.set_app_float_maximized then
+				_G.set_app_float_maximized(w, true, "win11_toggle_maximize")
+			end
 		end
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
@@ -487,14 +511,16 @@ if f_bars then
 
 		local geom = get_zone_geometry(mon, zone, has_bar)
 
-		local defRound = hl.get_config("decoration:rounding") or 12
-		local defBorder = hl.get_config("general:border_size") or 2
-
-		hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
-		hl.dispatch(hl.dsp.window.resize({ x = geom.w, y = geom.h }))
-		hl.dispatch(hl.dsp.window.move({ x = geom.x, y = geom.y }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
+		w = hl.get_window("address:" .. full_addr) or w
+		pcall(function()
+			hl.dispatch(hl.dsp.window.resize({ window = w, x = geom.w, y = geom.h, relative = false }))
+			hl.dispatch(hl.dsp.window.move({ window = w, x = geom.x, y = geom.y }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
+		end)
+		if _G.set_app_float_maximized then
+			_G.set_app_float_maximized(w, false, "win11_snap")
+		end
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 
@@ -508,23 +534,50 @@ if f_bars then
 		local clean_addr = raw_addr:gsub("^0x", "")
 		local full_addr = "0x" .. clean_addr
 
+		local currently_max = (w.fullscreen == 1 or w.fullscreen == 3)
+			or (_G.window_is_float_maximized and _G.window_is_float_maximized(w))
+
+		local cached = _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr])
+
+		-- Normal (not snapped/maxed) drag-drop: do not resize. Only unsnap/unmax.
+		if not cached and not currently_max then
+			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
+		end
+
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 
-		if _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]) then
-			local s = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
+		if w.fullscreen == 1 or w.fullscreen == 3 then
+			pcall(function()
+				hl.dispatch(hl.dsp.window.fullscreen({
+					window = "address:" .. full_addr, mode = "maximized", action = "unset", layout_aware = false,
+				}))
+			end)
+		end
+
+		if _G.set_app_float_maximized then
+			_G.set_app_float_maximized(w, false, "win11_restore")
+		end
+
+		if _G.win11_snap_cache then
 			_G.win11_snap_cache[full_addr] = nil
 			_G.win11_snap_cache[clean_addr] = nil
-
-			local mon = w.monitor
-			local minX = mon and mon.x or 10
-			local minY = mon and mon.y or 10
-			local newX = math.max(minX, (posX or w.at.x) - math.floor(s.w / 2))
-			local newY = math.max(minY, (posY or w.at.y) - 20)
-			hl.dispatch(hl.dsp.focus({ window = "address:" .. full_addr }))
-			hl.dispatch(hl.dsp.window.resize({ x = s.w, y = s.h }))
-			hl.dispatch(hl.dsp.window.move({ x = newX, y = newY }))
 		end
+
+		local mon = (_G.resolve_window_monitor and _G.resolve_window_monitor(w))
+			or (type(w.monitor) == "table" and w.monitor)
+			or (hl.get_monitors() and hl.get_monitors()[1])
+		local wa = mon and get_monitor_work_area(mon) or { x = 0, y = 0, w = 1920, h = 1080 }
+		local dw = math.min(1280, math.max(400, math.floor(wa.w * 0.6)))
+		local dh = math.min(800, math.max(300, math.floor(wa.h * 0.7)))
+		local s = cached or { w = dw, h = dh }
+
+		local minX = (mon and mon.x) or 10
+		local minY = (mon and mon.y) or 10
+		local newX = math.max(minX, (posX or w.at.x) - math.floor(s.w / 2))
+		local newY = math.max(minY, (posY or w.at.y) - 20)
+		hl.dispatch(hl.dsp.window.resize({ window = w, x = s.w, y = s.h, relative = false }))
+		hl.dispatch(hl.dsp.window.move({ window = w, x = newX, y = newY }))
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 

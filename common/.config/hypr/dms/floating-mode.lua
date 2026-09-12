@@ -21,14 +21,21 @@ _G.floating_mode = _G.floating_mode or {
 }
 _G.floating_mode.workspaces = _G.floating_mode.workspaces or {}
 
--- Restore mode from runtime indicator if present
-local rf = io.open("/tmp/hypr_floating_mode", "r")
-if rf then
-	local content = rf:read("*a") or ""
-	rf:close()
-	if content:match("^1") then
-		_G.floating_mode.active = true
+local MODE_CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_floating_mode"
+local MODE_TMP_PATH = "/tmp/hypr_floating_mode"
+
+local function read_mode_indicator()
+	local f = io.open(MODE_CACHE_PATH, "r") or io.open(MODE_TMP_PATH, "r")
+	if f then
+		local content = f:read("*a") or ""
+		f:close()
+		return content:match("^1") ~= nil
 	end
+	return false
+end
+
+if read_mode_indicator() then
+	_G.floating_mode.active = true
 end
 
 log("floating-mode loaded. Current active = " .. tostring(_G.floating_mode.active))
@@ -42,10 +49,16 @@ local function from_this_load()
 end
 
 local function write_mode_indicator(active)
-	local f = io.open("/tmp/hypr_floating_mode", "w")
-	if f then
-		f:write(active and "1\n" or "0\n")
-		f:close()
+	local val = active and "1\n" or "0\n"
+	local f1 = io.open(MODE_CACHE_PATH, "w")
+	if f1 then
+		f1:write(val)
+		f1:close()
+	end
+	local f2 = io.open(MODE_TMP_PATH, "w")
+	if f2 then
+		f2:write(val)
+		f2:close()
 	end
 end
 
@@ -71,6 +84,7 @@ local MAX_SLOP = 8
 _G.app_float_state = _G.app_float_state or {}
 local cache_dirty = false
 local known_windows = {}
+local pending_restore = {}
 local apply_gen = 0
 local record_suppress = 0
 
@@ -88,8 +102,26 @@ local function is_special_overlay(w)
 	return false
 end
 
+local function is_ignorable_window(w)
+	if not w or is_special_overlay(w) then return true end
+	local title = (w.title or ""):lower()
+	if title:match("updater") or title:match("splash") or title:match("^notification") then
+		return true
+	end
+	-- Splash/updater sized windows only. Do not treat a normal small app
+	-- (or a just-unmaxed 1280x800 float) as ignorable.
+	if w.size then
+		local sx = w.size.x or 0
+		local sy = w.size.y or 0
+		if sx > 0 and sy > 0 and sx < 400 and sy < 300 then
+			return true
+		end
+	end
+	return false
+end
+
 local function skip_geometry(w)
-	if not w or is_special_overlay(w) then
+	if not w or is_special_overlay(w) or is_ignorable_window(w) then
 		return true
 	end
 	local cls = (w.class or ""):lower()
@@ -117,10 +149,18 @@ local function get_app_key(w)
 end
 
 local function window_addr(w)
-	if not w or not w.address then
+	if not w then
 		return nil
 	end
-	local raw = tostring(w.address):lower()
+	local ok, raw = pcall(function()
+		if not w.address then
+			return nil
+		end
+		return tostring(w.address):lower()
+	end)
+	if not ok or not raw or raw == "" then
+		return nil
+	end
 	if raw:find("^0x") then
 		return raw
 	end
@@ -141,8 +181,10 @@ local function load_float_state()
 	local content = f:read("*a")
 	f:close()
 	if not content or content == "" then return end
-	for app, val in content:gmatch('"([^"]+)"%s*:%s*{[^}]*"maximized"%s*:%s*(true|false)') do
-		_G.app_float_state[app] = { maximized = (val == "true") }
+	for app, val in content:gmatch('"([^"]+)"%s*:%s*{[^}]*"maximized"%s*:%s*([%a]+)') do
+		if val == "true" or val == "false" then
+			_G.app_float_state[app] = { maximized = (val == "true") }
+		end
 	end
 end
 
@@ -236,11 +278,45 @@ local function uses_xdg_maximize(w)
 	return false
 end
 
+local function resolve_window_monitor(w)
+	if not w then
+		return (hl.get_monitors() and hl.get_monitors()[1])
+	end
+	if type(w.monitor) == "table" and w.monitor.width then
+		return w.monitor
+	end
+	if w.monitor ~= nil then
+		for _, m in ipairs(hl.get_monitors() or {}) do
+			if m.id == w.monitor or m.name == tostring(w.monitor) then
+				return m
+			end
+		end
+	end
+	local ws_id = w.workspace and w.workspace.id
+	if ws_id then
+		for _, m in ipairs(hl.get_monitors() or {}) do
+			local m_ws = m.active_workspace or m.activeWorkspace
+			if m_ws and m_ws.id == ws_id then
+				return m
+			end
+		end
+		if tostring(ws_id) == "10" then
+			for _, m in ipairs(hl.get_monitors() or {}) do
+				if m.name == "DP-2" then
+					return m
+				end
+			end
+		end
+	end
+	return (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
+end
+_G.resolve_window_monitor = resolve_window_monitor
+
 local function geometry_is_maximized(w)
 	if not w or not w.floating or not w.size or not w.at then
 		return false
 	end
-	local mon = w.monitor or (hl.get_monitors() and hl.get_monitors()[1])
+	local mon = resolve_window_monitor(w)
 	if not mon then
 		return false
 	end
@@ -271,22 +347,41 @@ local function saved_state(w)
 	return app_key, _G.app_float_state[app_key]
 end
 
-local function set_saved_maximized(app_key, maximized)
+local function set_saved_maximized(app_key, maximized, reason)
 	if not app_key or app_key == "" then
 		return
 	end
 	local prev = _G.app_float_state[app_key]
-	if not prev or prev.maximized ~= maximized then
+	local prev_val = prev and prev.maximized
+	if prev_val ~= maximized then
+		log(string.format("STATE CHANGE: app=%s max=%s (was %s) reason=%s",
+			app_key, tostring(maximized), tostring(prev_val), tostring(reason or "unknown")))
 		_G.app_float_state[app_key] = { maximized = maximized and true or false }
 		cache_dirty = true
 	end
 end
 
-local function record_window_state(w)
+_G.set_app_float_maximized = function(w, maximized, reason)
+	if not w then return end
+	local app_key = get_app_key(w)
+	if not app_key or app_key == "" then return end
+	set_saved_maximized(app_key, maximized, reason or "explicit")
+	save_float_state()
+	local addr = window_addr(w)
+	if addr then
+		known_windows[addr] = { app_key = app_key, maximized = maximized and true or false }
+	end
+	log(string.format("explicit set_app_float_maximized class=%s addr=%s max=%s reason=%s",
+		app_key, tostring(addr), tostring(maximized), tostring(reason or "explicit")))
+end
+
+_G.window_is_float_maximized = is_window_maximized
+
+local function record_window_state(w, source)
 	if record_suppress > 0 then
 		return
 	end
-	if not w or is_special_overlay(w) or w.pinned then
+	if not w or is_special_overlay(w) or w.pinned or is_ignorable_window(w) then
 		return
 	end
 	-- Real fullscreen (games): don't clobber the last floating maximize bit
@@ -301,18 +396,34 @@ local function record_window_state(w)
 	if not app_key then
 		return
 	end
-	local maximized = is_window_maximized(w)
-	set_saved_maximized(app_key, maximized)
 	local addr = window_addr(w)
+	local maximized = is_window_maximized(w)
+
+	-- Poll / focus must not own the persisted bit OR overwrite an explicit
+	-- unmax: a still-maxed sibling used to flip the class back to true, and
+	-- a post-unmax poll seeing old geometry flipped known_windows back too.
+	if source == "poll" or source == "window.active" then
+		if addr and not known_windows[addr] then
+			known_windows[addr] = { app_key = app_key, maximized = maximized }
+		end
+		return
+	end
 	if addr then
 		known_windows[addr] = { app_key = app_key, maximized = maximized }
 	end
+	if addr and pending_restore[addr] and os.clock() < pending_restore[addr] then
+		if not maximized then
+			return
+		end
+	end
+
+	set_saved_maximized(app_key, maximized, source or "record_window_state")
 end
 
 local function record_all_windows()
 	local windows = hl.get_windows() or {}
 	for _, w in ipairs(windows) do
-		record_window_state(w)
+		record_window_state(w, "poll")
 	end
 	if cache_dirty then
 		save_float_state()
@@ -335,6 +446,21 @@ local function set_snap_restore(addr, restore)
 	end
 end
 
+-- Prefer a freshly resolved live window. Stale userdata after close/reload
+-- is how spam-open used to crash Hyprland.
+local function live_window(addr)
+	if not addr or addr == "" then
+		return nil
+	end
+	local ok, win = pcall(function()
+		return hl.get_window("address:" .. addr)
+	end)
+	if ok and win then
+		return win
+	end
+	return nil
+end
+
 -- Prefer the live window object. String selectors that fail to match
 -- make resize/move silently target the *active* window instead.
 local function resolve_window(w)
@@ -343,10 +469,11 @@ local function resolve_window(w)
 	end
 	local addr = window_addr(w)
 	if addr then
-		local live = hl.get_window("address:" .. addr)
+		local live = live_window(addr)
 		if live then
 			return live, addr
 		end
+		return nil, addr
 	end
 	return w, addr
 end
@@ -471,32 +598,17 @@ local function unset_maximize_only(w)
 	end)
 end
 
--- Pass the window object. Do not steal focus: focusing a sibling under an
--- xdg-maximized window (Zen) is what made restore non-deterministic.
+-- Pass the window object. Never focus-then-resize: that hits whatever is
+-- active if focus loses the race, which is how one unmax shrank every Ghostty.
 local function set_window_geometry(w, x, y, width, height)
 	w = select(1, resolve_window(w))
 	if not w then
 		return
 	end
-	hl.dispatch(hl.dsp.window.resize({ window = w, x = width, y = height, relative = false }))
-	hl.dispatch(hl.dsp.window.move({ window = w, x = x, y = y }))
-end
-
-local function snapshot_floating_except(except_addr)
-	local snaps = {}
-	for _, w in ipairs(hl.get_windows() or {}) do
-		local addr = window_addr(w)
-		if addr and addr ~= except_addr and w.floating and w.size and w.at then
-			snaps[addr] = {
-				x = w.at.x,
-				y = w.at.y,
-				w = w.size.x,
-				h = w.size.y,
-				maximized = is_window_maximized(w),
-			}
-		end
-	end
-	return snaps
+	pcall(function()
+		hl.dispatch(hl.dsp.window.resize({ window = w, x = width, y = height, relative = false }))
+		hl.dispatch(hl.dsp.window.move({ window = w, x = x, y = y }))
+	end)
 end
 
 local function apply_maximized(w)
@@ -512,19 +624,7 @@ local function apply_maximized(w)
 		w = select(1, resolve_window(w)) or w
 	end
 
-	-- CSD apps (Zen, Discord): xdg maximize. Geometry resize is ignored
-	-- while fullscreen=1, so don't mix the two.
-	if uses_xdg_maximize(w) then
-		if not (has_xdg_maximize(w) and geometry_is_maximized(w)) then
-			set_xdg_maximize(w)
-		end
-		return
-	end
-
-	force_unmaximize(w)
-	w = select(1, resolve_window(w)) or w
-
-	local mon = w.monitor or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
+	local mon = resolve_window_monitor(w)
 	if not mon then
 		return
 	end
@@ -542,41 +642,21 @@ local function apply_maximized(w)
 		set_snap_restore(addr, restore)
 	end
 
-	set_window_geometry(w, g.x, g.y, g.w, g.h)
-	hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
-	hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
-end
-
-local function restore_clobbered(snaps, except_addr)
-	if not snaps then
-		return
+	if not uses_xdg_maximize(w) then
+		-- Clear xdg maximize *before* filling geometry. Doing it after
+		-- undoes the compositor-side maximize for hyprbar apps.
+		force_unmaximize(w)
+		w = select(1, resolve_window(w)) or w
 	end
-	for _, w in ipairs(hl.get_windows() or {}) do
-		local addr = window_addr(w)
-		local s = addr and snaps[addr]
-		if s and addr ~= except_addr then
-			if s.maximized then
-				if not is_window_maximized(w) or (uses_xdg_maximize(w) and not geometry_is_maximized(w)) then
-					log(string.format(
-						"restore maximized sibling class=%s addr=%s",
-						tostring(w.class), addr
-					))
-					apply_maximized(w)
-				end
-			elseif w.size and w.at then
-				local changed = math.abs((w.size.x or 0) - s.w) > MAX_SLOP
-					or math.abs((w.size.y or 0) - s.h) > MAX_SLOP
-					or math.abs((w.at.x or 0) - s.x) > MAX_SLOP
-					or math.abs((w.at.y or 0) - s.y) > MAX_SLOP
-				if changed then
-					log(string.format(
-						"restore clobbered window class=%s addr=%s (was %dx%d @ %d,%d)",
-						tostring(w.class), addr, s.w, s.h, s.x, s.y
-					))
-					set_window_geometry(w, s.x, s.y, s.w, s.h)
-				end
-			end
-		end
+
+	pcall(function()
+		set_window_geometry(w, g.x, g.y, g.w, g.h)
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
+	end)
+
+	if uses_xdg_maximize(w) and not has_xdg_maximize(w) then
+		set_xdg_maximize(w)
 	end
 end
 
@@ -587,7 +667,7 @@ local function apply_centered_default(w)
 		return
 	end
 	force_unmaximize(w)
-	local mon = w.monitor or (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or (hl.get_monitors() and hl.get_monitors()[1])
+	local mon = resolve_window_monitor(w)
 	if not mon then
 		return
 	end
@@ -600,7 +680,7 @@ local function apply_centered_default(w)
 end
 
 function M.apply_floating_state(w, want_maximized)
-	if not w or is_special_overlay(w) then
+	if not w or is_special_overlay(w) or is_ignorable_window(w) then
 		return
 	end
 	local addr
@@ -617,19 +697,28 @@ function M.apply_floating_state(w, want_maximized)
 	if skip_geometry(w) then
 		return
 	end
-	if want_maximized then
+	if want_maximized == true then
 		apply_maximized(w)
-	else
+	elseif want_maximized == false then
 		apply_centered_default(w)
+	else
+		-- Unknown / first launch: if client already has maximize, ensure proper maximize geometry.
+		-- Otherwise, leave it alone: do NOT force unmaximize or slam to 1280x800.
+		if is_window_maximized(w) then
+			apply_maximized(w)
+		end
 	end
 end
 
 local function should_maximize(w)
+	local _, saved = saved_state(w)
+	if saved and saved.maximized ~= nil then
+		return saved.maximized
+	end
 	if is_window_maximized(w) then
 		return true
 	end
-	local _, saved = saved_state(w)
-	return saved and saved.maximized == true
+	return nil
 end
 
 --------------------------------------------------------------------------------
@@ -660,7 +749,7 @@ local function settle_mode(gen, want_floating, ws_id)
 								M.apply_floating_state(w, true)
 							end
 						elseif not w.floating then
-							M.apply_floating_state(w, false)
+							M.apply_floating_state(w, maximize)
 						end
 					else
 						local still_fs = w.fullscreen and w.fullscreen ~= 0
@@ -842,50 +931,105 @@ local function handle_new_window(w)
 		return
 	end
 	handled_windows[addr] = true
+	pending_restore[addr] = os.clock() + 2.5
 
-	local snaps = snapshot_floating_except(addr)
 	local mygen = apply_gen
 	local ws_at_open = ws_id
-	suppress_record(400)
+	suppress_record(800)
 
-	local function apply()
+	-- One apply path. Four overlapping timers were re-maxing a window the
+	-- user had just unmaxed, and dispatching resize/move on dead clients.
+	local function apply(wait_n)
+		wait_n = wait_n or 0
 		if not from_this_load() or apply_gen ~= mygen then
 			return
 		end
 		if not M.is_active(ws_at_open) then
 			return
 		end
-		local win = hl.get_window("address:" .. addr) or w
+		local win = live_window(addr)
 		if not win then
 			return
 		end
-		local win_addr = window_addr(win)
-		if win_addr and win_addr ~= addr then
-			log(string.format("skip apply, addr mismatch want=%s got=%s", addr, win_addr))
-			return
-		end
-		local ok_mapped, mapped = pcall(function()
-			return win.mapped
+		local mapped = true
+		pcall(function()
+			mapped = win.mapped
 		end)
-		if not ok_mapped or not mapped then
+		if not mapped then
+			if wait_n < 10 then
+				hl.timer(function() apply(wait_n + 1) end, { timeout = 50, type = "oneshot" })
+			end
 			return
 		end
+
+		local ignorable = false
+		pcall(function()
+			ignorable = is_ignorable_window(win)
+		end)
+		if ignorable then
+			local title = ""
+			pcall(function()
+				title = (win.title or ""):lower()
+			end)
+			log(string.format("skip ignorable new window class=%s addr=%s title=%s",
+				tostring(win.class), addr, tostring(win.title)))
+			if title:match("updater") or title:match("splash") then
+				return
+			end
+			if wait_n < 10 then
+				hl.timer(function() apply(wait_n + 1) end, { timeout = 50, type = "oneshot" })
+			end
+			return
+		end
+
 		local maximize = should_maximize(win)
 		log(string.format(
-			"new window class=%s addr=%s maximize=%s fs=%s",
-			tostring(win.class), addr, tostring(maximize), tostring(win.fullscreen)
+			"new window class=%s addr=%s maximize=%s fs=%s wait=%d",
+			tostring(win.class), addr, tostring(maximize), tostring(win.fullscreen), wait_n
 		))
-		M.apply_floating_state(win, maximize)
-		restore_clobbered(snaps, addr)
 		pcall(function()
-			hl.dispatch(hl.dsp.focus({ window = win }))
+			M.apply_floating_state(win, maximize)
 		end)
+
+		-- CSD apps (Discord/Zen): Electron may overwrite size after map.
+		-- Hyprbar apps never have xdg maximize — do not retry those.
+		if maximize == true then
+			local xdg = false
+			pcall(function()
+				xdg = uses_xdg_maximize(win)
+			end)
+			if xdg then
+				local function csd_retry(n)
+					hl.timer(function()
+						if not from_this_load() or apply_gen ~= mygen then
+							return
+						end
+						local cur = live_window(addr)
+						if not cur then
+							return
+						end
+						local need = false
+						pcall(function()
+							need = not geometry_is_maximized(cur) or not has_xdg_maximize(cur)
+						end)
+						if need then
+							log(string.format("retry apply_maximized class=%s addr=%s (retry %d)",
+								tostring(cur.class), addr, n + 1))
+							pcall(function()
+								apply_maximized(cur)
+							end)
+							if n < 2 then
+								csd_retry(n + 1)
+							end
+						end
+					end, { timeout = (n == 0 and 200 or 500), type = "oneshot" })
+				end
+				csd_retry(0)
+			end
+		end
 	end
 
-	-- Do not resize on the open event itself. The new window is often not a
-	-- valid target yet, so Hyprland would resize the previously focused window.
-	hl.timer(apply, { timeout = 16, type = "oneshot" })
-	hl.timer(apply, { timeout = 80, type = "oneshot" })
+	hl.timer(function() apply(0) end, { timeout = 40, type = "oneshot" })
 end
 
 hl.on("window.open", handle_new_window)
@@ -894,29 +1038,55 @@ hl.on("window.close", function(w)
 	if not from_this_load() or not w then
 		return
 	end
-	local addr = window_addr(w)
-	if addr then
-		handled_windows[addr] = nil
-		handled_windows[w.address] = nil
-	end
+	-- Last explicit/closed window owns the class bit. OR-ing sibling
+	-- maximize is why unmax → close → reopen came back maximized.
+	pcall(function()
+		local addr = window_addr(w)
+		local known = addr and known_windows[addr]
+		local app_key = get_app_key(w) or (known and known.app_key)
 
-	local app_key = get_app_key(w)
-	local maximized = nil
-	if w.floating and w.fullscreen ~= 2 then
-		maximized = is_window_maximized(w)
-	end
-	if maximized == nil and addr and known_windows[addr] then
-		app_key = app_key or known_windows[addr].app_key
-		maximized = known_windows[addr].maximized
-	end
-	if app_key and maximized ~= nil then
-		set_saved_maximized(app_key, maximized)
-		save_float_state()
-	end
-	if addr then
-		known_windows[addr] = nil
-		clear_snap_cache(addr)
-	end
+		if addr then
+			handled_windows[addr] = nil
+			pending_restore[addr] = nil
+		end
+
+		local ignorable = false
+		pcall(function()
+			ignorable = is_ignorable_window(w)
+		end)
+		if ignorable then
+			log(string.format("close ignored splash/tiny window class=%s addr=%s",
+				tostring(app_key), tostring(addr)))
+			if addr then
+				known_windows[addr] = nil
+				clear_snap_cache(addr)
+			end
+			return
+		end
+
+		local maximized = nil
+		if known and known.maximized ~= nil then
+			maximized = known.maximized
+		else
+			pcall(function()
+				if w.floating and w.fullscreen ~= 2 then
+					maximized = is_window_maximized(w)
+				end
+			end)
+		end
+
+		if app_key and maximized ~= nil then
+			log(string.format("close class=%s addr=%s maximized=%s",
+				app_key, tostring(addr), tostring(maximized)))
+			set_saved_maximized(app_key, maximized, "close")
+			save_float_state()
+		end
+
+		if addr then
+			known_windows[addr] = nil
+			clear_snap_cache(addr)
+		end
+	end)
 end)
 
 -- Keep pinned windows (Picture-in-Picture) on top and track active window state
@@ -927,9 +1097,9 @@ hl.on("window.active", function(active_win)
 	end
 	local ws_id = active_win and active_win.workspace and active_win.workspace.id
 	if M.is_active(ws_id) and active_win then
-		record_window_state(active_win)
+		record_window_state(active_win, "window.active")
 	elseif active_win and active_win.floating then
-		record_window_state(active_win)
+		record_window_state(active_win, "window.active")
 	end
 
 	local now = os.clock()
@@ -937,8 +1107,27 @@ hl.on("window.active", function(active_win)
 		return
 	end
 	last_raise = now
+	-- Keyboard focus (alt-tab) does not raise floats by itself.
+	if active_win then
+		local floating = false
+		pcall(function()
+			floating = active_win.floating and true or false
+		end)
+		if floating then
+			pcall(function()
+				hl.dispatch(hl.dsp.window.bring_to_top({ window = active_win }))
+			end)
+			pcall(function()
+				hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = active_win }))
+			end)
+		end
+	end
 	for _, w in ipairs(hl.get_windows() or {}) do
-		if w.pinned and w.floating and (not active_win or w.address ~= active_win.address) then
+		local pinned = false
+		pcall(function()
+			pinned = w.pinned and w.floating and (not active_win or w.address ~= active_win.address)
+		end)
+		if pinned then
 			pcall(function()
 				hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
 			end)
@@ -961,7 +1150,7 @@ hl.on("window.fullscreen", function(w)
 	if record_suppress > 0 then
 		return
 	end
-	record_window_state(w)
+	record_window_state(w, "window.fullscreen")
 	if cache_dirty then
 		save_float_state()
 	end
@@ -999,6 +1188,18 @@ end)
 -- If already in floating mode from a previous session, don't let tiled
 -- focus steal xdg-maximize off Zen/Discord.
 sync_mode_guards()
+
+-- If floating mode was active from a persistent session, apply once after
+-- windows have mapped. A second pass a second later re-maxed windows the
+-- user had already unmaxed.
+if _G.floating_mode.active then
+	hl.timer(function()
+		if from_this_load() and _G.floating_mode.active then
+			local gen = bump_gen()
+			apply_mode_to_windows(hl.get_windows() or {}, true, gen)
+		end
+	end, { timeout = 400, type = "oneshot" })
+end
 
 -- Record maximize/restore after drag-to-top or hyprbar clicks
 hl.timer(function()

@@ -229,7 +229,9 @@ Item {
             }
         }
 
-        // Mid-drag unsnap: if snapped window dragged away (> 20px), restore immediately
+        // Mid-drag unsnap: if snapped/maxed window dragged away (> 20px), restore immediately.
+        // Return so this same event cannot re-arm the maximize zone (cursor is still at the
+        // top edge of a just-unmaxed window). Next dragpos uses the restored size.
         if (!root.restoredThisDrag && root.draggedWindowAddr !== "") {
             var dist = Math.hypot(gx - root.dragStartMouseX, gy - root.dragStartMouseY);
             if (dist > 20) {
@@ -238,6 +240,10 @@ Item {
                 root.dragStartMouseX = gx;
                 root.dragStartMouseY = gy;
                 root.dragGrabOffsetFromTop = root.draggedWindowHasBar ? 15 : 5;
+                root.activeZone = "";
+                root.activeZoneName = "";
+                root.lastActiveZone = "";
+                return;
             }
         }
 
@@ -426,13 +432,10 @@ Item {
                 targetScreen = Quickshell.screens[0];
             }
 
-            // 1. Focus the dragged window
+            // Unset fullscreen on the dragged window only (no implicit active target).
             if (addr && addr !== "") {
-                Hyprland.dispatch("hl.dsp.focus({ window = \"address:" + addr + "\" })");
+                Hyprland.dispatch("hl.dsp.window.fullscreen({ window = \"address:" + addr + "\", action = \"unset\", layout_aware = false })");
             }
-
-            // 2. Always ensure fullscreen is unset so the bottom bar remains visible
-            Hyprland.dispatch("hl.dsp.window.fullscreen({ action = \"unset\" })");
 
             // 3. Delegate precision placement, sizing, caching, and titlebar offsets to Hyprland Lua
             if (addr && addr !== "") {
