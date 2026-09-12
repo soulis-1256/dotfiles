@@ -127,6 +127,38 @@ local function is_special_overlay(w)
 	return false
 end
 
+-- PiP / toasts / transients share an app_id with the parent. xdg-maximize
+-- on the child makes Firefox/Zen unmax the parent, and CSD restore then
+-- slams both to the 1280x800 default. These windows are geometry-only.
+local function is_transient_float(w)
+	if not w then
+		return false
+	end
+	if is_special_overlay(w) then
+		return true
+	end
+	local pinned = false
+	pcall(function()
+		pinned = w.pinned and true or false
+	end)
+	if pinned then
+		return true
+	end
+	local parent = nil
+	pcall(function()
+		if type(w.parent) == "function" then
+			parent = w.parent()
+		else
+			parent = w.parent
+		end
+	end)
+	if parent and parent ~= w then
+		return true
+	end
+	return false
+end
+_G.window_is_transient_float = is_transient_float
+
 local function is_ignorable_window(w)
 	if not w or is_special_overlay(w) then return true end
 	local title = (w.title or ""):lower()
@@ -292,9 +324,10 @@ local function is_real_fullscreen(w)
 	return w and w.fullscreen == 2
 end
 
--- CSD apps (Zen, Discord, Chrome) maximize via xdg; hyprbar apps use geometry.
+-- CSD apps (Zen, Discord, Chrome) maximize via xdg; hyprbar apps and
+-- transients (PiP, pinned popouts) use geometry so the parent is untouched.
 local function uses_xdg_maximize(w)
-	if not w then
+	if not w or is_transient_float(w) then
 		return false
 	end
 	if _G.window_has_hyprbar then
@@ -302,6 +335,7 @@ local function uses_xdg_maximize(w)
 	end
 	return false
 end
+_G.window_uses_xdg_maximize = uses_xdg_maximize
 
 local function resolve_window_monitor(w)
 	if not w then
@@ -387,7 +421,7 @@ local function set_saved_maximized(app_key, maximized, reason)
 end
 
 _G.set_app_float_maximized = function(w, maximized, reason)
-	if not w then return end
+	if not w or is_transient_float(w) then return end
 	local app_key = get_app_key(w)
 	if not app_key or app_key == "" then return end
 	set_saved_maximized(app_key, maximized, reason or "explicit")
@@ -1253,7 +1287,10 @@ hl.on("window.fullscreen", function(w)
 	end
 	-- Floating CSD restore. Last floating size is often already the work
 	-- area, so unset alone is a visual no-op; slam to the binary default.
+	-- Never do this for PiP/transients: they are not CSD main windows, and
+	-- the default size is what "forgot" the real PiP size.
 	if M.is_active(ws_id) and uses_xdg_maximize(w) and w.floating
+		and not is_transient_float(w)
 		and not is_real_fullscreen(w) and not has_xdg_maximize(w) then
 		log(string.format("csd restore class=%s addr=%s",
 			tostring(w.class), tostring(window_addr(w))))

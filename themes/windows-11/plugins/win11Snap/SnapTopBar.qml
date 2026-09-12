@@ -40,6 +40,36 @@ Item {
         return s.startsWith("0x") ? s.slice(2) : s;
     }
 
+    function isTransientAddr(addr) {
+        if (!addr || addr === "")
+            return false;
+        var clean = root.normAddr(addr);
+        if (Hyprland.toplevels && Hyprland.toplevels.values) {
+            for (var i = 0; i < Hyprland.toplevels.values.length; i++) {
+                var t = Hyprland.toplevels.values[i];
+                if (!t)
+                    continue;
+                var a1 = root.normAddr(t.address);
+                var a2 = (t.lastIpcObject && t.lastIpcObject.address) ? root.normAddr(t.lastIpcObject.address) : "";
+                if (a1 === clean || a2 === clean) {
+                    var title = "";
+                    if (t.lastIpcObject && t.lastIpcObject.title)
+                        title = String(t.lastIpcObject.title);
+                    else if (t.title)
+                        title = String(t.title);
+                    if (/picture[- ]in[- ]picture/i.test(title))
+                        return true;
+                    if (t.lastIpcObject && t.lastIpcObject.pinned)
+                        return true;
+                    if (t.pinned)
+                        return true;
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
     function isWindowFloating(addr) {
         if (!addr || addr === "") return false;
         var clean = root.normAddr(addr);
@@ -433,7 +463,8 @@ Item {
             }
 
             // Unset fullscreen on the dragged window only (no implicit active target).
-            if (addr && addr !== "") {
+            // Skip PiP/pinned transients: xdg-unmax on the child unmaxes the parent.
+            if (addr && addr !== "" && !root.isTransientAddr(addr)) {
                 Hyprland.dispatch("hl.dsp.window.fullscreen({ window = \"address:" + addr + "\", action = \"unset\", layout_aware = false })");
             }
 

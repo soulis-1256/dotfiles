@@ -315,12 +315,14 @@ if f_bars then
 
 		local is_currently_maximized = false
 		local cached = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
+		local use_xdg = _G.window_uses_xdg_maximize and _G.window_uses_xdg_maximize(w)
+		local transient = _G.window_is_transient_float and _G.window_is_transient_float(w)
 
 		if math.abs(w.size.x - max_w) <= 4 and math.abs(w.size.y - max_h) <= 4
 			and math.abs(w.at.x - max_x) <= 4 and math.abs(w.at.y - max_y) <= 4 then
 			is_currently_maximized = true
 		end
-		if w.fullscreen == 1 or w.fullscreen == 3 then
+		if not transient and (w.fullscreen == 1 or w.fullscreen == 3) then
 			is_currently_maximized = true
 		end
 
@@ -339,7 +341,8 @@ if f_bars then
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 
-			if w.fullscreen == 1 or w.fullscreen == 3 then
+			-- Never xdg-unmax transients: Firefox/Zen unmaxes the parent too.
+			if use_xdg and (w.fullscreen == 1 or w.fullscreen == 3) then
 				pcall(function()
 					hl.dispatch(hl.dsp.window.fullscreen({ window = "address:" .. full_addr, mode = "maximized", action = "unset", layout_aware = false }))
 				end)
@@ -368,7 +371,7 @@ if f_bars then
 			_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
 
 			w = hl.get_window("address:" .. full_addr) or w
-			if not has_bar then
+			if use_xdg then
 				-- CSD: xdg maximize only. Geometry fill poisons native restore.
 				pcall(function()
 					hl.dispatch(hl.dsp.window.fullscreen({
@@ -548,8 +551,9 @@ if f_bars then
 		local clean_addr = raw_addr:gsub("^0x", "")
 		local full_addr = "0x" .. clean_addr
 
-		local currently_max = (w.fullscreen == 1 or w.fullscreen == 3)
-			or (_G.window_is_float_maximized and _G.window_is_float_maximized(w))
+		local currently_max = (_G.window_is_float_maximized and _G.window_is_float_maximized(w))
+			or (w.fullscreen == 1 or w.fullscreen == 3)
+		local use_xdg = _G.window_uses_xdg_maximize and _G.window_uses_xdg_maximize(w)
 
 		local cached = _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr])
 
@@ -561,7 +565,8 @@ if f_bars then
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 
-		if w.fullscreen == 1 or w.fullscreen == 3 then
+		-- Geometry-only transients (PiP) must not xdg-unmax: that unmaxes the parent.
+		if use_xdg and (w.fullscreen == 1 or w.fullscreen == 3) then
 			pcall(function()
 				hl.dispatch(hl.dsp.window.fullscreen({
 					window = "address:" .. full_addr, mode = "maximized", action = "unset", layout_aware = false,
