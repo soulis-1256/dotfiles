@@ -24,6 +24,7 @@ Item {
     property int dragStartMouseY: -1
     property int dragStartWinX: -9999
     property int dragStartWinY: -9999
+    property int dragStartWinW: 0
     property int dragGrabOffsetFromTop: 15
     property int dragGrabOffsetX: -99999
     property int dragGrabOffsetY: -99999
@@ -126,11 +127,13 @@ Item {
                 root.dragStartMouseY = -1;
                 root.dragStartWinX = -9999;
                 root.dragStartWinY = -9999;
+                root.dragStartWinW = 0;
                 root.dragGrabOffsetFromTop = 15;
                 root.dragGrabOffsetX = -99999;
                 root.dragGrabOffsetY = -99999;
                 root.draggedWindowHasBar = true;
                 root.restoredThisDrag = false;
+                Hyprland.dispatch("_G.win11_dragging = true");
 
                 var clean = root.normAddr(addr);
                 if (Hyprland.toplevels && Hyprland.toplevels.values) {
@@ -145,6 +148,9 @@ Item {
                                     root.dragStartWinX = t.lastIpcObject.at[0];
                                     root.dragStartWinY = t.lastIpcObject.at[1];
                                 }
+                                if (t.lastIpcObject.size && t.lastIpcObject.size.length >= 2) {
+                                    root.dragStartWinW = t.lastIpcObject.size[0];
+                                }
                                 var tags = t.lastIpcObject.tags || [];
                                 for (var k = 0; k < tags.length; k++) {
                                     if (String(tags[k]).indexOf("nobar") !== -1) {
@@ -158,6 +164,7 @@ Item {
                     }
                 }
             } else if (event.name === "dragstop") {
+                Hyprland.dispatch("_G.win11_dragging = false; _G.win11_drag_restore = false");
                 if (!root.isDragging) {
                     root.forceCollapse();
                     return;
@@ -489,7 +496,8 @@ Item {
         if (!addr || addr === "") return;
         var gx = (posX !== undefined && posX !== null) ? posX : 0;
         var gy = (posY !== undefined && posY !== null) ? posY : 0;
-        Hyprland.dispatch("_G.win11_restore_window('" + addr + "', " + gx + ", " + gy + ", " + root.dragGrabOffsetX + ", " + root.dragGrabOffsetY + ")");
+        var ow = root.dragStartWinW > 1 ? root.dragStartWinW : 0;
+        Hyprland.dispatch("_G.win11_restore_window('" + addr + "', " + gx + ", " + gy + ", " + root.dragGrabOffsetX + ", " + root.dragGrabOffsetY + ", " + ow + ")");
     }
 
     function triggerSnap(zone) {

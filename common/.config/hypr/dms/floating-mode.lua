@@ -737,6 +737,195 @@ local function set_window_geometry(w, x, y, width, height)
 	end)
 end
 
+local function set_no_anim(w, on)
+	w = select(1, resolve_window(w)) or w
+	if not w then
+		return
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.window.set_prop({
+			window = w, prop = "no_anim", value = on and "1" or "unset",
+		}))
+	end)
+end
+
+-- Last small size of PiP / toasts. Geometry-max uses this to restore.
+local overlay_geom = {}
+local overlay_fs_lock = {}
+local overlay_maximized = {}
+
+local function overlay_client_fs(w)
+	local v = 0
+	pcall(function()
+		v = tonumber(w.fullscreen_client) or 0
+	end)
+	return v
+end
+
+local function snapshot_overlay_geom(w)
+	if not w or not is_special_overlay(w) or not w.size or not w.at then
+		return
+	end
+	local addr = window_addr(w)
+	if not addr or overlay_maximized[addr] then
+		return
+	end
+	if has_xdg_maximize(w) or is_real_fullscreen(w) or geometry_is_maximized(w) then
+		return
+	end
+	if overlay_client_fs(w) == 2 then
+		return
+	end
+	local sx, sy = w.size.x or 0, w.size.y or 0
+	if sx < 80 or sy < 80 then
+		return
+	end
+	overlay_geom[addr] = { x = w.at.x, y = w.at.y, w = sx, h = sy }
+end
+
+local function restore_overlay_geom(w)
+	local addr = window_addr(w)
+	local g = addr and overlay_geom[addr]
+	if not g then
+		return
+	end
+	set_no_anim(w, true)
+	set_window_geometry(w, g.x, g.y, g.w, g.h)
+	set_no_anim(w, false)
+end
+
+-- Tell the compositor the overlay is not covering-fullscreen, without
+-- lying to the client. Client=2 keeps Firefox/Zen PiP HUD alive.
+local function overlay_set_fs_state(w, internal, client)
+	w = select(1, resolve_window(w)) or w
+	if not w then
+		return
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.window.fullscreen_state({
+			window = w, internal = internal, client = client,
+			action = "set", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = "unset" }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = "unset" }))
+	end)
+end
+
+local function overlay_drop_compositor_fs(w)
+	overlay_set_fs_state(w, 0, 0)
+end
+
+-- Same work-area fill as drag-to-top. Keep client fullscreen so the
+-- native PiP HUD/video stay in fullscreen mode; internal=0 so the
+-- compositor does not cover the bar or unmax the parent.
+local function apply_overlay_maximized(w)
+	w = select(1, resolve_window(w)) or w
+	if not w then
+		return
+	end
+	snapshot_overlay_geom(w)
+	local mon = resolve_window_monitor(w)
+	if not mon then
+		return
+	end
+	local wa = get_monitor_work_area(mon)
+	local g = max_geometry(w, wa)
+	set_no_anim(w, true)
+	overlay_set_fs_state(w, 0, 2)
+	set_window_geometry(w, g.x, g.y, g.w, g.h)
+	pcall(function()
+		if not w.pinned then
+			hl.dispatch(hl.dsp.window.pin({ window = w }))
+		end
+	end)
+	set_no_anim(w, false)
+	local addr = window_addr(w)
+	if addr then
+		hl.timer(function()
+			if not from_this_load() or not overlay_maximized[addr] then
+				return
+			end
+			local live = live_window(addr)
+			if not live then
+				return
+			end
+			if geometry_is_maximized(live) then
+				return
+			end
+			local mon2 = resolve_window_monitor(live)
+			if not mon2 then
+				return
+			end
+			local g2 = max_geometry(live, get_monitor_work_area(mon2))
+			set_no_anim(live, true)
+			set_window_geometry(live, g2.x, g2.y, g2.w, g2.h)
+			set_no_anim(live, false)
+		end, { timeout = 50, type = "oneshot" })
+	end
+end
+
+_G.overlay_clear_fullscreen = overlay_drop_compositor_fs
+_G.overlay_restore_geom = function(w)
+	local addr = window_addr(w)
+	return addr and overlay_geom[addr] or nil
+end
+_G.overlay_set_geometry_maxed = function(w, on)
+	local addr = window_addr(w)
+	if not addr then
+		return
+	end
+	overlay_maximized[addr] = on and true or nil
+end
+
+local function window_was_maximized(w)
+	local addr = window_addr(w)
+	local known = addr and known_windows[addr]
+	if known and known.maximized ~= nil then
+		return known.maximized == true
+	end
+	local _, saved = saved_state(w)
+	return saved and saved.maximized == true
+end
+
+local function is_active_window(w)
+	local active = hl.get_active_window()
+	if not active or not w then
+		return false
+	end
+	local a = window_addr(w)
+	local b = window_addr(active)
+	return a and b and a == b
+end
+
+-- PiP xdg-max/fullscreen unmaxes every other xdg-maxed window on that
+-- monitor (and Firefox unmaxes the parent). Put them back.
+local function repair_collateral_maximize(except)
+	local except_addr = window_addr(except)
+	for _, w in ipairs(hl.get_windows() or {}) do
+		pcall(function()
+			if not w or not w.floating then
+				return
+			end
+			if is_special_overlay(w) or is_transient_float(w) then
+				return
+			end
+			if not uses_xdg_maximize(w) or has_xdg_maximize(w) then
+				return
+			end
+			local addr = window_addr(w)
+			if except_addr and addr == except_addr then
+				return
+			end
+			if not window_was_maximized(w) then
+				return
+			end
+			log(string.format("repair collateral class=%s addr=%s",
+				tostring(w.class), tostring(addr)))
+			set_xdg_maximize(w)
+		end)
+	end
+end
+
 local function apply_maximized(w)
 	local addr
 	w, addr = resolve_window(w)
@@ -812,7 +1001,7 @@ local function apply_centered_default(w)
 	set_window_geometry(w, dx, dy, dw, dh)
 end
 
-function M.apply_floating_state(w, want_maximized)
+function M.apply_floating_state(w, want_maximized, opts)
 	if not w or is_special_overlay(w) or is_ignorable_window(w) then
 		return
 	end
@@ -827,8 +1016,15 @@ function M.apply_floating_state(w, want_maximized)
 		end)
 		w = select(1, resolve_window(w)) or w
 	end
+	local silent = opts and opts.no_anim
 	if skip_geometry(w) then
+		if silent then
+			set_no_anim(w, false)
+		end
 		return
+	end
+	if silent then
+		set_no_anim(w, true)
 	end
 	if want_maximized == true then
 		apply_maximized(w)
@@ -841,15 +1037,27 @@ function M.apply_floating_state(w, want_maximized)
 			apply_maximized(w)
 		end
 	end
+	if silent then
+		set_no_anim(w, false)
+	end
 end
 
 local function should_maximize(w)
+	-- Live geometry wins over the class cache. A sibling win11_restore or
+	-- close writes max=false on the class; reload then used that to slam
+	-- every Ghostty — including ones still filling the monitor (geometry
+	-- max, fullscreen=0) — to 1280x800.
+	if is_window_maximized(w) then
+		return true
+	end
+	local addr = window_addr(w)
+	local known = addr and known_windows[addr]
+	if known and known.maximized ~= nil then
+		return known.maximized
+	end
 	local _, saved = saved_state(w)
 	if saved and saved.maximized ~= nil then
 		return saved.maximized
-	end
-	if is_window_maximized(w) then
-		return true
 	end
 	return nil
 end
@@ -939,6 +1147,11 @@ local function apply_mode_to_windows(windows, want_floating, gen, ws_id)
 					if is_real_fullscreen(w) then
 						log(string.format("skip real-fullscreen class=%s", tostring(w.class)))
 						return
+					end
+					-- Never unmax a window that is currently filling the
+					-- monitor just because the class cache flipped.
+					if is_window_maximized(w) then
+						maximize = true
 					end
 					M.apply_floating_state(w, maximize)
 				else
@@ -1052,6 +1265,11 @@ local function handle_new_window(w)
 				hl.dispatch(hl.dsp.window.pin({ window = w }))
 			end)
 		end
+		snapshot_overlay_geom(w)
+		hl.timer(function()
+			local live = live_window(window_addr(w))
+			snapshot_overlay_geom(live or w)
+		end, { timeout = 80, type = "oneshot" })
 		return
 	end
 
@@ -1122,8 +1340,9 @@ local function handle_new_window(w)
 			tostring(win.class), addr, tostring(maximize), tostring(win.fullscreen), wait_n
 		))
 		pcall(function()
-			M.apply_floating_state(win, maximize)
+			M.apply_floating_state(win, maximize, { no_anim = true })
 		end)
+		set_no_anim(win, false)
 
 		-- CSD apps (Discord/Zen): Electron may overwrite size after map.
 		-- Hyprbar apps never have xdg maximize — do not retry those.
@@ -1163,10 +1382,39 @@ local function handle_new_window(w)
 		end
 	end
 
-	hl.timer(function() apply(0) end, { timeout = 40, type = "oneshot" })
+	apply(0)
 end
 
+hl.on("window.open_early", function(w)
+	if not from_this_load() or not w then
+		return
+	end
+	if is_special_overlay(w) then
+		return
+	end
+	local ws_id = w.workspace and w.workspace.id
+	if not M.is_active(ws_id) then
+		return
+	end
+	set_no_anim(w, true)
+end)
+
 hl.on("window.open", handle_new_window)
+
+hl.on("window.update_rules", function(w)
+	if not from_this_load() or not w then
+		return
+	end
+	if not is_special_overlay(w) then
+		return
+	end
+	if not w.pinned then
+		pcall(function()
+			hl.dispatch(hl.dsp.window.pin({ window = w }))
+		end)
+	end
+	snapshot_overlay_geom(w)
+end)
 
 hl.on("window.close", function(w)
 	if not from_this_load() or not w then
@@ -1182,6 +1430,9 @@ hl.on("window.close", function(w)
 		if addr then
 			handled_windows[addr] = nil
 			pending_restore[addr] = nil
+			overlay_geom[addr] = nil
+			overlay_fs_lock[addr] = nil
+			overlay_maximized[addr] = nil
 		end
 
 		local ignorable = false
@@ -1258,6 +1509,7 @@ hl.on("window.active", function(active_win)
 			pinned = w.pinned and w.floating and (not active_win or w.address ~= active_win.address)
 		end)
 		if pinned then
+			snapshot_overlay_geom(w)
 			pcall(function()
 				hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
 			end)
@@ -1278,9 +1530,77 @@ hl.on("window.fullscreen", function(w)
 		unset_maximize_only(w)
 		return
 	end
-	if record_suppress > 0 or csd_restore_lock or _G.win11_drag_restore then
+
+	-- PiP can fill its monitor, but never via xdg: that unmaxes the parent
+	-- (Zen) and Discord on the same output. Native fullscreen button is
+	-- client=2; we keep that so the HUD lives, and only drop internal FS
+	-- so geometry matches drag-to-top maximize.
+	if is_special_overlay(w) then
+		local addr = window_addr(w)
+		if addr and overlay_fs_lock[addr] and os.clock() < overlay_fs_lock[addr] then
+			return
+		end
+		local client_fs = overlay_client_fs(w)
+		local maxed = addr and overlay_maximized[addr]
+		if is_real_fullscreen(w) or (client_fs == 2 and not maxed) then
+			if addr then
+				overlay_fs_lock[addr] = os.clock() + 0.45
+			end
+			log(string.format("overlay geometry-max class=%s addr=%s fs=%s client=%s",
+				tostring(w.class), tostring(addr), tostring(w.fullscreen), tostring(client_fs)))
+			apply_overlay_maximized(w)
+			if addr then
+				overlay_maximized[addr] = true
+			end
+			repair_collateral_maximize(w)
+			return
+		end
+		if has_xdg_maximize(w) then
+			log(string.format("overlay ignore auto-maximize class=%s addr=%s fs=%s",
+				tostring(w.class), tostring(addr), tostring(w.fullscreen)))
+			if addr then
+				overlay_fs_lock[addr] = os.clock() + 0.45
+			end
+			overlay_set_fs_state(w, 0, maxed and 2 or 0)
+			if not maxed then
+				restore_overlay_geom(w)
+			end
+			repair_collateral_maximize(w)
+			return
+		end
+		if maxed and client_fs == 0 and not is_real_fullscreen(w) then
+			log(string.format("overlay restore class=%s addr=%s",
+				tostring(w.class), tostring(addr)))
+			if addr then
+				overlay_fs_lock[addr] = os.clock() + 0.45
+			end
+			restore_overlay_geom(w)
+			overlay_drop_compositor_fs(w)
+			overlay_maximized[addr] = nil
+			return
+		end
+		if not maxed then
+			snapshot_overlay_geom(w)
+		end
 		return
 	end
+
+	if record_suppress > 0 or csd_restore_lock or _G.win11_drag_restore or _G.win11_dragging then
+		return
+	end
+
+	-- Collateral unmax: PiP/other fullscreen stole xdg-max from an unfocused
+	-- Discord/Zen. Re-apply; do not record max=false or CSD-restore.
+	if M.is_active(ws_id) and uses_xdg_maximize(w) and w.floating
+		and not is_transient_float(w)
+		and not is_real_fullscreen(w) and not has_xdg_maximize(w)
+		and window_was_maximized(w) and not is_active_window(w) then
+		log(string.format("collateral unmax class=%s addr=%s — re-max",
+			tostring(w.class), tostring(window_addr(w))))
+		set_xdg_maximize(w)
+		return
+	end
+
 	record_window_state(w, "window.fullscreen")
 	if cache_dirty then
 		save_float_state()
@@ -1292,13 +1612,34 @@ hl.on("window.fullscreen", function(w)
 	if M.is_active(ws_id) and uses_xdg_maximize(w) and w.floating
 		and not is_transient_float(w)
 		and not is_real_fullscreen(w) and not has_xdg_maximize(w) then
-		log(string.format("csd restore class=%s addr=%s",
-			tostring(w.class), tostring(window_addr(w))))
+		local addr = window_addr(w)
+		log(string.format("csd restore scheduled class=%s addr=%s",
+			tostring(w.class), tostring(addr)))
 		csd_restore_lock = true
-		apply_centered_default(w)
+		-- Defer: Hyprland unmaxes a dragged CSD float at mouse-down, before
+		-- SnapTopBar can set win11_dragging. A same-tick slam to 1280x800
+		-- is what teleports the grab to the window center.
 		hl.timer(function()
+			if not from_this_load() then
+				csd_restore_lock = false
+				return
+			end
+			if _G.win11_dragging or _G.win11_drag_restore then
+				log(string.format("csd restore skipped (drag) class=%s addr=%s",
+					tostring(w.class), tostring(addr)))
+				csd_restore_lock = false
+				return
+			end
+			local live = (addr and live_window(addr)) or w
+			if live and uses_xdg_maximize(live) and live.floating
+				and not is_transient_float(live)
+				and not is_real_fullscreen(live) and not has_xdg_maximize(live) then
+				log(string.format("csd restore class=%s addr=%s",
+					tostring(live.class), tostring(addr)))
+				apply_centered_default(live)
+			end
 			csd_restore_lock = false
-		end, { timeout = 200, type = "oneshot" })
+		end, { timeout = 80, type = "oneshot" })
 	end
 end)
 
@@ -1335,14 +1676,27 @@ end)
 -- focus steal xdg-maximize off Zen/Discord.
 sync_mode_guards()
 
--- If floating mode was active from a persistent session, apply once after
--- windows have mapped. A second pass a second later re-maxed windows the
--- user had already unmaxed.
+-- After hyprctl reload the windows are already placed. Applying the class
+-- cache here unmaxed maxed Ghostty (and re-maxed windows the user had
+-- already restored). Only float leftovers that are still tiled.
 if _G.floating_mode.active then
 	hl.timer(function()
 		if from_this_load() and _G.floating_mode.active then
-			local gen = bump_gen()
-			apply_mode_to_windows(hl.get_windows() or {}, true, gen)
+			for _, w in ipairs(hl.get_windows() or {}) do
+				pcall(function()
+					if is_special_overlay(w) or is_real_fullscreen(w) then
+						return
+					end
+					if not M.is_active(w.workspace and w.workspace.id) then
+						return
+					end
+					if not w.floating then
+						log(string.format("reload float leftover class=%s addr=%s",
+							tostring(w.class), tostring(window_addr(w))))
+						M.apply_floating_state(w, should_maximize(w), { no_anim = true })
+					end
+				end)
+			end
 		end
 	end, { timeout = 400, type = "oneshot" })
 end
@@ -1351,6 +1705,9 @@ end
 hl.timer(function()
 	if from_this_load() then
 		record_all_windows()
+		for _, w in ipairs(hl.get_windows() or {}) do
+			snapshot_overlay_geom(w)
+		end
 	end
 end, { timeout = 400, type = "repeat" })
 

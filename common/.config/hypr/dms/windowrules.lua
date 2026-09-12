@@ -30,7 +30,9 @@ hl.window_rule({
 	suppress_event = "fullscreenoutput",
 })
 
--- Picture-in-Picture from any toolkit (float and pin across workspaces)
+-- Picture-in-Picture from any toolkit (float and pin across workspaces).
+-- Maximize is handled in floating-mode.lua as geometry-only so xdg-max
+-- does not unmax the parent / Discord on the same monitor.
 hl.window_rule({
 	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
 	float = true,

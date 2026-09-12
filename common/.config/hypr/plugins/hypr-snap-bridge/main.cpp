@@ -81,9 +81,11 @@ void checkDragState(const Vector2D* mousePos = nullptr) {
                     mouse = g_pInputManager->getMouseCoordsInternal();
                 captureDragGrab(target, mouse);
             }
+            HyprlandAPI::invokeHyprctlCommand("eval", "_G.win11_dragging = true");
             g_pEventManager->postEvent(SHyprIPCEvent{"dragstart", addr});
         } else {
             dragGrabReady = false;
+            HyprlandAPI::invokeHyprctlCommand("eval", "_G.win11_dragging = false; _G.win11_drag_restore = false");
             g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
         }
     }
@@ -102,19 +104,27 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                     if (!dragGrabReady)
                         captureDragGrab(target, pos);
                     if (!dragReanchored) {
+                        Vector2D curPos = target->position().pos();
                         Vector2D curSize = target->position().size();
-                        if (curSize.x > 0 && dragStartWinSize.x > 0 &&
-                            (std::abs(curSize.x - dragStartWinSize.x) > 50 || std::abs(curSize.y - dragStartWinSize.y) > 50)) {
+                        Vector2D expected{dragStartWinPos.x + (pos.x - dragStartMousePos.x),
+                                          dragStartWinPos.y + (pos.y - dragStartMousePos.y)};
+                        const bool sizeChanged = curSize.x > 0 && dragStartWinSize.x > 0 &&
+                            (std::abs(curSize.x - dragStartWinSize.x) > 50 || std::abs(curSize.y - dragStartWinSize.y) > 50);
+                        const bool posJumped = std::abs(curPos.x - expected.x) > 80 || std::abs(curPos.y - expected.y) > 80;
+                        if (sizeChanged || posJumped) {
                             dragReanchored = true;
-                            double newX = pos.x - followGrabX(dragGrabOffset.x, dragStartWinSize.x, curSize.x);
-                            double newY = pos.y - dragGrabOffset.y;
-                            CBox newBox{newX, newY, curSize.x, curSize.y};
-                            g_layoutManager->setTargetGeom(newBox, target);
-                            target->warpPositionSize();
-                            target->recalc();
-
-                            drag->dragEnd();
-                            drag->dragBegin(target, MBIND_MOVE);
+                            if (sizeChanged) {
+                                double newX = pos.x - followGrabX(dragGrabOffset.x, dragStartWinSize.x, curSize.x);
+                                double newY = pos.y - dragGrabOffset.y;
+                                CBox newBox{newX, newY, curSize.x, curSize.y};
+                                g_layoutManager->setTargetGeom(newBox, target);
+                                target->warpPositionSize();
+                                target->recalc();
+                            }
+                            // Recapture compositor drag origin from the restored
+                            // geometry. dragEnd/dragBegin used to re-center CSD
+                            // floats (WAS_FULLSCREEN) and fire a fake dragstop.
+                            drag->updateDragWindow();
                         }
                     }
                 }
@@ -127,6 +137,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         if (e.state == WL_POINTER_BUTTON_STATE_RELEASED) {
             if (wasDragging) {
                 wasDragging = false;
+                dragGrabReady = false;
+                HyprlandAPI::invokeHyprctlCommand("eval", "_G.win11_dragging = false; _G.win11_drag_restore = false");
                 g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
             }
             if (g_pKeybindManager && g_layoutManager) {
@@ -146,7 +158,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         }
     });
 
-    return {"hypr-snap-bridge", "Drag event bridge for snap layouts", "soulis", "1.0"};
+    return {"hypr-snap-bridge", "Drag event bridge for snap layouts", "soulis", "1.1"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

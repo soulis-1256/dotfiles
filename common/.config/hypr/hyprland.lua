@@ -331,8 +331,10 @@ if f_bars then
 				return
 			end
 			pcall(function()
+				hl.dispatch(hl.dsp.window.set_prop({ window = win, prop = "no_anim", value = "1" }))
 				hl.dispatch(hl.dsp.window.resize({ window = win, x = width, y = height, relative = false }))
 				hl.dispatch(hl.dsp.window.move({ window = win, x = x, y = y }))
+				hl.dispatch(hl.dsp.window.set_prop({ window = win, prop = "no_anim", value = "unset" }))
 			end)
 		end
 
@@ -565,7 +567,7 @@ if f_bars then
 		return math.floor(cursorX - offsetX + 0.5), math.floor(cursorY - grabY + 0.5)
 	end
 
-	_G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY)
+	_G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
 		local w = (target_addr and target_addr ~= "" and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
 		if not w or not w.floating then
 			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
@@ -586,12 +588,13 @@ if f_bars then
 			return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 		end
 
-		-- Capture grab against the pre-unmax geometry. Unset / CSD restore
-		-- would otherwise make cursor-window look like a center grab.
+		-- Capture grab against the pre-unmax geometry. Hyprland unmaxes a
+		-- CSD float at mouse-down and recenters; live size is then already
+		-- small, so the ratio must use the original (maxed) width.
 		local live = hl.get_cursor_pos()
 		local cursorX = (live and live.x) or tonumber(posX) or 0
 		local cursorY = (live and live.y) or tonumber(posY) or 0
-		local winX, winY, oldW = w.at.x, w.at.y, w.size.x
+		local winX, winY, liveW = w.at.x, w.at.y, w.size.x
 		local usedGrabX = tonumber(grabX)
 		local usedGrabY = tonumber(grabY)
 		if not usedGrabX or usedGrabX < -90000 then
@@ -600,8 +603,13 @@ if f_bars then
 		if not usedGrabY or usedGrabY < -90000 then
 			usedGrabY = cursorY - winY
 		end
+		local usedOldW = tonumber(origW)
+		if not usedOldW or usedOldW < 2 then
+			usedOldW = liveW
+		end
 
 		_G.win11_drag_restore = true
+		_G.win11_dragging = true
 
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
@@ -610,7 +618,16 @@ if f_bars then
 		end)
 
 		-- Geometry-only transients (PiP) must not xdg-unmax: that unmaxes the parent.
-		if use_xdg and (w.fullscreen == 1 or w.fullscreen == 3) then
+		-- Drop client fullscreen after geometry restore so the PiP HUD returns.
+		if _G.window_is_transient_float and _G.window_is_transient_float(w) then
+			if _G.overlay_set_geometry_maxed then
+				_G.overlay_set_geometry_maxed(w, false)
+			end
+			local og = _G.overlay_restore_geom and _G.overlay_restore_geom(w)
+			if og then
+				cached = og
+			end
+		elseif use_xdg and (w.fullscreen == 1 or w.fullscreen == 3) then
 			pcall(function()
 				hl.dispatch(hl.dsp.window.fullscreen({
 					window = "address:" .. full_addr, mode = "maximized", action = "unset", layout_aware = false,
@@ -636,17 +653,25 @@ if f_bars then
 		local s = cached or { w = dw, h = dh }
 
 		w = hl.get_window("address:" .. full_addr) or w
-		local newX, newY = follow_cursor_restore_pos(cursorX, cursorY, usedGrabX, usedGrabY, oldW, s.w)
+		local newX, newY = follow_cursor_restore_pos(cursorX, cursorY, usedGrabX, usedGrabY, usedOldW, s.w)
 		pcall(function()
 			hl.dispatch(hl.dsp.window.resize({ window = w, x = s.w, y = s.h, relative = false }))
 			hl.dispatch(hl.dsp.window.move({ window = w, x = newX, y = newY }))
 		end)
+		if _G.window_is_transient_float and _G.window_is_transient_float(w) then
+			if _G.overlay_clear_fullscreen then
+				_G.overlay_clear_fullscreen(w)
+			end
+		end
 		pcall(function()
 			hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "no_anim", value = "unset" }))
 		end)
+		-- Cleared on dragstop. Fallback if dragstop never arrives.
 		hl.timer(function()
-			_G.win11_drag_restore = false
-		end, { timeout = 200, type = "oneshot" })
+			if not _G.win11_dragging then
+				_G.win11_drag_restore = false
+			end
+		end, { timeout = 2000, type = "oneshot" })
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 
