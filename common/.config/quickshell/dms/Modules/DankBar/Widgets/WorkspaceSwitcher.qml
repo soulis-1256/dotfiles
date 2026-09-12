@@ -282,6 +282,7 @@ Item {
             const toplevel = win.wayland || win;
             allWindows.push({
                 toplevel: toplevel,
+                hypr: win,
                 index: i,
                 windowTitle: win.title || toplevel.title || "",
                 address: win.address || toplevel.address || ""
@@ -329,6 +330,7 @@ Item {
             }
         }
 
+        root.hideAppPreview();
         appContextMenuLoader.active = true;
         if (!appContextMenuLoader.item)
             return;
@@ -376,6 +378,87 @@ Item {
         };
 
         appContextMenuLoader.item.showAt(x, y, isBarVertical, barEdge, appData, shouldHidePin, desktopEntry, root.parentScreen);
+    }
+
+    function workspacePreviewsEnabled(workspace) {
+        HyprlandService.floatingModeActive;
+        HyprlandService.floatingWorkspaces;
+        if (!CompositorService.isHyprland)
+            return false;
+        const id = workspace?.id !== undefined ? workspace.id : root.currentWorkspace;
+        return HyprlandService.isWorkspaceFloating(id);
+    }
+
+    function hideAppPreview() {
+        previewShowTimer.stop();
+        previewHideTimer.stop();
+        if (appPreviewLoader.item)
+            appPreviewLoader.item.close();
+    }
+
+    function scheduleHideAppPreview() {
+        previewShowTimer.stop();
+        previewHideTimer.restart();
+    }
+
+    function scheduleAppPreview(item, modelData, workspace) {
+        if (!item || !modelData || !root.workspacePreviewsEnabled(workspace)) {
+            root.hideAppPreview();
+            return;
+        }
+        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+            root.hideAppPreview();
+            return;
+        }
+        previewShowTimer.item = item;
+        previewShowTimer.modelData = modelData;
+        previewShowTimer.workspace = workspace;
+        previewHideTimer.stop();
+        if (appPreviewLoader.item && appPreviewLoader.item.visible) {
+            root.showAppPreview(item, modelData, workspace);
+            return;
+        }
+        previewShowTimer.restart();
+    }
+
+    function showAppPreview(item, modelData, workspace) {
+        if (!item || !modelData || !root.workspacePreviewsEnabled(workspace))
+            return;
+        if (appContextMenuLoader.item && appContextMenuLoader.item.visible)
+            return;
+
+        appPreviewLoader.active = true;
+        if (!appPreviewLoader.item)
+            return;
+
+        const windows = root.contextMenuAllWindows(modelData);
+        if (windows.length === 0)
+            return;
+
+        const isBarVertical = root.axis?.isVertical ?? false;
+        const barEdge = root.axis?.edge ?? (root.isFullHeight ? (isBarVertical ? "left" : "bottom") : "bottom");
+        const localPos = item.mapToItem(null, item.width / 2, item.height / 2);
+        let x = localPos.x;
+        let y = localPos.y;
+        const screenHeight = root.parentScreen?.height ?? Screen.height;
+        const screenWidth = root.parentScreen?.width ?? Screen.width;
+
+        switch (barEdge) {
+        case "bottom":
+            y = screenHeight - root.barThickness - (root.barSpacing || 0);
+            break;
+        case "top":
+            y = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "left":
+            x = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "right":
+            x = screenWidth - root.barThickness - (root.barSpacing || 0);
+            break;
+        }
+
+        appPreviewLoader.item.showAt(x, y, isBarVertical, barEdge, windows, modelData.fallbackText || "", modelData.icon || "", root.parentScreen);
     }
 
     function getHyprlandWorkspaces() {
@@ -2172,6 +2255,12 @@ Item {
                                                 hoverEnabled: isActive
                                                 cursorShape: Qt.PointingHandCursor
                                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onEntered: root.scheduleAppPreview(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel)
+                                                onExited: {
+                                                    if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                                                        return;
+                                                    root.scheduleHideAppPreview();
+                                                }
                                                 onClicked: mouse => {
                                                     if (mouse.button === Qt.RightButton) {
                                                         root.showAppContextMenu(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
@@ -2180,6 +2269,7 @@ Item {
                                                             appContextMenuLoader.item.close();
                                                             return;
                                                         }
+                                                        root.hideAppPreview();
                                                         const winId = modelData.windowId;
                                                         if (!winId)
                                                             return;
@@ -2359,6 +2449,12 @@ Item {
                                                 hoverEnabled: isActive
                                                 cursorShape: Qt.PointingHandCursor
                                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onEntered: root.scheduleAppPreview(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel)
+                                                onExited: {
+                                                    if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                                                        return;
+                                                    root.scheduleHideAppPreview();
+                                                }
                                                 onClicked: mouse => {
                                                     if (mouse.button === Qt.RightButton) {
                                                         root.showAppContextMenu(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
@@ -2367,6 +2463,7 @@ Item {
                                                             appContextMenuLoader.item.close();
                                                             return;
                                                         }
+                                                        root.hideAppPreview();
                                                         const winId = modelData.windowId;
                                                         if (!winId)
                                                             return;
@@ -2504,6 +2601,63 @@ Item {
         id: appContextMenuLoader
         active: false
         source: "AppsDockContextMenu.qml"
+    }
+
+    Loader {
+        id: appPreviewLoader
+        active: false
+        source: "WorkspaceAppPreview.qml"
+    }
+
+    Timer {
+        id: previewShowTimer
+        interval: 400
+        repeat: false
+        property var item: null
+        property var modelData: null
+        property var workspace: null
+        onTriggered: root.showAppPreview(item, modelData, workspace)
+    }
+
+    Timer {
+        id: previewHideTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+            if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                return;
+            root.hideAppPreview();
+        }
+    }
+
+    Connections {
+        target: appPreviewLoader.item
+        enabled: appPreviewLoader.status === Loader.Ready
+        function onHoveredChanged() {
+            if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                previewHideTimer.stop();
+            else
+                root.scheduleHideAppPreview();
+        }
+    }
+
+    Connections {
+        target: HyprlandService
+        function onFloatingModeActiveChanged() {
+            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
+                root.hideAppPreview();
+        }
+        function onFloatingWorkspacesChanged() {
+            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
+                root.hideAppPreview();
+        }
+    }
+
+    Connections {
+        target: root
+        function onCurrentWorkspaceChanged() {
+            root.hideAppPreview();
+        }
     }
 
 

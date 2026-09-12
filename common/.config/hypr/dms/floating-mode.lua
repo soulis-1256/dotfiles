@@ -48,6 +48,9 @@ local function from_this_load()
 	return _G.floating_mode_epoch == EPOCH
 end
 
+local WS_STATE_CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_floating_workspaces.json"
+local WS_STATE_TMP_PATH = "/tmp/hypr_floating_workspaces.json"
+
 local function write_mode_indicator(active)
 	local val = active and "1\n" or "0\n"
 	local f1 = io.open(MODE_CACHE_PATH, "w")
@@ -59,6 +62,28 @@ local function write_mode_indicator(active)
 	if f2 then
 		f2:write(val)
 		f2:close()
+	end
+
+	local state = _G.floating_mode
+	local parts = {}
+	if state and state.workspaces then
+		for id, v in pairs(state.workspaces) do
+			table.insert(parts, string.format("%q: %s", tostring(id), v and "true" or "false"))
+		end
+		table.sort(parts)
+	end
+	local json = string.format('{"active": %s, "workspaces": {%s}}\n',
+		(active or (state and state.active)) and "true" or "false",
+		table.concat(parts, ", "))
+	local j1 = io.open(WS_STATE_CACHE_PATH, "w")
+	if j1 then
+		j1:write(json)
+		j1:close()
+	end
+	local j2 = io.open(WS_STATE_TMP_PATH, "w")
+	if j2 then
+		j2:write(json)
+		j2:close()
 	end
 end
 
@@ -953,6 +978,7 @@ function M.toggle_workspace(ws_id)
 
 	local count = apply_mode_to_windows(hl.get_workspace_windows(id) or {}, target_floating, gen, id)
 	log(string.format("Dispatched float=%s to %d windows on workspace %s", tostring(target_floating), count, tostring(id)))
+	write_mode_indicator(state.active)
 	sync_mode_guards()
 end
 

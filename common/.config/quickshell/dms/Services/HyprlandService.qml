@@ -643,6 +643,16 @@ hl.layer_rule({
     }
 
     property bool floatingModeActive: false
+    property var floatingWorkspaces: ({})
+
+    function isWorkspaceFloating(id) {
+        if (root.floatingModeActive)
+            return true;
+        if (id === undefined || id === null)
+            return false;
+        const map = root.floatingWorkspaces || {};
+        return map[String(id)] === true || map[id] === true;
+    }
 
     FileView {
         id: floatingModeFile
@@ -660,6 +670,35 @@ hl.layer_rule({
         onLoaded: syncFromFile()
         onFileChanged: reload()
         onLoadFailed: root.floatingModeActive = false
+    }
+
+    FileView {
+        id: floatingWorkspaceFile
+        path: "file:///tmp/hypr_floating_workspaces.json"
+        watchChanges: true
+        printErrors: false
+        blockLoading: false
+        preload: true
+
+        function syncFromFile() {
+            const raw = (text() || "").trim();
+            if (!raw) {
+                root.floatingWorkspaces = {};
+                return;
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.active === "boolean")
+                    root.floatingModeActive = parsed.active;
+                root.floatingWorkspaces = parsed && parsed.workspaces ? parsed.workspaces : {};
+            } catch (e) {
+                log.warn("failed to parse floating workspace state:", e);
+            }
+        }
+
+        onLoaded: syncFromFile()
+        onFileChanged: reload()
+        onLoadFailed: root.floatingWorkspaces = {}
     }
 
     function toggleFloatingMode() {
