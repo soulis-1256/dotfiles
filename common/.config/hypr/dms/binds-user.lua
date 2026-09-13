@@ -58,7 +58,7 @@ local function alt_tab(back)
 		return
 	end
 	if _G.win11_raise_window then
-		_G.win11_raise_window(w)
+		_G.win11_raise_window(w, { force = true })
 	else
 		pcall(function()
 			hl.dispatch(hl.dsp.focus({ window = w }))
@@ -108,5 +108,18 @@ local function toggle_workspace_floating()
 	end
 end
 hl.bind("SUPER + x", toggle_workspace_floating, { description = "Toggle workspace floating mode" })
+
+hl.unbind("SUPER + up")
+hl.unbind("SUPER + down")
+hl.bind("SUPER + up", function()
+	if _G.floating_mode_maximize_active then
+		_G.floating_mode_maximize_active()
+	end
+end, { description = "Maximize window (floating mode)" })
+hl.bind("SUPER + down", function()
+	if _G.floating_mode_restore_active then
+		_G.floating_mode_restore_active()
+	end
+end, { description = "Restore window size (floating mode)" })
 
 

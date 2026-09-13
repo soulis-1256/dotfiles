@@ -3,23 +3,35 @@
 # Super: Control Center over fullscreen games, app launcher on the desktop.
 # Pointer unlock is handled by Control Center requesting Exclusive keyboard
 # on its overlay while a fullscreen window is on that screen.
+#
+# Only real covering-fullscreen (games, Super+Shift+F) counts. XDG maximize
+# is fullscreen=1 (Zen after drag-to-top) and must still open the start menu.
 
 if [[ "$(dms ipc call control-center status 2>/dev/null)" == "visible" ]]; then
     dms ipc call control-center toggle >/dev/null 2>&1
     exit 0
 fi
 
-active_info=$(hyprctl activewindow -j 2>/dev/null)
-is_fullscreen=$(echo "$active_info" | jq -r 'if . == null or . == {} then "false" else ((.fullscreen != 0 and .fullscreen != false and .fullscreen != null) or (.fullscreenClient != 0 and .fullscreenClient != false and .fullscreenClient != null)) end')
+real_fs_jq='
+  def real_fs:
+    (.fullscreen == 2 or .fullscreen == 3 or .fullscreen == true
+     or .fullscreenClient == 2 or .fullscreenClient == 3);
+'
 
-if [[ "$is_fullscreen" != "true" ]]; then
-    ws_fullscreen=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.hasfullscreen // false')
-    if [[ "$ws_fullscreen" == "true" ]]; then
-        is_fullscreen="true"
+is_game_fullscreen=$(hyprctl activewindow -j 2>/dev/null | jq -r "${real_fs_jq}"'
+  if . == null or . == {} then false else real_fs end
+')
+
+if [[ "$is_game_fullscreen" != "true" ]]; then
+    ws_id=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty')
+    if [[ -n "$ws_id" ]]; then
+        is_game_fullscreen=$(hyprctl clients -j 2>/dev/null | jq -r --argjson ws "$ws_id" "${real_fs_jq}"'
+          any(.[]; (.workspace.id == $ws) and real_fs)
+        ')
     fi
 fi
 
-if [[ "$is_fullscreen" == "true" ]]; then
+if [[ "$is_game_fullscreen" == "true" ]]; then
     dms ipc call control-center toggle >/dev/null 2>&1
 else
     dms ipc call launcher toggle >/dev/null 2>&1

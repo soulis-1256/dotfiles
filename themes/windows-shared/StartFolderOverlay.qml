@@ -473,8 +473,8 @@ Item {
                         }
 
                         Keys.onEscapePressed: function(event) {
-                            if (host)
-                                host.dismissInlineRename();
+                            if (host && host.closeMenu)
+                                host.closeMenu();
                             event.accepted = true;
                         }
                     }
@@ -623,8 +623,8 @@ Item {
                                     }
 
                                     Keys.onEscapePressed: function(event) {
-                                        if (host)
-                                            host.dismissInlineRename();
+                                        if (host && host.closeMenu)
+                                            host.closeMenu();
                                         event.accepted = true;
                                     }
                                 }
@@ -703,8 +703,8 @@ Item {
                                     }
 
                                     Keys.onEscapePressed: function(event) {
-                                        if (host)
-                                            host.dismissInlineRename();
+                                        if (host && host.closeMenu)
+                                            host.closeMenu();
                                         event.accepted = true;
                                     }
                                 }

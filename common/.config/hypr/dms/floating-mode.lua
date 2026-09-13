@@ -543,19 +543,90 @@ local function resolve_window(w)
 	return w, addr
 end
 
+-- Recently mapped / close-restored windows that must stay above an xdg-maxed
+-- client. Start-menu close and window.close both refocus the maxed window,
+-- and raising it would tuck the new/remaining float underneath.
+local protect_top = {}
+
+local function protect_window(w, ms)
+	local addr = window_addr(w)
+	if not addr then
+		return
+	end
+	protect_top[addr] = os.clock() + ((ms or 400) / 1000)
+end
+
+local function other_window_protected(addr)
+	local now = os.clock()
+	for a, exp in pairs(protect_top) do
+		if not exp or exp < now then
+			protect_top[a] = nil
+		elseif a ~= addr then
+			return true
+		end
+	end
+	return false
+end
+
+local function window_focus_hist(w)
+	local hist = 9999
+	pcall(function()
+		hist = tonumber(w.focus_history_id or w.focusHistoryID) or 9999
+	end)
+	return hist
+end
+
+local function pick_next_focus(ws_id, except_addr)
+	local best, best_hist = nil, math.huge
+	for _, c in ipairs(hl.get_windows() or {}) do
+		pcall(function()
+			if not c.mapped or c.hidden then
+				return
+			end
+			if is_special_overlay(c) then
+				return
+			end
+			local pinned = false
+			pcall(function()
+				pinned = c.pinned and true or false
+			end)
+			if pinned then
+				return
+			end
+			if not c.workspace or c.workspace.id ~= ws_id then
+				return
+			end
+			if window_addr(c) == except_addr then
+				return
+			end
+			local hist = window_focus_hist(c)
+			if hist < best_hist then
+				best_hist = hist
+				best = c
+			end
+		end)
+	end
+	return best
+end
+
 -- Keyboard focus does not restack floats. xdg-maximize (Zen after Super+Z)
 -- also ignores bring_to_top; re-set maximize so it covers the window we
 -- just raised above it.
 -- Floats default to allowedOverFullscreen, so bring_to_top paints them above
 -- an xdg-maxed Zen while focus (and XWayland input) stay on Zen. Alt-tab to a
 -- maxed window must lower the others; alt-tab to a small one must focus it.
-_G.win11_raise_window = function(w)
+-- opts.force: restack even if another window is protected (alt-tab).
+_G.win11_raise_window = function(w, opts)
 	if not w then
 		return
 	end
 	local addr
 	w, addr = resolve_window(w)
 	if not w then
+		return
+	end
+	local force = opts and opts.force
+	if not force and other_window_protected(addr) then
 		return
 	end
 	pcall(function()
@@ -572,6 +643,10 @@ _G.win11_raise_window = function(w)
 			pcall(function()
 				if o.floating and not o.pinned and o.workspace and o.workspace.id == ws_id
 					and window_addr(o) ~= addr then
+					local other = window_addr(o)
+					if not force and other and protect_top[other] and os.clock() < protect_top[other] then
+						return
+					end
 					hl.dispatch(hl.dsp.window.alter_zorder({ mode = "bottom", window = o }))
 				end
 			end)
@@ -588,6 +663,33 @@ _G.win11_raise_window = function(w)
 		hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
 		hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
 	end)
+end
+
+local function schedule_raise(addr, delays)
+	if not addr then
+		return
+	end
+	delays = delays or { 0, 50, 160 }
+	for _, ms in ipairs(delays) do
+		local function go()
+			if not from_this_load() then
+				return
+			end
+			local win = live_window(addr)
+			if not win then
+				return
+			end
+			protect_window(win, 500)
+			if _G.win11_raise_window then
+				_G.win11_raise_window(win)
+			end
+		end
+		if ms <= 0 then
+			go()
+		else
+			hl.timer(go, { timeout = ms, type = "oneshot" })
+		end
+	end
 end
 
 local function dispatch_float(w, action)
@@ -1258,6 +1360,59 @@ _G.workspace_floating_toggle = function(ws_id)
 	M.toggle_workspace(ws_id)
 end
 
+_G.floating_mode_is_active = function(ws_id)
+	return M.is_active(ws_id)
+end
+
+-- Super+Up: same as drag-to-top maximize. Super+Down: binary small size.
+-- No-ops in tiled mode (global and per-workspace).
+_G.floating_mode_maximize_active = function()
+	local w = hl.get_active_window()
+	if not w or is_special_overlay(w) then
+		return
+	end
+	local ws_id = w.workspace and w.workspace.id
+	if not M.is_active(ws_id) then
+		return
+	end
+	if is_real_fullscreen(w) then
+		return
+	end
+	if is_window_maximized(w) then
+		return
+	end
+	log(string.format("super-up maximize class=%s addr=%s",
+		tostring(w.class), tostring(window_addr(w))))
+	suppress_record(400)
+	M.apply_floating_state(w, true)
+	_G.set_app_float_maximized(w, true, "super-up")
+	if _G.win11_raise_window then
+		_G.win11_raise_window(w)
+	end
+end
+
+_G.floating_mode_restore_active = function()
+	local w = hl.get_active_window()
+	if not w or is_special_overlay(w) then
+		return
+	end
+	local ws_id = w.workspace and w.workspace.id
+	if not M.is_active(ws_id) then
+		return
+	end
+	if is_real_fullscreen(w) then
+		return
+	end
+	log(string.format("super-down restore class=%s addr=%s",
+		tostring(w.class), tostring(window_addr(w))))
+	suppress_record(400)
+	M.apply_floating_state(w, false)
+	_G.set_app_float_maximized(w, false, "super-down")
+	if _G.win11_raise_window then
+		_G.win11_raise_window(w)
+	end
+end
+
 --------------------------------------------------------------------------------
 -- Window Event Handlers (open, close, active)
 --------------------------------------------------------------------------------
@@ -1353,6 +1508,10 @@ local function handle_new_window(w)
 			M.apply_floating_state(win, maximize, { no_anim = true })
 		end)
 		set_no_anim(win, false)
+		-- Start-menu close refocuses the previous (often xdg-maxed) window
+		-- after this maps, which would tuck us under. Raise now and again
+		-- after the layer dismisses.
+		schedule_raise(addr)
 
 		-- CSD apps (Discord/Zen): Electron may overwrite size after map.
 		-- Hyprbar apps never have xdg maximize — do not retry those.
@@ -1430,6 +1589,10 @@ hl.on("window.close", function(w)
 	if not from_this_load() or not w then
 		return
 	end
+	local closed_ws_id = nil
+	pcall(function()
+		closed_ws_id = w.workspace and w.workspace.id
+	end)
 	-- Last explicit/closed window owns the class bit. OR-ing sibling
 	-- maximize is why unmax → close → reopen came back maximized.
 	pcall(function()
@@ -1480,6 +1643,19 @@ hl.on("window.close", function(w)
 		if addr then
 			known_windows[addr] = nil
 			clear_snap_cache(addr)
+		end
+
+		-- Closing the top float over an xdg-maxed client (Zen) lets Hyprland
+		-- refocus the maxed window and restack the remaining float under it.
+		-- Snapshot MRU now, before close-focus promotes the maxed client to 0.
+		if closed_ws_id and M.is_active(closed_ws_id) then
+			local nextw = pick_next_focus(closed_ws_id, addr)
+			local next_addr = window_addr(nextw)
+			if next_addr then
+				log(string.format("close restack -> class=%s addr=%s",
+					tostring(nextw and nextw.class), tostring(next_addr)))
+				schedule_raise(next_addr, { 0, 40, 140 })
+			end
 		end
 	end)
 end)

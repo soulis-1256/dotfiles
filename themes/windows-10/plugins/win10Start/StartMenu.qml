@@ -1556,46 +1556,9 @@ Item {
     focus: true
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
-            if (root.renamingItemId !== "" || (typeof tileGroup1 !== "undefined" && tileGroup1 && tileGroup1.isEditingHeader) || (typeof tileGroup2 !== "undefined" && tileGroup2 && tileGroup2.isEditingHeader)) {
-                root.dismissInlineRename();
-                event.accepted = true;
-                return;
-            }
-            if (root.contextMenuVisible) {
-                root.contextMenuVisible = false;
-                event.accepted = true;
-                return;
-            }
-            if (root.openFolderId !== "") {
-                root.closeActiveFolder();
-                event.accepted = true;
-                return;
-            }
-            if (root.alphabetZoomOpen) {
-                root.alphabetZoomOpen = false;
-                event.accepted = true;
-                return;
-            }
-            if (root.powerMenuOpen || root.userMenuOpen) {
-                root.closeSidebarAndPopovers();
-                event.accepted = true;
-                return;
-            }
-            if (typeof railDrawer !== "undefined" && railDrawer && railDrawer.isRailExpanded) {
-                root.closeSidebarAndPopovers();
-                event.accepted = true;
-                return;
-            }
-            if (root.isSearchMode) {
-                root.exitSearchMode();
-                event.accepted = true;
-                return;
-            }
-            if (root.closePopout) {
-                root.closePopout();
-                event.accepted = true;
-                return;
-            }
+            root.closeMenu();
+            event.accepted = true;
+            return;
         }
         if (root.isSearchMode && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
             root.toggleSearchCategory();
@@ -2235,13 +2198,7 @@ Item {
                         Keys.onEnterPressed: root.launchSelectedItem()
 
                         Keys.onEscapePressed: event => {
-                            if (searchField.text.length > 0) {
-                                searchField.text = "";
-                                root.query = "";
-                                root.updateSearch();
-                            } else {
-                                root.exitSearchMode();
-                            }
+                            root.closeMenu();
                             event.accepted = true;
                         }
 
@@ -3741,7 +3698,7 @@ Item {
                     }
 
                     Keys.onEscapePressed: function(event) {
-                        root.dismissInlineRename();
+                        root.closeMenu();
                         event.accepted = true;
                     }
                 }
@@ -3971,7 +3928,7 @@ Item {
                                         }
 
                                         Keys.onEscapePressed: function(event) {
-                                            root.dismissInlineRename();
+                                            root.closeMenu();
                                             event.accepted = true;
                                         }
                                     }
@@ -4173,7 +4130,7 @@ Item {
                                     }
 
                                     Keys.onEscapePressed: function(event) {
-                                        root.dismissInlineRename();
+                                        root.closeMenu();
                                         event.accepted = true;
                                     }
                                 }
