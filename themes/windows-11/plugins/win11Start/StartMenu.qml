@@ -1519,23 +1519,17 @@ Item {
             SessionService.logout();
     }
 
-    implicitWidth: root.isSearchMode ? 840 : 648
-    implicitHeight: root.isSearchMode ? 748 : root.homeMenuHeight
+    implicitWidth: 648
+    implicitHeight: root.homeMenuHeight
     width: implicitWidth
     height: implicitHeight
     onImplicitWidthChanged: {
         if (root.parentPopout)
             root.parentPopout.contentWidth = root.implicitWidth;
     }
-    onImplicitHeightChanged: {
-        if (root.parentPopout)
-            root.parentPopout.contentHeight = root.implicitHeight;
-    }
     onParentPopoutChanged: {
-        if (root.parentPopout) {
+        if (root.parentPopout)
             root.parentPopout.contentWidth = root.implicitWidth;
-            root.parentPopout.contentHeight = root.implicitHeight;
-        }
     }
     focus: true
     Keys.onPressed: function(event) {

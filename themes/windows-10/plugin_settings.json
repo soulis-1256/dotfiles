@@ -1,4 +1,10 @@
 {
+  "snap": {
+    "enabled": true
+  },
+  "win11Snap": {
+    "enabled": false
+  },
   "win10Start": {
     "enabled": true,
     "group1Title": "Life at a glance",

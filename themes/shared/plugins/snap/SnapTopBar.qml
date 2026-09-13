@@ -15,7 +15,6 @@ Item {
     property bool isDragging: false
     property string draggedWindowAddr: ""
     property string activeZone: ""
-    property string activeZoneName: ""
     property string lastActiveZone: ""
     property string activeScreenName: ""
     property int lastDragGx: 0
@@ -287,7 +286,6 @@ Item {
                 root.dragStartMouseX = gx;
                 root.dragStartMouseY = gy;
                 root.activeZone = "";
-                root.activeZoneName = "";
                 root.lastActiveZone = "";
                 return;
             }
@@ -300,7 +298,6 @@ Item {
                     root.activeScreenName = s.name;
                     root.activeScreenIsPortrait = (s.height > s.width);
                     root.activeZone = "";
-                    root.activeZoneName = "";
                     root.lastActiveZone = "";
                 }
 
@@ -314,7 +311,7 @@ Item {
                     var cardLeft = centerX - 220;
                     var cardRight = centerX + 220;
                     var cardTop = 8;
-                    var cardBottom = 130;
+                    var cardBottom = 88;
 
                     if (localX < cardLeft - 15 || localX > cardRight + 15 || localY < cardTop - 4 || localY > cardBottom + 15) {
                         // Left the flyout card but still dragging: collapse the UI
@@ -379,7 +376,6 @@ Item {
                 // Otherwise, outside all snap triggers:
                 if (root.activeZone !== "") {
                     root.activeZone = "";
-                    root.activeZoneName = "";
                     root.lastActiveZone = "";
                 }
                 break;
@@ -399,7 +395,6 @@ Item {
         collapseTimer.stop();
         root.isExpanded = true;
         root.activeZone = "";
-        root.activeZoneName = "";
         root.lastActiveZone = "";
     }
 
@@ -411,36 +406,11 @@ Item {
         collapseTimer.stop();
         root.isExpanded = false;
         root.activeZone = "";
-        root.activeZoneName = "";
     }
 
     function setZone(zone) {
         root.activeZone = zone;
         if (zone && zone !== "") root.lastActiveZone = zone;
-        switch (zone) {
-        case "half-left": root.activeZoneName = "Left 50%"; break;
-        case "half-right": root.activeZoneName = "Right 50%"; break;
-        case "half-top": root.activeZoneName = "Top 50%"; break;
-        case "half-bottom": root.activeZoneName = "Bottom 50%"; break;
-        case "left-two-thirds": root.activeZoneName = "Left 67%"; break;
-        case "right-one-third": root.activeZoneName = "Right 33%"; break;
-        case "top-two-thirds": root.activeZoneName = "Top 67%"; break;
-        case "bottom-one-third": root.activeZoneName = "Bottom 33%"; break;
-        case "col-1": root.activeZoneName = "Column 1 (33%)"; break;
-        case "col-2": root.activeZoneName = "Center 33%"; break;
-        case "col-3": root.activeZoneName = "Column 3 (33%)"; break;
-        case "row-1": root.activeZoneName = "Row 1 (33%)"; break;
-        case "row-2": root.activeZoneName = "Row 2 (33%)"; break;
-        case "row-3": root.activeZoneName = "Row 3 (33%)"; break;
-        case "top-left": root.activeZoneName = "Top-Left 25%"; break;
-        case "top-right": root.activeZoneName = "Top-Right 25%"; break;
-        case "bottom-left": root.activeZoneName = "Bottom-Left 25%"; break;
-        case "bottom-right": root.activeZoneName = "Bottom-Right 25%"; break;
-        case "maximize": root.activeZoneName = "Maximize Work Area"; break;
-        case "center": root.activeZoneName = "Center Float"; break;
-        case "tile": root.activeZoneName = "Re-Tile"; break;
-        default: root.activeZoneName = ""; break;
-        }
     }
 
     Timer {
@@ -487,7 +457,7 @@ Item {
             // 3. Delegate precision placement, sizing, caching, and titlebar offsets to Hyprland Lua
             if (addr && addr !== "") {
                 var sName = targetScreen ? targetScreen.name : (screenName || "");
-                Hyprland.dispatch("_G.win11_snap_window('" + addr + "', '" + zone + "', '" + sName + "')");
+                Hyprland.dispatch("_G.snap_window('" + addr + "', '" + zone + "', '" + sName + "')");
             }
         }
     }
@@ -497,7 +467,7 @@ Item {
         var gx = (posX !== undefined && posX !== null) ? posX : 0;
         var gy = (posY !== undefined && posY !== null) ? posY : 0;
         var ow = root.dragStartWinW > 1 ? root.dragStartWinW : 0;
-        Hyprland.dispatch("_G.win11_restore_window('" + addr + "', " + gx + ", " + gy + ", " + root.dragGrabOffsetX + ", " + root.dragGrabOffsetY + ", " + ow + ")");
+        Hyprland.dispatch("_G.snap_restore_window('" + addr + "', " + gx + ", " + gy + ", " + root.dragGrabOffsetX + ", " + root.dragGrabOffsetY + ", " + ow + ")");
     }
 
     function triggerSnap(zone) {
@@ -600,13 +570,11 @@ Item {
             property real targetHeight: 0
             property bool hasActiveTarget: false
             property bool canGlide: false
-            property string lastZoneName: ""
-
             screen: modelData
             visible: root.isDragging && (root.activeZone !== "" || ghostRect.opacity > 0.01) && root.activeScreenName === modelData.name
             mask: Region {}
 
-            WlrLayershell.namespace: "dms:win11-snap-preview"
+            WlrLayershell.namespace: "dms:snap-preview"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -623,10 +591,6 @@ Item {
             function updateBounds() {
                 if (root.activeZone !== "" && root.activeScreenName === modelData.name) {
                     var b = root.getZoneBounds(root.activeZone, modelData.width, modelData.height);
-
-                    if (root.activeZoneName !== "") {
-                        previewWin.lastZoneName = root.activeZoneName;
-                    }
 
                     if (!previewWin.hasActiveTarget || ghostRect.opacity <= 0.05) {
                         // First entrance: snap coordinates instantly so it blossoms in place locally
@@ -692,25 +656,6 @@ Item {
 
                 Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutQuad } }
                 Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: zoneBadgeText.implicitWidth + 28
-                    height: 38
-                    radius: 19
-                    color: Theme.popupLayerColor(Theme.surfaceContainer)
-                    border.color: root.winAccent
-                    border.width: 1
-
-                    StyledText {
-                        id: zoneBadgeText
-                        anchors.centerIn: parent
-                        text: root.activeZoneName !== "" ? root.activeZoneName : previewWin.lastZoneName
-                        font.pixelSize: 13
-                        font.weight: Font.DemiBold
-                        color: root.winAccent
-                    }
-                }
             }
         }
     }
@@ -726,7 +671,7 @@ Item {
             screen: modelData
             visible: root.isDragging && root.activeScreenName === modelData.name
 
-            WlrLayershell.namespace: "dms:win11-snap-bar"
+            WlrLayershell.namespace: "dms:snap-bar"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -744,7 +689,7 @@ Item {
             }
 
             width: 480
-            implicitHeight: root.isExpanded ? 120 : 20
+            implicitHeight: root.isExpanded ? 80 : 20
             height: implicitHeight
 
             Item {
@@ -760,7 +705,7 @@ Item {
                     anchors.top: parent.top
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: root.isExpanded ? 440 : 200
-                    height: root.isExpanded ? 114 : 14
+                    height: root.isExpanded ? 80 : 14
                     radius: root.isExpanded ? 10 : 7
                     color: root.isExpanded ? root.winBg : Qt.rgba(root.winAccent.r, root.winAccent.g, root.winAccent.b, 0.95)
                     border.color: root.winAccent
@@ -818,7 +763,7 @@ Item {
 
                         Column {
                             anchors.fill: parent
-                            spacing: 6
+                            spacing: 0
 
                             // 4 Layout Cards
                             Row {
@@ -1016,15 +961,6 @@ Item {
                                         }
                                     }
                                 }
-                            }
-
-                            // Dynamic Hint Text
-                            StyledText {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.activeZoneName !== "" ? root.activeZoneName : "Hover a zone to preview, drop to snap"
-                                font.pixelSize: 11
-                                font.weight: root.activeZoneName !== "" ? Font.DemiBold : Font.Normal
-                                color: root.activeZoneName !== "" ? root.winAccent : root.winMuted
                             }
                         }
                     }

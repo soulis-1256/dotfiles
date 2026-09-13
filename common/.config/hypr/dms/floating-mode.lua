@@ -23,6 +23,8 @@ _G.floating_mode.workspaces = _G.floating_mode.workspaces or {}
 
 local MODE_CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_floating_mode"
 local MODE_TMP_PATH = "/tmp/hypr_floating_mode"
+local WS_STATE_CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_floating_workspaces.json"
+local WS_STATE_TMP_PATH = "/tmp/hypr_floating_workspaces.json"
 
 local function read_mode_indicator()
 	local f = io.open(MODE_CACHE_PATH, "r") or io.open(MODE_TMP_PATH, "r")
@@ -34,9 +36,46 @@ local function read_mode_indicator()
 	return false
 end
 
-if read_mode_indicator() then
-	_G.floating_mode.active = true
+local function parse_ws_state(content)
+	local active, workspaces = nil, {}
+	if not content or content == "" then
+		return active, workspaces
+	end
+	local a = content:match('"active"%s*:%s*(%a+)')
+	if a == "true" then
+		active = true
+	elseif a == "false" then
+		active = false
+	end
+	local ws_block = content:match('"workspaces"%s*:%s*%{(.-)%}')
+	if ws_block then
+		for id, val in ws_block:gmatch('"([^"]+)"%s*:%s*(%a+)') do
+			workspaces[tonumber(id) or id] = (val == "true")
+		end
+	end
+	return active, workspaces
 end
+
+local function read_ws_state_file()
+	local f = io.open(WS_STATE_CACHE_PATH, "r") or io.open(WS_STATE_TMP_PATH, "r")
+	if not f then
+		return nil, {}
+	end
+	local content = f:read("*a") or ""
+	f:close()
+	return parse_ws_state(content)
+end
+
+local function load_mode_from_disk()
+	local active, workspaces = read_ws_state_file()
+	if active == nil then
+		active = read_mode_indicator()
+	end
+	_G.floating_mode.active = active and true or false
+	_G.floating_mode.workspaces = workspaces or {}
+end
+
+load_mode_from_disk()
 
 log("floating-mode loaded. Current active = " .. tostring(_G.floating_mode.active))
 
@@ -47,9 +86,6 @@ local EPOCH = _G.floating_mode_epoch
 local function from_this_load()
 	return _G.floating_mode_epoch == EPOCH
 end
-
-local WS_STATE_CACHE_PATH = (os.getenv("HOME") or "") .. "/.cache/hypr_floating_workspaces.json"
-local WS_STATE_TMP_PATH = "/tmp/hypr_floating_workspaces.json"
 
 local function write_mode_indicator(active)
 	local val = active and "1\n" or "0\n"
@@ -1362,6 +1398,33 @@ end
 
 _G.floating_mode_is_active = function(ws_id)
 	return M.is_active(ws_id)
+end
+
+-- Re-read Super+Z / Super+X state from disk and float leftovers that
+-- hyprctl reload may have left tiled. Does not toggle, and does not
+-- tile individually-floated windows in tiled mode.
+_G.floating_mode_restore_from_cache = function()
+	if not from_this_load() then
+		return
+	end
+	load_mode_from_disk()
+	write_mode_indicator(_G.floating_mode.active)
+	sync_mode_guards()
+	if not any_floating_mode() then
+		return
+	end
+	for _, w in ipairs(hl.get_windows() or {}) do
+		pcall(function()
+			if is_special_overlay(w) or is_real_fullscreen(w) then
+				return
+			end
+			local ws_id = w.workspace and w.workspace.id
+			if M.is_active(ws_id) and not w.floating then
+				log(string.format("restore-from-cache float leftover class=%s", tostring(w.class)))
+				M.apply_floating_state(w, should_maximize(w), { no_anim = true })
+			end
+		end)
+	end
 end
 
 -- Super+Up: same as drag-to-top maximize. Super+Down: binary small size.

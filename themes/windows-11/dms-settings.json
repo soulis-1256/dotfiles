@@ -1,7 +1,7 @@
 {
-  "currentThemeName": "custom",
-  "currentThemeCategory": "registry",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/steamDeck/theme.json",
+  "currentThemeName": "purple",
+  "currentThemeCategory": "generic",
+  "customThemeFile": "",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {

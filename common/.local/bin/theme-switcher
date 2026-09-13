@@ -37,6 +37,8 @@ list_themes() {
 
     for theme_dir in "${THEMES_DIR}"/*; do
         [[ -d "$theme_dir" ]] || continue
+        # Skip shared/lib directories that are not switchable packs.
+        [[ -f "${theme_dir}/metadata.json" || -f "${theme_dir}/theme.lua" ]] || continue
         local theme_id name desc
         theme_id="$(basename "$theme_dir")"
         name="$theme_id"
@@ -72,6 +74,17 @@ sync_plugins() {
             [[ -d "$src" ]] || continue
             ln -sfn "$src" "${DMS_CONFIG_DIR}/plugins/$(basename "$src")"
             echo -e "  ${GREEN}✓${NC} Installed plugin $(basename "$src")"
+        done
+    fi
+
+    # Snap layouts are theme-agnostic: always install the shared plugin.
+    local shared_plugins="${THEMES_DIR}/shared/plugins"
+    if [[ -d "$shared_plugins" ]]; then
+        local src
+        for src in "${shared_plugins}"/*; do
+            [[ -d "$src" ]] || continue
+            ln -sfn "$src" "${DMS_CONFIG_DIR}/plugins/$(basename "$src")"
+            echo -e "  ${GREEN}✓${NC} Installed shared plugin $(basename "$src")"
         done
     fi
 
@@ -169,6 +182,8 @@ def fill_missing(base, incoming):
     for key, value in incoming.items():
         if key not in base:
             base[key] = value
+        elif isinstance(base[key], dict) and isinstance(value, dict):
+            fill_missing(base[key], value)
     return base
 
 
@@ -178,6 +193,52 @@ def overlay_preserved(base, live):
     for key, value in live.items():
         if key in PRESERVE_KEYS or key.startswith(PRESERVE_PREFIXES):
             base[key] = value
+    return base
+
+
+def walk_widgets(obj, fn):
+    if isinstance(obj, dict):
+        fn(obj)
+        for value in obj.values():
+            walk_widgets(value, fn)
+    elif isinstance(obj, list):
+        for value in obj:
+            walk_widgets(value, fn)
+
+
+def pack_pill_order(pack):
+    found = []
+
+    def grab(widget):
+        if widget.get("id") == "controlCenterButton" and widget.get("controlCenterGroupOrder") and not found:
+            found.append(list(widget["controlCenterGroupOrder"]))
+
+    walk_widgets(pack, grab)
+    return found[0] if found else None
+
+
+def apply_pack_control_center(base, pack):
+    """Stale theme-state snapshots predate the pill reorder and still
+    ship a darkMode tile. Pack chrome owns both of those."""
+    if not isinstance(base, dict) or not isinstance(pack, dict):
+        return base
+
+    order = pack_pill_order(pack)
+    if order:
+        def fill_order(widget):
+            if widget.get("id") == "controlCenterButton":
+                widget["controlCenterGroupOrder"] = list(order)
+
+        walk_widgets(base, fill_order)
+
+    pack_tiles = pack.get("controlCenterWidgets")
+    base_tiles = base.get("controlCenterWidgets")
+    if isinstance(pack_tiles, list) and isinstance(base_tiles, list):
+        pack_ids = {tile.get("id") for tile in pack_tiles if isinstance(tile, dict)}
+        if "floatingMode" in pack_ids:
+            for tile in base_tiles:
+                if isinstance(tile, dict) and tile.get("id") == "darkMode":
+                    tile["id"] = "floatingMode"
     return base
 
 
@@ -208,6 +269,11 @@ else:
     base = pack
 
 base = overlay_preserved(base, live)
+base = apply_pack_control_center(base, pack)
+# Pack files must stay pack-owned. A leftover settings.json symlink would
+# write the merged live config back into themes/<pack>/dms-settings.json.
+if dest_path.is_symlink():
+    dest_path.unlink()
 dest_path.write_text(json.dumps(base, indent=2) + "\n")
 PY
 }
@@ -217,7 +283,7 @@ apply_theme() {
     local reset_flag="${2:-0}"
     local theme_path="${THEMES_DIR}/${target}"
 
-    if [[ ! -d "$theme_path" ]]; then
+    if [[ ! -d "$theme_path" || ( ! -f "${theme_path}/metadata.json" && ! -f "${theme_path}/theme.lua" ) ]]; then
         echo -e "${RED}Error: Theme '${target}' not found in ${THEMES_DIR}.${NC}"
         echo ""
         list_themes
@@ -225,6 +291,19 @@ apply_theme() {
     fi
 
     echo -e "${BOLD}${CYAN}Switching theme to: ${BOLD}${target}...${NC}"
+
+    local saved_float=""
+    local saved_ws=""
+    if [[ -f "${HOME}/.cache/hypr_floating_mode" ]]; then
+        saved_float="$(head -c 1 "${HOME}/.cache/hypr_floating_mode" 2>/dev/null || true)"
+    elif [[ -f /tmp/hypr_floating_mode ]]; then
+        saved_float="$(head -c 1 /tmp/hypr_floating_mode 2>/dev/null || true)"
+    fi
+    if [[ -f "${HOME}/.cache/hypr_floating_workspaces.json" ]]; then
+        saved_ws="$(cat "${HOME}/.cache/hypr_floating_workspaces.json" 2>/dev/null || true)"
+    elif [[ -f /tmp/hypr_floating_workspaces.json ]]; then
+        saved_ws="$(cat /tmp/hypr_floating_workspaces.json 2>/dev/null || true)"
+    fi
 
     # Stop DMS first so it does not hot-reload a partial settings write
     # (that retriggers greeter auto-login sync).
@@ -240,12 +319,16 @@ apply_theme() {
 
     if [[ -f "${theme_path}/dms-settings.json" ]]; then
         mkdir -p "${DMS_CONFIG_DIR}"
-        ln -sfn "${theme_path}/dms-settings.json" "${DMS_CONFIG_DIR}/settings.json"
-        echo -e "  ${GREEN}✓${NC} Linked DankMaterialShell settings"
+        apply_dms_settings "${theme_path}/dms-settings.json" "$target" "$reset_flag"
+        if [[ "$reset_flag" == "1" ]]; then
+            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings (reset to pack defaults)"
+        else
+            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings"
+        fi
     fi
 
-    # Build Hyprland snap bridge plugin if missing
-    if [[ "$target" == "windows-11" && ! -f "${HOME}/.local/lib/hyprland/hypr-snap-bridge-v2.so" ]]; then
+    # Snap bridge is shared by every theme.
+    if [[ ! -f "${HOME}/.local/lib/hyprland/hypr-snap-bridge-v3.so" ]]; then
         local plugin_src="${DOTFILES_DIR}/common/.config/hypr/plugins/hypr-snap-bridge"
         if [[ -d "$plugin_src" ]] && command -v pkg-config &>/dev/null && pkg-config --exists hyprland 2>/dev/null; then
             echo -e "  ${CYAN}Building Hyprland snap plugin...${NC}"
@@ -264,6 +347,16 @@ apply_theme() {
     if command -v hyprctl &>/dev/null && hyprctl activewindow &>/dev/null; then
         hyprctl reload &>/dev/null || true
         echo -e "  ${GREEN}✓${NC} Reloaded Hyprland configuration"
+        # Theme chrome must not clobber Super+Z / Super+X floating state.
+        if [[ -n "$saved_float" ]]; then
+            printf '%s\n' "$saved_float" > "${HOME}/.cache/hypr_floating_mode"
+            printf '%s\n' "$saved_float" > /tmp/hypr_floating_mode
+        fi
+        if [[ -n "$saved_ws" ]]; then
+            printf '%s\n' "$saved_ws" > "${HOME}/.cache/hypr_floating_workspaces.json"
+            printf '%s\n' "$saved_ws" > /tmp/hypr_floating_workspaces.json
+        fi
+        hyprctl eval "_G.floating_mode_restore_from_cache()" &>/dev/null || true
     fi
 
     echo "$target" > "$CURRENT_THEME_FILE"
@@ -284,6 +377,9 @@ usage() {
     echo "layout, widgets, etc.) and Start pin/folder layout. Switching away"
     echo "and back restores that theme's last snapshot. Plugin pin state is never"
     echo "replaced by pack defaults once it exists."
+    echo ""
+    echo "DankMaterialShell color themes (and greeter state) are global: visual"
+    echo "packs never overwrite them. Floating mode is also kept across applies."
     echo ""
     echo "Examples:"
     echo "  theme-switcher list"

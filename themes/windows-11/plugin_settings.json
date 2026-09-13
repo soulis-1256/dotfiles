@@ -1,6 +1,9 @@
 {
-  "win11Snap": {
+  "snap": {
     "enabled": true
+  },
+  "win11Snap": {
+    "enabled": false
   },
   "win11Start": {
     "enabled": true,

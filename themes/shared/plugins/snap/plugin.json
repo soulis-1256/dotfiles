@@ -1,0 +1,12 @@
+{
+    "id": "snap",
+    "name": "Snap Layouts",
+    "description": "Drag-to-edge snapping and top-of-screen layout flyout",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "daemon",
+    "component": "./SnapWidget.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}

@@ -10,7 +10,7 @@ import qs.Widgets
 Item {
     id: root
 
-    property string pluginId: "win11Snap"
+    property string pluginId: "snap"
     property var pluginService: null
 
     SnapTopBar {
@@ -18,7 +18,7 @@ Item {
     }
 
     IpcHandler {
-        target: "win11Snap"
+        target: "snap"
 
         function toggle(): string {
             topHoverBar.toggle();

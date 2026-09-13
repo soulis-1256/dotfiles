@@ -1,7 +1,7 @@
 {
-  "currentThemeName": "custom",
-  "currentThemeCategory": "registry",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/steamDeck/theme.json",
+  "currentThemeName": "purple",
+  "currentThemeCategory": "generic",
+  "customThemeFile": "",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -714,7 +714,21 @@
         },
         {
           "id": "controlCenterButton",
-          "enabled": true
+          "enabled": true,
+          "controlCenterGroupOrder": [
+            "network",
+            "floatingMode",
+            "vpn",
+            "bluetooth",
+            "audio",
+            "microphone",
+            "brightness",
+            "battery",
+            "printer",
+            "screenSharing",
+            "idleInhibitor",
+            "doNotDisturb"
+          ]
         }
       ],
       "spacing": 0,
@@ -783,7 +797,21 @@
         },
         {
           "id": "controlCenterButton",
-          "enabled": true
+          "enabled": true,
+          "controlCenterGroupOrder": [
+            "network",
+            "floatingMode",
+            "vpn",
+            "bluetooth",
+            "audio",
+            "microphone",
+            "brightness",
+            "battery",
+            "printer",
+            "screenSharing",
+            "idleInhibitor",
+            "doNotDisturb"
+          ]
         },
         {
           "id": "privacyIndicator",

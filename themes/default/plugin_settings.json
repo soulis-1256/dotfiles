@@ -1,4 +1,10 @@
 {
+  "snap": {
+    "enabled": true
+  },
+  "win11Snap": {
+    "enabled": false
+  },
   "win10Start": {
     "enabled": false
   },

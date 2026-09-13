@@ -74,24 +74,7 @@ Item {
                     }
                 }
 
-                Item {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(hintText.implicitWidth, 180)
-                    height: 18
 
-                    StyledText {
-                        id: hintText
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width
-                        text: root.activeHint !== "" ? root.activeHint : "Click a zone to snap"
-                        font.pixelSize: 11
-                        color: root.activeHint !== "" ? root.winAccent : root.winMuted
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignRight
-                    }
-                }
             }
 
             // Cards Grid: The 4 Windows 11 snap layout presets

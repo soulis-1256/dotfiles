@@ -15,9 +15,13 @@ theme-switcher apply default
 
 Windows 10/11 extras live in `windows-10/plugins/` and `windows-11/plugins/` and are symlinked into `~/.config/DankMaterialShell/plugins/` only while that theme is active.
 
+Snap layouts (drag-to-edge and the top-of-screen flyout) live in `shared/plugins/snap/` and are installed for every pack.
+
 User state is not reset on reapply:
 
 - DankMaterialShell bar layout and other live settings stay as you left them. Switching away snapshots them under `~/.config/DankMaterialShell/theme-state/` and restores that snapshot when you come back.
+- DankMaterialShell color themes are global. Visual packs never overwrite the live color scheme.
+- Floating mode (Super+Z / Super+X) is kept across theme applies.
 - Start menu pin folders and grid positions live in `plugin_settings.json` and are never replaced by the pack's first-run defaults once they exist.
 
 To throw that away and take the pack defaults again:

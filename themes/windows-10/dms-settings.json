@@ -1,7 +1,7 @@
 {
-  "currentThemeName": "custom",
-  "currentThemeCategory": "custom",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/windows-10/theme.json",
+  "currentThemeName": "purple",
+  "currentThemeCategory": "generic",
+  "customThemeFile": "",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -559,6 +559,7 @@
   "notificationHistorySaveCritical": true,
   "notificationRules": [],
   "notificationFocusedMonitor": false,
+  "notificationCenterShowCalendar": true,
   "osdAlwaysShowValue": false,
   "osdPosition": 5,
   "osdVolumeEnabled": true,
@@ -700,7 +701,21 @@
         },
         {
           "id": "controlCenterButton",
-          "enabled": true
+          "enabled": true,
+          "controlCenterGroupOrder": [
+            "network",
+            "floatingMode",
+            "vpn",
+            "bluetooth",
+            "audio",
+            "microphone",
+            "brightness",
+            "battery",
+            "printer",
+            "screenSharing",
+            "idleInhibitor",
+            "doNotDisturb"
+          ]
         },
         {
           "id": "win10Clock",
@@ -780,7 +795,21 @@
         },
         {
           "id": "controlCenterButton",
-          "enabled": true
+          "enabled": true,
+          "controlCenterGroupOrder": [
+            "network",
+            "floatingMode",
+            "vpn",
+            "bluetooth",
+            "audio",
+            "microphone",
+            "brightness",
+            "battery",
+            "printer",
+            "screenSharing",
+            "idleInhibitor",
+            "doNotDisturb"
+          ]
         },
         {
           "id": "win10Clock",
@@ -936,6 +965,5 @@
   "barInsetPaddingShared": -1,
   "barInsetPaddingSyncAll": false,
   "frameBarInsetPadding": -1,
-  "configVersion": 13,
-  "notificationCenterShowCalendar": true
+  "configVersion": 13
 }
