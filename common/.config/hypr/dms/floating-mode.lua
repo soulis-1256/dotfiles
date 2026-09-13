@@ -146,8 +146,29 @@ _G.app_float_state = _G.app_float_state or {}
 local cache_dirty = false
 local known_windows = {}
 local pending_restore = {}
+-- CSD (no hyprbar) clients unmax on destroy. Ignore fullscreen after close
+-- so that teardown does not persist maximized=false. Same for the ~1.6s
+-- after we xdg-max on map: Electron/Zen bounce size and must not slam to
+-- the 1280x800 default.
+local recently_closed = {}
+local map_max_guard = {}
 local apply_gen = 0
 local record_suppress = 0
+
+local function clock_map_active(t, key)
+	if not key or not t then
+		return false
+	end
+	local exp = t[key]
+	if not exp then
+		return false
+	end
+	if os.clock() >= exp then
+		t[key] = nil
+		return false
+	end
+	return true
+end
 
 local SKIP_GEOMETRY_CLASS = {
 	["com.danklinux.dms"] = true,
@@ -493,11 +514,21 @@ local function record_window_state(w, source)
 	if not w.floating then
 		return
 	end
+	local addr = window_addr(w)
+	if clock_map_active(recently_closed, addr) then
+		return
+	end
+	local mapped = true
+	pcall(function()
+		mapped = w.mapped
+	end)
+	if mapped == false then
+		return
+	end
 	local app_key = get_app_key(w)
 	if not app_key then
 		return
 	end
-	local addr = window_addr(w)
 	local maximized = is_window_maximized(w)
 
 	-- Poll / focus must not own the persisted bit OR overwrite an explicit
@@ -505,17 +536,23 @@ local function record_window_state(w, source)
 	-- a post-unmax poll seeing old geometry flipped known_windows back too.
 	if source == "poll" or source == "window.active" then
 		if addr and not known_windows[addr] then
-			known_windows[addr] = { app_key = app_key, maximized = maximized }
+			local settling = clock_map_active(map_max_guard, addr)
+				or clock_map_active(pending_restore, addr)
+			if maximized or not settling then
+				known_windows[addr] = { app_key = app_key, maximized = maximized }
+			end
 		end
 		return
 	end
-	if addr then
+	-- Map-time CSD bounce unsets xdg maximize. Do not remember that as
+	-- "user restored" or close will persist maximized=false.
+	local bounce = clock_map_active(map_max_guard, addr)
+		or clock_map_active(pending_restore, addr)
+	if addr and (maximized or not bounce) then
 		known_windows[addr] = { app_key = app_key, maximized = maximized }
 	end
-	if addr and pending_restore[addr] and os.clock() < pending_restore[addr] then
-		if not maximized then
-			return
-		end
+	if bounce and not maximized then
+		return
 	end
 
 	set_saved_maximized(app_key, maximized, source or "record_window_state")
@@ -1108,6 +1145,9 @@ local function apply_maximized(w)
 			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
 			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
 		end)
+		-- Electron/Zen often unset maximize right after we set it. Treat
+		-- that bounce as map/apply noise, not a user restore to 1280x800.
+		map_max_guard[addr] = os.clock() + 1.6
 		if not has_xdg_maximize(w) then
 			set_xdg_maximize(w)
 		end
@@ -1183,6 +1223,12 @@ function M.apply_floating_state(w, want_maximized, opts)
 		-- Otherwise, leave it alone: do NOT force unmaximize or slam to 1280x800.
 		if is_window_maximized(w) then
 			apply_maximized(w)
+		end
+	end
+	if want_maximized == true or want_maximized == false then
+		local app_key = get_app_key(w)
+		if addr and app_key then
+			known_windows[addr] = { app_key = app_key, maximized = want_maximized == true }
 		end
 	end
 	if silent then
@@ -1578,13 +1624,16 @@ local function handle_new_window(w)
 
 		-- CSD apps (Discord/Zen): Electron may overwrite size after map.
 		-- Hyprbar apps never have xdg maximize — do not retry those.
+		-- Fixed schedule (do not stop on first success): Discord often
+		-- accepts maximize, then restores its own size a few hundred ms later.
 		if maximize == true then
 			local xdg = false
 			pcall(function()
 				xdg = uses_xdg_maximize(win)
 			end)
 			if xdg then
-				local function csd_retry(n)
+				local delays = { 200, 500, 900, 1400 }
+				for i, ms in ipairs(delays) do
 					hl.timer(function()
 						if not from_this_load() or apply_gen ~= mygen then
 							return
@@ -1599,17 +1648,13 @@ local function handle_new_window(w)
 						end)
 						if need then
 							log(string.format("retry apply_maximized class=%s addr=%s (retry %d)",
-								tostring(cur.class), addr, n + 1))
+								tostring(cur.class), addr, i))
 							pcall(function()
 								apply_maximized(cur)
 							end)
-							if n < 2 then
-								csd_retry(n + 1)
-							end
 						end
-					end, { timeout = (n == 0 and 200 or 500), type = "oneshot" })
+					end, { timeout = ms, type = "oneshot" })
 				end
-				csd_retry(0)
 			end
 		end
 	end
@@ -1666,9 +1711,13 @@ hl.on("window.close", function(w)
 		if addr then
 			handled_windows[addr] = nil
 			pending_restore[addr] = nil
+			map_max_guard[addr] = nil
 			overlay_geom[addr] = nil
 			overlay_fs_lock[addr] = nil
 			overlay_maximized[addr] = nil
+			-- Mark before recording so a same-tick fullscreen unset (CSD
+			-- teardown) cannot persist maximized=false over the close bit.
+			recently_closed[addr] = os.clock() + 2.0
 		end
 
 		local ignorable = false
@@ -1685,15 +1734,21 @@ hl.on("window.close", function(w)
 			return
 		end
 
+		local live_max = nil
+		pcall(function()
+			if w.floating and w.fullscreen ~= 2 then
+				live_max = is_window_maximized(w)
+			end
+		end)
+		-- Live maximize wins. If CSD teardown already unset xdg, fall
+		-- back to the last remembered bit for this instance.
 		local maximized = nil
-		if known and known.maximized ~= nil then
+		if live_max == true then
+			maximized = true
+		elseif known and known.maximized ~= nil then
 			maximized = known.maximized
 		else
-			pcall(function()
-				if w.floating and w.fullscreen ~= 2 then
-					maximized = is_window_maximized(w)
-				end
-			end)
+			maximized = live_max
 		end
 
 		if app_key and maximized ~= nil then
@@ -1838,6 +1893,22 @@ hl.on("window.fullscreen", function(w)
 		return
 	end
 
+	local fs_addr = window_addr(w)
+	if clock_map_active(recently_closed, fs_addr) then
+		log(string.format("ignore fullscreen on closed window class=%s addr=%s fs=%s",
+			tostring(w.class), tostring(fs_addr), tostring(w.fullscreen)))
+		return
+	end
+	local fs_mapped = true
+	pcall(function()
+		fs_mapped = w.mapped
+	end)
+	if fs_mapped == false then
+		log(string.format("ignore fullscreen on unmapped window class=%s addr=%s",
+			tostring(w.class), tostring(fs_addr)))
+		return
+	end
+
 	-- Collateral unmax: PiP/other fullscreen stole xdg-max from an unfocused
 	-- Discord/Zen. Re-apply; do not record max=false or CSD-restore.
 	if M.is_active(ws_id) and uses_xdg_maximize(w) and w.floating
@@ -1862,6 +1933,15 @@ hl.on("window.fullscreen", function(w)
 		and not is_transient_float(w)
 		and not is_real_fullscreen(w) and not has_xdg_maximize(w) then
 		local addr = window_addr(w)
+		-- Map-time / apply-time xdg bounce (Discord, Zen, Chrome). The
+		-- native restore button is handled after map_max_guard expires.
+		-- Do not re-apply here: that extends the guard forever if the
+		-- client keeps unsetting maximize.
+		if clock_map_active(map_max_guard, addr) then
+			log(string.format("csd restore skipped (map apply) class=%s addr=%s",
+				tostring(w.class), tostring(addr)))
+			return
+		end
 		log(string.format("csd restore scheduled class=%s addr=%s",
 			tostring(w.class), tostring(addr)))
 		csd_restore_lock = true
@@ -1875,6 +1955,12 @@ hl.on("window.fullscreen", function(w)
 			end
 			if _G.win11_dragging or _G.win11_drag_restore then
 				log(string.format("csd restore skipped (drag) class=%s addr=%s",
+					tostring(w.class), tostring(addr)))
+				csd_restore_lock = false
+				return
+			end
+			if clock_map_active(recently_closed, addr) then
+				log(string.format("csd restore skipped (closed) class=%s addr=%s",
 					tostring(w.class), tostring(addr)))
 				csd_restore_lock = false
 				return
