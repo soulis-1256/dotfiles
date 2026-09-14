@@ -77,14 +77,11 @@ hl.bind("ALT + TAB", function()
 end, { description = "Switch to next window" })
 hl.unbind("SUPER + F")
 hl.bind("SUPER + F", function()
-	hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
-	local function sync()
-		if _G.sync_workspace_floating_from_windows then
-			_G.sync_workspace_floating_from_windows()
-		end
+	if _G.floating_mode_toggle_window_float then
+		_G.floating_mode_toggle_window_float()
+		return
 	end
-	sync()
-	hl.timer(sync, { timeout = 50, type = "oneshot" })
+	hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
 end, { description = "Toggle floating" })
 hl.unbind("SUPER + space")
 hl.bind("SUPER + space", hl.dsp.exec_raw("hyprctl switchxkblayout all next"), { locked = true, description = "Switch keyboard layout" })

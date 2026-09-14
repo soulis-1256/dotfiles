@@ -38,8 +38,9 @@ end
 
 local function parse_ws_state(content)
 	local active, workspaces = nil, {}
+	local explicit = false
 	if not content or content == "" then
-		return active, workspaces
+		return active, workspaces, explicit
 	end
 	local a = content:match('"active"%s*:%s*(%a+)')
 	if a == "true" then
@@ -47,19 +48,22 @@ local function parse_ws_state(content)
 	elseif a == "false" then
 		active = false
 	end
+	if content:match('"explicit"%s*:%s*true') then
+		explicit = true
+	end
 	local ws_block = content:match('"workspaces"%s*:%s*%{(.-)%}')
 	if ws_block then
 		for id, val in ws_block:gmatch('"([^"]+)"%s*:%s*(%a+)') do
 			workspaces[tonumber(id) or id] = (val == "true")
 		end
 	end
-	return active, workspaces
+	return active, workspaces, explicit
 end
 
 local function read_ws_state_file()
 	local f = io.open(WS_STATE_CACHE_PATH, "r") or io.open(WS_STATE_TMP_PATH, "r")
 	if not f then
-		return nil, {}
+		return nil, {}, false
 	end
 	local content = f:read("*a") or ""
 	f:close()
@@ -67,12 +71,27 @@ local function read_ws_state_file()
 end
 
 local function load_mode_from_disk()
-	local active, workspaces = read_ws_state_file()
+	local active, workspaces, explicit = read_ws_state_file()
 	if active == nil then
 		active = read_mode_indicator()
 	end
 	_G.floating_mode.active = active and true or false
-	_G.floating_mode.workspaces = workspaces or {}
+	workspaces = workspaces or {}
+	-- Old caches wrote workspaces[id]=false from Hyprland's tiled maps on
+	-- boot while global floating was on. Those are not Super+X overrides.
+	if not explicit and _G.floating_mode.active then
+		local dropped = 0
+		for id, v in pairs(workspaces) do
+			if not v then
+				workspaces[id] = nil
+				dropped = dropped + 1
+			end
+		end
+		if dropped > 0 then
+			log(string.format("dropped %d live-derived tiled overrides from pre-explicit cache", dropped))
+		end
+	end
+	_G.floating_mode.workspaces = workspaces
 end
 
 load_mode_from_disk()
@@ -108,7 +127,7 @@ local function write_mode_indicator(active)
 		end
 		table.sort(parts)
 	end
-	local json = string.format('{"active": %s, "workspaces": {%s}}\n',
+	local json = string.format('{"active": %s, "explicit": true, "workspaces": {%s}}\n',
 		(active or (state and state.active)) and "true" or "false",
 		table.concat(parts, ", "))
 	local j1 = io.open(WS_STATE_CACHE_PATH, "w")
@@ -784,8 +803,12 @@ local function bump_gen()
 	return apply_gen
 end
 
--- Workspace mode follows real windows: any float → floating, all tiled → tiled.
+-- Workspace mode is Super+Z / Super+X on disk. After an explicit tile,
+-- Super+F a real window *promotes* that workspace to floating (persisted)
+-- so the next window floats. Live tiled maps never demote — on boot
+-- Hyprland maps tiled, which used to wipe global floating mode.
 -- Popups, PiP, splashes, and real fullscreen do not count.
+-- Use hl.get_windows(): get_workspace_windows can omit floats.
 local function counts_for_workspace_mode(w)
 	if not w then
 		return false
@@ -799,13 +822,31 @@ local function counts_for_workspace_mode(w)
 	return true
 end
 
+local function same_workspace(a, b)
+	if a == nil or b == nil then
+		return false
+	end
+	if a == b then
+		return true
+	end
+	local na, nb = tonumber(a), tonumber(b)
+	if na and nb then
+		return na == nb
+	end
+	return tostring(a) == tostring(b)
+end
+
 local function workspace_float_counts(ws_id)
 	local counted, floats = 0, 0
 	if not ws_id then
 		return counted, floats
 	end
-	for _, w in ipairs(hl.get_workspace_windows(ws_id) or {}) do
-		if counts_for_workspace_mode(w) then
+	for _, w in ipairs(hl.get_windows() or {}) do
+		local id
+		pcall(function()
+			id = w.workspace and w.workspace.id
+		end)
+		if same_workspace(id, ws_id) and counts_for_workspace_mode(w) then
 			counted = counted + 1
 			local fl = false
 			pcall(function()
@@ -919,7 +960,9 @@ local function sync_mode_guards()
 	end
 end
 
-local function persist_workspace_mode(id, floating)
+-- Promote only: any real float → persist workspace floating. Never write
+-- tiled from live geometry (boot maps tiled; Super+Z/X own demotion).
+local function persist_workspace_floating(id)
 	local state = _G.floating_mode
 	if not state then
 		return false
@@ -929,12 +972,11 @@ local function persist_workspace_mode(id, floating)
 	if not id then
 		return false
 	end
-	local nextv = floating and true or false
-	if state.workspaces[id] == nextv then
+	if state.workspaces[id] == true then
 		return false
 	end
-	state.workspaces[id] = nextv
-	log(string.format("WS %s live mode %s", tostring(id), nextv and "FLOATING" or "TILED"))
+	state.workspaces[id] = true
+	log(string.format("WS %s promoted to FLOATING", tostring(id)))
 	return true
 end
 
@@ -943,15 +985,14 @@ local function sync_workspace_modes_from_windows()
 		return
 	end
 	if record_suppress > 0 then
+		sync_mode_guards()
 		return
 	end
 	local state = _G.floating_mode
 	if not state then
 		return
 	end
-	state.workspaces = state.workspaces or {}
 	local seen = {}
-	local changed = false
 	for _, w in ipairs(hl.get_windows() or {}) do
 		local id
 		pcall(function()
@@ -959,25 +1000,25 @@ local function sync_workspace_modes_from_windows()
 		end)
 		id = tonumber(id) or id
 		if id and counts_for_workspace_mode(w) then
-			seen[id] = seen[id] or { floats = 0 }
 			local fl = false
 			pcall(function()
 				fl = w.floating and true or false
 			end)
 			if fl then
-				seen[id].floats = seen[id].floats + 1
+				seen[id] = true
 			end
 		end
 	end
-	for id, st in pairs(seen) do
-		if persist_workspace_mode(id, st.floats > 0) then
+	local changed = false
+	for id in pairs(seen) do
+		if persist_workspace_floating(id) then
 			changed = true
 		end
 	end
 	if changed then
 		write_mode_indicator(state.active)
-		sync_mode_guards()
 	end
+	sync_mode_guards()
 end
 _G.sync_workspace_floating_from_windows = sync_workspace_modes_from_windows
 
@@ -1390,7 +1431,7 @@ local function settle_mode(gen, want_floating, ws_id)
 			return
 		end
 		for _, w in ipairs(hl.get_windows() or {}) do
-			local on_ws = not ws_id or (w.workspace and w.workspace.id == ws_id)
+			local on_ws = not ws_id or same_workspace(w.workspace and w.workspace.id, ws_id)
 			if on_ws and not is_special_overlay(w) then
 				pcall(function()
 					if want_floating then
@@ -1408,6 +1449,10 @@ local function settle_mode(gen, want_floating, ws_id)
 							M.apply_floating_state(w, maximize)
 						end
 					else
+						-- Super+F may have promoted this workspace since the tile.
+						if M.is_active(w.workspace and w.workspace.id) then
+							return
+						end
 						local still_fs = w.fullscreen and w.fullscreen ~= 0
 						if w.floating or still_fs then
 							log(string.format("settle re-tile class=%s fs=%s float=%s",
@@ -1528,17 +1573,29 @@ function M.is_active(ws_id)
 	if not state then
 		return false
 	end
+	local persisted
 	if ws_id then
-		local counted, floats = workspace_float_counts(ws_id)
-		if counted > 0 then
-			return floats > 0
-		end
 		local ov = workspace_override(ws_id)
 		if ov ~= nil then
-			return ov == true
+			persisted = ov == true
 		end
 	end
-	return state.active == true
+	if persisted == nil then
+		persisted = state.active == true
+	end
+	-- Honor Super+Z / Super+X even when every window is still tiled
+	-- (boot, hyprctl reload). Live tiled maps must not demote.
+	if persisted then
+		return true
+	end
+	-- Explicitly tiled. Super+F a real window → workspace is floating.
+	if ws_id then
+		local _, floats = workspace_float_counts(ws_id)
+		if floats > 0 then
+			return true
+		end
+	end
+	return false
 end
 
 _G.floating_mode_toggle = function()
@@ -1551,6 +1608,37 @@ end
 
 _G.floating_mode_is_active = function(ws_id)
 	return M.is_active(ws_id)
+end
+
+-- Super+F: toggle this window. Floating it promotes a Super+X/Z-tiled
+-- workspace immediately so the next map floats. Bump gen so Super+X
+-- settle (80/220ms re-tile) cannot undo the float.
+_G.floating_mode_toggle_window_float = function()
+	if not from_this_load() then
+		return
+	end
+	bump_gen()
+	local w = hl.get_active_window()
+	local was_floating = false
+	local ws_id
+	if w then
+		pcall(function()
+			was_floating = w.floating and true or false
+			ws_id = w.workspace and w.workspace.id
+		end)
+	end
+	hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
+	if w and not was_floating and ws_id then
+		if persist_workspace_floating(ws_id) then
+			write_mode_indicator(_G.floating_mode.active)
+		end
+	end
+	sync_mode_guards()
+	hl.timer(function()
+		if from_this_load() then
+			sync_workspace_modes_from_windows()
+		end
+	end, { timeout = 50, type = "oneshot" })
 end
 
 -- Re-read Super+Z / Super+X state from disk and float leftovers that
@@ -1648,6 +1736,8 @@ local function handle_new_window(w)
 
 	local ws_id = w.workspace and w.workspace.id
 	if not M.is_active(ws_id) then
+		log(string.format("new window skip tiled class=%s ws=%s floats=%s",
+			tostring(w.class), tostring(ws_id), tostring(select(2, workspace_float_counts(ws_id)))))
 		return
 	end
 
@@ -1880,14 +1970,6 @@ hl.on("window.close", function(w)
 			return
 		end
 		sync_workspace_modes_from_windows()
-		if not closed_ws_id then
-			return
-		end
-		local counted = select(1, workspace_float_counts(closed_ws_id))
-		if counted == 0 and persist_workspace_mode(closed_ws_id, false) then
-			write_mode_indicator(_G.floating_mode.active)
-			sync_mode_guards()
-		end
 	end, { timeout = 50, type = "oneshot" })
 end)
 
@@ -2130,29 +2212,32 @@ end)
 -- focus steal xdg-maximize off Zen/Discord.
 sync_mode_guards()
 
--- After hyprctl reload the windows are already placed. Applying the class
--- cache here unmaxed maxed Ghostty (and re-maxed windows the user had
--- already restored). Only float leftovers that are still tiled.
-if _G.floating_mode.active then
-	hl.timer(function()
-		if from_this_load() and _G.floating_mode.active then
-			for _, w in ipairs(hl.get_windows() or {}) do
-				pcall(function()
-					if is_special_overlay(w) or is_real_fullscreen(w) then
-						return
-					end
-					if not M.is_active(w.workspace and w.workspace.id) then
-						return
-					end
-					if not w.floating then
-						log(string.format("reload float leftover class=%s addr=%s",
-							tostring(w.class), tostring(window_addr(w))))
-						M.apply_floating_state(w, should_maximize(w), { no_anim = true })
-					end
-				end)
+-- After hyprctl reload / boot the windows are already placed (usually tiled).
+-- Applying the class cache here unmaxed maxed Ghostty. Only float leftovers
+-- on workspaces that persisted as floating (global or Super+X).
+local function float_persisted_leftovers()
+	if not from_this_load() or not any_floating_mode() then
+		return
+	end
+	for _, w in ipairs(hl.get_windows() or {}) do
+		pcall(function()
+			if is_special_overlay(w) or is_real_fullscreen(w) then
+				return
 			end
-		end
-	end, { timeout = 400, type = "oneshot" })
+			if not M.is_active(w.workspace and w.workspace.id) then
+				return
+			end
+			if not w.floating then
+				log(string.format("reload float leftover class=%s addr=%s",
+					tostring(w.class), tostring(window_addr(w))))
+				M.apply_floating_state(w, should_maximize(w), { no_anim = true })
+			end
+		end)
+	end
+end
+if any_floating_mode() then
+	hl.timer(float_persisted_leftovers, { timeout = 50, type = "oneshot" })
+	hl.timer(float_persisted_leftovers, { timeout = 400, type = "oneshot" })
 end
 
 -- Record maximize/restore after drag-to-top or hyprbar clicks
