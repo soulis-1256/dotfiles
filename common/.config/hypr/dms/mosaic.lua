@@ -259,11 +259,15 @@ _G.mosaic_layout_compositor = _G.mosaic_layout_compositor or {} -- ws_key -> las
 _G.mosaic_layout_prev_present = _G.mosaic_layout_prev_present or {} -- ws_key -> {id -> true}
 _G.mosaic_layout_last_seen = _G.mosaic_layout_last_seen or {} -- ws_key -> {id -> os.clock()}
 _G.mosaic_last_cells = _G.mosaic_last_cells or {} -- ws_key -> last FULL mosaic cells
+_G.mosaic_last_area = _G.mosaic_last_area or {} -- ws_key -> {x,y,w,h} of last place
+_G.mosaic_user_cells = _G.mosaic_user_cells or {} -- ws_key -> user-resized cells
 local layout_order = _G.mosaic_layout_order
 local layout_compositor = _G.mosaic_layout_compositor
 local layout_prev_present = _G.mosaic_layout_prev_present
 local layout_last_seen = _G.mosaic_layout_last_seen
 local layout_last_cells = _G.mosaic_last_cells
+local layout_last_area = _G.mosaic_last_area
+local layout_user_cells = _G.mosaic_user_cells
 local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
 
 -- Shrink poke: drag and close both look like n-1 on the first recalculate.
@@ -284,9 +288,16 @@ local function settle_arm(key)
 		if not from_this_load() then
 			return
 		end
-		pcall(function()
-			hl.dispatch(hl.dsp.layout("mosaic:settle"))
-		end)
+		-- layout("mosaic:settle") only hits the focused workspace. A window
+		-- leaving an unfocused monitor would otherwise stay shrunk until
+		-- you tab onto that workspace.
+		if M.poke_visible then
+			pcall(M.poke_visible)
+		else
+			pcall(function()
+				hl.dispatch(hl.dsp.layout("mosaic:settle"))
+			end)
+		end
 	end, { timeout = SHRINK_POKE_MS, type = "oneshot" })
 end
 
@@ -397,7 +408,8 @@ local function archetype_rank(arch)
 end
 
 -- True when a missing id is still a mapped float on this workspace (drag).
--- false = gone (close). nil = unknown (hold one beat).
+-- false = gone (close) or already on another workspace (move).
+-- nil = unknown (hold one beat).
 local function missing_is_drag(key, missing_ids)
 	if not missing_ids or #missing_ids == 0 then
 		return false
@@ -405,6 +417,31 @@ local function missing_is_drag(key, missing_ids)
 	local ws = tostring(key or ""):match("^ws:(.+)$")
 	if not ws or ws == "__shared__" then
 		return nil
+	end
+	local missing_set = {}
+	for _, id in ipairs(missing_ids) do
+		missing_set[id] = true
+	end
+	-- Move-away: the window already lives on a different workspace.
+	local ok_all, all = pcall(function()
+		return hl.get_windows()
+	end)
+	if ok_all and type(all) == "table" then
+		for _, w in ipairs(all) do
+			local id = nil
+			pcall(function()
+				id = window_layout_id(w)
+			end)
+			if id and missing_set[id] then
+				local wws = nil
+				pcall(function()
+					wws = w.workspace and w.workspace.id
+				end)
+				if wws ~= nil and tostring(wws) ~= ws then
+					return "move"
+				end
+			end
+		end
 	end
 	local ok, wins = pcall(function()
 		return hl.get_workspace_windows(tonumber(ws) or ws)
@@ -738,10 +775,16 @@ local function sort_layout_targets(targets, area, stacked)
 			end
 		end
 	elseif #missing > 0 then
-		-- Shrink: drag float-away or close. First frame always holds.
-		-- A later poke that sees the missing window gone recasts as close.
+		-- Shrink: drag float-away, close, or move to another monitor.
+		-- A window already on another workspace is a move: recast immediately
+		-- so the leftover window expands without a workspace-switch refresh.
+		-- A still-floating window on THIS workspace is a drag: hold cells.
+		-- Unknown/first-frame-gone still holds one beat (close vs drag race).
 		local drag = missing_is_drag(key, missing)
-		local treat_close = (drag == false and shrink_seen[key] == true)
+		-- Move-away is certain (window already on another ws): recast now.
+		-- A true close still holds one frame so a drag that isn't floating
+		-- yet doesn't solo-fill then snap back.
+		local treat_close = (drag == "move") or (drag == false and shrink_seen[key] == true)
 		if treat_close then
 			kind = "close"
 			shrink_seen[key] = nil
@@ -825,12 +868,23 @@ local function layout_area_dims(area)
 	return W, H
 end
 
--- Sidebar width as a fraction of W (mirrors the legacy clamp sizing).
+-- Sidebar width as a fraction of W. Prefer the archetype's own ratio/min/max
+-- so Discord is not crushed to a 480px strip on a 1440p/ultrawide display.
 local function layout_sidebar_frac(W, ratio, min_w, max_w)
+	ratio = ratio or 0.38
+	min_w = min_w or 640
+	max_w = max_w or 1200
 	if not W or W <= 0 then
 		return ratio
 	end
 	return clamp(W * ratio, min_w, max_w) / W
+end
+
+local function sidebar_frac_for(arch, W)
+	if not arch then
+		return layout_sidebar_frac(W, 0.38, 640, 1200)
+	end
+	return layout_sidebar_frac(W, arch.target_ratio or 0.38, arch.min_w or 640, arch.max_w or 1200)
 end
 
 -- k full-width rows out of box via chained splits. NOTE: the remainder is
@@ -914,6 +968,202 @@ local function safe_place(target, box)
 	end
 end
 
+-- Interactive resize. Hyprland's lua:layout resizeTarget ignores the delta
+-- and just recalculates, so Super+RMB / border-drag would snap back without
+-- this: we move the nearest internal split to the cursor and persist cells.
+local RESIZE_EDGE = 16
+local RESIZE_MIN = 280
+_G.mosaic_resize_state = _G.mosaic_resize_state or nil
+
+local function copy_cells(cells)
+	local out = {}
+	for id, b in pairs(cells or {}) do
+		out[id] = { x = b.x, y = b.y, w = b.w, h = b.h }
+	end
+	return out
+end
+
+local function cells_complete(cells, ordered)
+	if type(cells) ~= "table" or not ordered or #ordered == 0 then
+		return false
+	end
+	for _, e in ipairs(ordered) do
+		local b = e and e.id and cells[e.id]
+		if not (b and tonumber(b.w) and tonumber(b.h)) then
+			return false
+		end
+	end
+	return true
+end
+
+local function area_same(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then
+		return false
+	end
+	local function n(v)
+		return tonumber(v) or 0
+	end
+	return math.abs(n(a.x) - n(b.x)) < 2
+		and math.abs(n(a.y) - n(b.y)) < 2
+		and math.abs(n(a.w) - n(b.w)) < 2
+		and math.abs(n(a.h) - n(b.h)) < 2
+end
+
+local function collect_splits(cells, ordered)
+	local v, h = {}, {}
+	local function add(map, pos, side, id)
+		pos = math.floor((tonumber(pos) or 0) + 0.5)
+		local s = map[pos]
+		if not s then
+			s = { pos = pos, lo = {}, hi = {} }
+			map[pos] = s
+		end
+		table.insert(s[side], id)
+	end
+	for _, e in ipairs(ordered) do
+		local b = cells[e.id]
+		if b then
+			add(v, b.x, "hi", e.id)
+			add(v, b.x + b.w, "lo", e.id)
+			add(h, b.y, "hi", e.id)
+			add(h, b.y + b.h, "lo", e.id)
+		end
+	end
+	local splits = {}
+	for _, pack in ipairs({ { axis = "x", m = v }, { axis = "y", m = h } }) do
+		for _, s in pairs(pack.m) do
+			if #s.lo > 0 and #s.hi > 0 then
+				table.insert(splits, { axis = pack.axis, pos = s.pos, lo = s.lo, hi = s.hi })
+			end
+		end
+	end
+	return splits
+end
+
+local function apply_split(cells, split, new_pos, area)
+	local min = RESIZE_MIN
+	if split.axis == "x" then
+		local lo = (area and area.x or 0) + min
+		local hi = (area and area.x or 0) + (area and area.w or 0) - min
+		new_pos = clamp(new_pos, lo, hi)
+		for _, id in ipairs(split.lo) do
+			local b = cells[id]
+			if b then
+				b.w = math.max(min, new_pos - b.x)
+			end
+		end
+		for _, id in ipairs(split.hi) do
+			local b = cells[id]
+			if b then
+				local r = b.x + b.w
+				b.x = new_pos
+				b.w = math.max(min, r - new_pos)
+			end
+		end
+	else
+		local lo = (area and area.y or 0) + min
+		local hi = (area and area.y or 0) + (area and area.h or 0) - min
+		new_pos = clamp(new_pos, lo, hi)
+		for _, id in ipairs(split.lo) do
+			local b = cells[id]
+			if b then
+				b.h = math.max(min, new_pos - b.y)
+			end
+		end
+		for _, id in ipairs(split.hi) do
+			local b = cells[id]
+			if b then
+				local r = b.y + b.h
+				b.y = new_pos
+				b.h = math.max(min, r - new_pos)
+			end
+		end
+	end
+end
+
+local function nearest_split(splits, cx, cy, maxd)
+	local best, bestd = nil, maxd
+	for _, s in ipairs(splits) do
+		local d = (s.axis == "x") and math.abs(cx - s.pos) or math.abs(cy - s.pos)
+		if d <= bestd then
+			best, bestd = s, d
+		end
+	end
+	return best
+end
+
+local function split_from_state(splits, st)
+	if not st or not st.axis or not st.lo or not st.hi then
+		return nil
+	end
+	local function same(a, b)
+		if #a ~= #b then
+			return false
+		end
+		local set = {}
+		for _, id in ipairs(b) do
+			set[id] = true
+		end
+		for _, id in ipairs(a) do
+			if not set[id] then
+				return false
+			end
+		end
+		return true
+	end
+	for _, s in ipairs(splits) do
+		if s.axis == st.axis and same(s.lo, st.lo) and same(s.hi, st.hi) then
+			return s
+		end
+	end
+	return nil
+end
+
+local function maybe_resize_cells(cells, ordered, area)
+	local cx, cy = layout_cursor_pos()
+	if cx == nil or type(area) ~= "table" then
+		return false
+	end
+	local splits = collect_splits(cells, ordered)
+	if #splits == 0 then
+		return false
+	end
+	local st = _G.mosaic_resize_state
+	local split = split_from_state(splits, st)
+	if not split then
+		split = nearest_split(splits, cx, cy, (st and 1e9) or RESIZE_EDGE)
+	end
+	if not split then
+		return false
+	end
+	local new_pos
+	if st then
+		st.axis, st.lo, st.hi = split.axis, split.lo, split.hi
+		if st.orig_pos == nil then
+			st.orig_pos = split.pos
+			st.ox, st.oy = cx, cy
+		end
+		if split.axis == "x" then
+			new_pos = st.orig_pos + (cx - (st.ox or cx))
+		else
+			new_pos = st.orig_pos + (cy - (st.oy or cy))
+		end
+	else
+		new_pos = (split.axis == "x") and cx or cy
+	end
+	apply_split(cells, split, new_pos, area)
+	return true
+end
+
+local function place_cells(ordered, cells)
+	for _, e in ipairs(ordered) do
+		local b = cells[e.id]
+		if b then
+			safe_place(e.target, { x = b.x, y = b.y, w = b.w, h = b.h })
+		end
+	end
+end
+
 local function mosaic_recalculate_inner(ctx)
 	local targets = (ctx and ctx.targets) or {}
 	if #targets == 0 then
@@ -960,18 +1210,8 @@ local function mosaic_recalculate_inner(ctx)
 	-- drop (returner) or once a close is confirmed.
 	if decision == "shrink" then
 		local cells = (wskey and layout_last_cells[wskey]) or {}
-		local complete = #ordered > 0
-		for _, e in ipairs(ordered) do
-			if not cells[e.id] then
-				complete = false
-				break
-			end
-		end
-		if complete then
-			for _, e in ipairs(ordered) do
-				local b = cells[e.id]
-				safe_place(e.target, { x = b.x, y = b.y, w = b.w, h = b.h })
-			end
+		if cells_complete(cells, ordered) then
+			place_cells(ordered, cells)
 			return
 		end
 		-- no usable cells: fall through to a fresh solve of the survivors
@@ -980,8 +1220,32 @@ local function mosaic_recalculate_inner(ctx)
 	-- N = 1: solo fill. Gaps/borders come from the compositor config and the
 	-- existing tiled smart-gaps workspace rules (no scripted hacks needed).
 	if n == 1 then
+		if wskey then
+			layout_user_cells[wskey] = nil
+		end
 		safe_place(ordered[1].target, area)
 		return
+	end
+
+	-- Quiet: same window set, compositor order unchanged. Keep last/user
+	-- cells so Super+RMB and border-drag persist, and apply live split
+	-- follow while a resize is in progress (or the cursor is on a split).
+	if decision == "quiet" and wskey then
+		local prev = layout_user_cells[wskey] or layout_last_cells[wskey]
+		if cells_complete(prev, ordered) and area_same(layout_last_area[wskey], area) then
+			local cells = copy_cells(prev)
+			local resized = maybe_resize_cells(cells, ordered, area)
+			place_cells(ordered, cells)
+			if resized or _G.mosaic_resize_state then
+				layout_user_cells[wskey] = cells
+			end
+			return
+		end
+	end
+
+	-- Any recast (open/close/swap/returner) drops user resize.
+	if wskey and decision ~= "quiet" and decision ~= "shrink" then
+		layout_user_cells[wskey] = nil
 	end
 
 	-- Portrait/narrow: always stack full-width rows, at any count. Columns
@@ -1003,9 +1267,9 @@ local function mosaic_recalculate_inner(ctx)
 		local a1, a2 = ordered[1].archetype, ordered[2].archetype
 		local f = layout_duo_frac(a1, a2)
 		if a1.name == "sidebar" and a2.name ~= "sidebar" then
-			f = layout_sidebar_frac(W, 0.26, 380, 480)
+			f = sidebar_frac_for(a1, W)
 		elseif a2.name == "sidebar" and a1.name ~= "sidebar" then
-			f = 1 - layout_sidebar_frac(W, 0.26, 380, 480)
+			f = 1 - sidebar_frac_for(a2, W)
 		end
 		-- Usability floor: never squeeze a window under ~400px side by
 		-- side (a terminal there can't render a line of code). Stack full
@@ -1027,7 +1291,8 @@ local function mosaic_recalculate_inner(ctx)
 		local a1, a2, a3 = ordered[1].archetype, ordered[2].archetype, ordered[3].archetype
 		if a1.name == "sidebar" or a2.name == "sidebar" or a3.name == "sidebar" then
 			-- Sidebar | center | right columns.
-			local fs = layout_sidebar_frac(W, 0.24, 360, 460)
+			local side_arch = (a1.name == "sidebar" and a1) or (a2.name == "sidebar" and a2) or a3
+			local fs = sidebar_frac_for(side_arch, W)
 			local rest = ctx:split(area, "right", 1 - fs)
 			local wr_frac = W and (clamp(W * 0.28, 400, 560) / W) or 0.28
 			local fr = ((1 - fs) > 0) and clamp(wr_frac / (1 - fs), 0, 1) or 0.5
@@ -1052,7 +1317,7 @@ local function mosaic_recalculate_inner(ctx)
 	-- N = 4 landscape: sidebar variant or clean 2x2 grid.
 	if n == 4 then
 		if ordered[1].archetype.name == "sidebar" then
-			local fs = layout_sidebar_frac(W, 0.22, 340, 460)
+			local fs = sidebar_frac_for(ordered[1].archetype, W)
 			local rest = ctx:split(area, "right", 1 - fs)
 			local wst_frac = W and (clamp(W * 0.30, 450, 600) / W) or 0.30
 			local rest_w = 1 - fs
@@ -1127,6 +1392,14 @@ local function mosaic_recalculate(ctx)
 		local kok, k = pcall(layout_ws_key, (ctx and ctx.targets) or {})
 		if kok and k and k ~= "ws:__shared__" then
 			layout_last_cells[k] = active_boxes
+			local area = ctx and ctx.area
+			if type(area) == "table" then
+				layout_last_area[k] = {
+					x = area.x, y = area.y,
+					w = area.w or area.width,
+					h = area.h or area.height,
+				}
+			end
 		end
 	end
 	active_placements = nil
@@ -1175,6 +1448,26 @@ local function set_ws_layout(id, layout_name)
 	local ok, err = pcall(hl.workspace_rule, { workspace = tostring(id), layout = layout_name })
 	log(string.format(">>> WS %s layout -> %s (%s)", tostring(id), layout_name, ok and "ok" or ("FAILED: " .. tostring(err))))
 	return ok
+end
+
+-- Recast every visible mosaic workspace. Needed when a window leaves an
+-- unfocused monitor: Hyprland may not recalculate that workspace, and
+-- layout("mosaic:settle") only hits the focused one.
+function M.poke_visible()
+	if not real_layout_ok then
+		return
+	end
+	local seen = {}
+	for _, m in ipairs(hl.get_monitors() or {}) do
+		local id = m.active_workspace and m.active_workspace.id
+		if id and not seen[id] and M.is_active(id) then
+			seen[id] = true
+			set_ws_layout(id, "lua:mosaic")
+		end
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.layout("mosaic:settle"))
+	end)
 end
 
 -- One-time cleanup when entering real mosaic: unfloat windows the legacy
@@ -1324,13 +1617,13 @@ local function solve_mosaic(items, wa)
 
 		-- If one is a sidebar, it gets its fixed comfortable sidebar width
 		if a1.name == "sidebar" and a2.name ~= "sidebar" then
-			local w_side = clamp(math.floor(wa.w * 0.26), 380, 480)
+			local w_side = clamp(math.floor(wa.w * (a1.target_ratio or 0.38)), a1.min_w or 640, a1.max_w or 1200)
 			local w_other = wa.w - gap - w_side
 			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_side, h = wa.h } })
 			table.insert(results, { win = w2, rect = { x = wa.x + w_side + gap, y = wa.y, w = w_other, h = wa.h } })
 			return results
 		elseif a2.name == "sidebar" and a1.name ~= "sidebar" then
-			local w_side = clamp(math.floor(wa.w * 0.26), 380, 480)
+			local w_side = clamp(math.floor(wa.w * (a2.target_ratio or 0.38)), a2.min_w or 640, a2.max_w or 1200)
 			local w_other = wa.w - gap - w_side
 			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_other, h = wa.h } })
 			table.insert(results, { win = w2, rect = { x = wa.x + w_other + gap, y = wa.y, w = w_side, h = wa.h } })
@@ -1394,7 +1687,8 @@ local function solve_mosaic(items, wa)
 
 		-- If any is sidebar: 3 columns (Sidebar, Center Main, Right Secondary)
 		if a1.name == "sidebar" or a2.name == "sidebar" or a3.name == "sidebar" then
-			local ws_side = clamp(math.floor(wa.w * 0.24), 360, 460)
+			local side_arch = (a1.name == "sidebar" and a1) or (a2.name == "sidebar" and a2) or a3
+			local ws_side = clamp(math.floor(wa.w * (side_arch.target_ratio or 0.38)), side_arch.min_w or 640, side_arch.max_w or 1200)
 			local ws_right = clamp(math.floor(wa.w * 0.28), 400, 560)
 			local ws_center = wa.w - (2 * gap) - ws_side - ws_right
 
@@ -1448,8 +1742,9 @@ local function solve_mosaic(items, wa)
 		local has_sidebar = (it1.archetype.name == "sidebar")
 
 		if has_sidebar then
-			-- Sidebar Left (22%) | Center Main (48%) | Right 2-Stack (30%)
-			local w_side = clamp(math.floor(wa.w * 0.22), 340, 460)
+			-- Sidebar Left | Center Main | Right 2-Stack
+			local side_arch = it1.archetype
+			local w_side = clamp(math.floor(wa.w * (side_arch.target_ratio or 0.38)), side_arch.min_w or 640, side_arch.max_w or 1200)
 			local w_stack = clamp(math.floor(wa.w * 0.30), 450, 600)
 			local w_center = wa.w - (2 * gap) - w_side - w_stack
 			local h_half = math.floor((wa.h - gap) * 0.50)
@@ -1860,6 +2155,52 @@ _G.mosaic_toggle = function(ws_id)
 	M.toggle(ws_id)
 end
 
+_G.mosaic_is_active_here = function()
+	local ws = hl.get_active_workspace and hl.get_active_workspace()
+	return ws and ws.id and M.is_active(ws.id) or false
+end
+
+function M.resize_begin()
+	local ws = hl.get_active_workspace and hl.get_active_workspace()
+	if not (ws and ws.id and M.is_active(ws.id) and real_layout_ok) then
+		pcall(function()
+			hl.dispatch(hl.dsp.window.resize())
+		end)
+		return
+	end
+	local c = nil
+	pcall(function()
+		c = hl.get_cursor_pos()
+	end)
+	_G.mosaic_resize_state = {
+		t = os.clock(),
+		x = c and c.x,
+		y = c and c.y,
+	}
+	local function tick()
+		if not from_this_load() or not _G.mosaic_resize_state then
+			return
+		end
+		pcall(function()
+			hl.dispatch(hl.dsp.layout("mosaic:settle"))
+		end)
+		hl.timer(tick, { timeout = 16, type = "oneshot" })
+	end
+	hl.timer(tick, { timeout = 16, type = "oneshot" })
+end
+
+function M.resize_end()
+	_G.mosaic_resize_state = nil
+end
+
+_G.mosaic_resize_begin = function()
+	M.resize_begin()
+end
+
+_G.mosaic_resize_end = function()
+	M.resize_end()
+end
+
 _G.mosaic_apply = function(ws_id)
 	M.apply_workspace(ws_id)
 end
@@ -2202,6 +2543,8 @@ hl.on("workspace.active", function(ws)
 	end
 end)
 
+
+
 -- Event Listeners
 local debounce_timer = nil
 local function schedule_recalculate(delay)
@@ -2267,7 +2610,14 @@ hl.on("window.close", function(w)
 	if not from_this_load() then
 		return
 	end
-	if real_layout_ok then return end
+	if real_layout_ok then
+		hl.timer(function()
+			if from_this_load() then
+				M.poke_visible()
+			end
+		end, { timeout = 80, type = "oneshot" })
+		return
+	end
 	local ws_id = (w and w.workspace and w.workspace.id)
 	if not ws_id then
 		local aws = hl.get_active_workspace()
@@ -2296,7 +2646,14 @@ hl.on("window.move_to_workspace", function(w, ws)
 	if not from_this_load() then
 		return
 	end
-	if real_layout_ok then return end
+	if real_layout_ok then
+		hl.timer(function()
+			if from_this_load() then
+				M.poke_visible()
+			end
+		end, { timeout = 40, type = "oneshot" })
+		return
+	end
 	local ws_id = (ws and ws.id) or (w and w.workspace and w.workspace.id)
 	if ws_id and M.is_active(ws_id) then
 		schedule_recalculate(40)

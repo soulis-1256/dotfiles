@@ -12,9 +12,11 @@ local M = {}
 M.ARCHETYPES = {
 	sidebar = {
 		name = "sidebar",
-		target_ratio = 0.26,
-		min_w = 360,
-		max_w = 520,
+		-- ~38% of a 2560 display (~970px): Discord's 3-column UI is usable.
+		-- The old 520px cap was ~20% on 1440p and ~10% on ultrawide.
+		target_ratio = 0.38,
+		min_w = 640,
+		max_w = 1200,
 		ideal_aspect = 9 / 16,
 		preferred_side = "left",
 	},

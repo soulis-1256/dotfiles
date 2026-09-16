@@ -141,4 +141,21 @@ hl.bind("SUPER + down", function()
 	end
 end, { description = "Restore window size (floating mode)" })
 
+-- Mosaic owns Super+RMB resize: lua:mosaic's resizeTarget ignores the
+-- compositor delta and would snap the window back. Non-mosaic falls through
+-- to the normal mouse resize grab.
+hl.unbind("SUPER + mouse:273")
+hl.bind("SUPER + mouse:273", function()
+	if _G.mosaic_resize_begin then
+		_G.mosaic_resize_begin()
+	else
+		hl.dispatch(hl.dsp.window.resize())
+	end
+end, { mouse = true, description = "Resize window" })
+hl.bind("SUPER + mouse:273", function()
+	if _G.mosaic_resize_end then
+		_G.mosaic_resize_end()
+	end
+end, { mouse = true, release = true, description = "Resize window end" })
+
 
