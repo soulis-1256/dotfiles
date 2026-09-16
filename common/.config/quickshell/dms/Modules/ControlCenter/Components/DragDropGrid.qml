@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Common
 import qs.Services
+import qs.Widgets
 import qs.Modules.ControlCenter.Widgets
 import qs.Modules.ControlCenter.Components
 import "../utils/detailHeight.js" as DetailHeightUtils
@@ -257,6 +258,8 @@ Column {
         case "audioOutput":
         case "audioInput":
             return widgetWidth <= 25 ? smallCompoundComponent : compoundPillComponent;
+        case "floatingMode":
+            return widgetWidth <= 25 ? smallLayoutModeComponent : layoutModeDropdownComponent;
         case "volumeSlider":
             return audioSliderComponent;
         case "brightnessSlider":
@@ -813,6 +816,128 @@ Column {
                         SessionService.toggleIdleInhibit();
                         break;
                     }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: layoutModeDropdownComponent
+        Item {
+            property var widgetData: parent.widgetData || {}
+            property int widgetIndex: parent.widgetIndex || 0
+            width: parent.width
+            height: 60
+
+            CompoundPill {
+                id: layoutPill
+                width: parent.width
+                height: 60
+                iconName: {
+                    switch (HyprlandService.currentLayoutMode) {
+                    case "mosaic":
+                        return "dashboard";
+                    case "floating":
+                        return "layers";
+                    default:
+                        return "grid_view";
+                    }
+                }
+                primaryText: I18n.tr("Layout Mode")
+                secondaryText: {
+                    switch (HyprlandService.currentLayoutMode) {
+                    case "mosaic":
+                        return I18n.tr("Mosaic");
+                    case "floating":
+                        return I18n.tr("Floating");
+                    default:
+                        return I18n.tr("Tiled");
+                    }
+                }
+                isActive: HyprlandService.currentLayoutMode !== "tiled"
+                showExpandArea: true
+                enabled: !root.editMode && CompositorService.isHyprland
+
+                onToggled: layoutDropdown.openDropdownMenu()
+                onExpandClicked: layoutDropdown.openDropdownMenu()
+
+                DankDropdown {
+                    id: layoutDropdown
+                    showTrigger: false
+                    popupAnchorItem: layoutPill
+                    dropdownWidth: 220
+                    options: [I18n.tr("Tiled"), I18n.tr("Floating"), I18n.tr("Mosaic")]
+                    optionIcons: ["grid_view", "layers", "dashboard"]
+                    currentValue: {
+                        switch (HyprlandService.currentLayoutMode) {
+                        case "mosaic":
+                            return I18n.tr("Mosaic");
+                        case "floating":
+                            return I18n.tr("Floating");
+                        default:
+                            return I18n.tr("Tiled");
+                        }
+                    }
+                    onValueChanged: value => {
+                        if (value === I18n.tr("Mosaic"))
+                            HyprlandService.setLayoutMode("mosaic");
+                        else if (value === I18n.tr("Floating"))
+                            HyprlandService.setLayoutMode("floating");
+                        else
+                            HyprlandService.setLayoutMode("tiled");
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: smallLayoutModeComponent
+        SmallToggleButton {
+            id: smallPill
+            property var widgetData: parent.widgetData || {}
+            property int widgetIndex: parent.widgetIndex || 0
+            width: parent.width
+            height: 48
+            iconName: {
+                switch (HyprlandService.currentLayoutMode) {
+                case "mosaic":
+                    return "dashboard";
+                case "floating":
+                    return "layers";
+                default:
+                    return "grid_view";
+                }
+            }
+            isActive: HyprlandService.currentLayoutMode !== "tiled"
+            enabled: !root.editMode && CompositorService.isHyprland
+
+            onClicked: smallLayoutDropdown.openDropdownMenu()
+
+            DankDropdown {
+                id: smallLayoutDropdown
+                showTrigger: false
+                popupAnchorItem: smallPill
+                dropdownWidth: 200
+                options: [I18n.tr("Tiled"), I18n.tr("Floating"), I18n.tr("Mosaic")]
+                optionIcons: ["grid_view", "layers", "dashboard"]
+                currentValue: {
+                    switch (HyprlandService.currentLayoutMode) {
+                    case "mosaic":
+                        return I18n.tr("Mosaic");
+                    case "floating":
+                        return I18n.tr("Floating");
+                    default:
+                        return I18n.tr("Tiled");
+                    }
+                }
+                onValueChanged: value => {
+                    if (value === I18n.tr("Mosaic"))
+                        HyprlandService.setLayoutMode("mosaic");
+                    else if (value === I18n.tr("Floating"))
+                        HyprlandService.setLayoutMode("floating");
+                    else
+                        HyprlandService.setLayoutMode("tiled");
                 }
             }
         }

@@ -414,6 +414,84 @@ function M.toggle(ws_id)
 			end
 		end
 	end
+
+	local lf = io.open("/tmp/hypr_layout_mode", "w")
+	if lf then
+		lf:write((next_state and "mosaic" or "tiled") .. "\n")
+		lf:close()
+	end
+end
+
+_G.set_workspace_layout_mode = function(mode, ws_id)
+	local ws = ws_id and { id = ws_id } or hl.get_active_workspace()
+	if not ws or not ws.id then
+		return
+	end
+	local id = tonumber(ws.id) or ws.id
+	mode = (mode or "tiled"):lower()
+
+	log(string.format(">>> SET LAYOUT MODE: WS %s -> %s", tostring(id), mode))
+
+	if mode == "mosaic" then
+		if _G.floating_mode and _G.floating_mode.workspaces then
+			_G.floating_mode.workspaces[id] = false
+		end
+		_G.mosaic_mode.workspaces[id] = true
+		write_state()
+		M.apply_workspace(id)
+	elseif mode == "floating" then
+		_G.mosaic_mode.workspaces[id] = false
+		write_state()
+		if _G.floating_mode then
+			_G.floating_mode.workspaces = _G.floating_mode.workspaces or {}
+			_G.floating_mode.workspaces[id] = true
+		end
+		for _, w in ipairs(hl.get_workspace_windows(id) or {}) do
+			pcall(function()
+				if not is_ignorable(w) and not w.floating then
+					hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
+				end
+			end)
+		end
+	else
+		-- tiled
+		_G.mosaic_mode.workspaces[id] = false
+		write_state()
+		if _G.floating_mode and _G.floating_mode.workspaces then
+			_G.floating_mode.workspaces[id] = false
+		end
+		for _, w in ipairs(hl.get_workspace_windows(id) or {}) do
+			pcall(function()
+				if not is_ignorable(w) and w.floating then
+					hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
+				end
+			end)
+		end
+	end
+
+	local lf = io.open("/tmp/hypr_layout_mode", "w")
+	if lf then
+		lf:write(mode .. "\n")
+		lf:close()
+	end
+end
+
+_G.get_workspace_layout_mode = function(ws_id)
+	local ws = ws_id and { id = ws_id } or hl.get_active_workspace()
+	if not ws or not ws.id then
+		return "tiled"
+	end
+	local id = tonumber(ws.id) or ws.id
+	if _G.mosaic_mode and _G.mosaic_mode.workspaces and _G.mosaic_mode.workspaces[id] == true then
+		return "mosaic"
+	end
+	if _G.floating_mode and _G.floating_mode.workspaces and _G.floating_mode.workspaces[id] == true then
+		return "floating"
+	end
+	if _G.floating_mode and _G.floating_mode.active == true then
+		return "floating"
+	end
+	return "tiled"
 end
 
 _G.mosaic_toggle = function(ws_id)

@@ -519,7 +519,7 @@ BasePill {
                                 case "bluetooth":
                                     return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
                                 case "floatingMode":
-                                    return HyprlandService.floatingModeActive ? "layers" : "grid_view";
+                                    return HyprlandService.currentLayoutMode === "mosaic" ? "dashboard" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
@@ -544,7 +544,7 @@ BasePill {
                                 case "bluetooth":
                                     return (BluetoothService.connected || BluetoothService.connecting) ? Theme.primary : Theme.surfaceText;
                                 case "floatingMode":
-                                    return HyprlandService.floatingModeActive ? Theme.primary : Theme.widgetIconColor;
+                                    return HyprlandService.currentLayoutMode !== "tiled" ? Theme.primary : Theme.widgetIconColor;
                                 case "battery":
                                     return root.getBatteryIconColor();
                                 case "printer":
@@ -708,7 +708,7 @@ BasePill {
                                 case "bluetooth":
                                     return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
                                 case "floatingMode":
-                                    return HyprlandService.floatingModeActive ? "layers" : "grid_view";
+                                    return HyprlandService.currentLayoutMode === "mosaic" ? "dashboard" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
@@ -733,7 +733,7 @@ BasePill {
                                 case "bluetooth":
                                     return (BluetoothService.connected || BluetoothService.connecting) ? Theme.primary : Theme.surfaceText;
                                 case "floatingMode":
-                                    return HyprlandService.floatingModeActive ? Theme.primary : Theme.widgetIconColor;
+                                    return HyprlandService.currentLayoutMode !== "tiled" ? Theme.primary : Theme.widgetIconColor;
                                 case "battery":
                                     return root.getBatteryIconColor();
                                 case "printer":

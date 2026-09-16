@@ -706,12 +706,47 @@ hl.layer_rule({
         onLoadFailed: root.floatingWorkspaces = {}
     }
 
-    function toggleFloatingMode() {
-        root.floatingModeActive = !root.floatingModeActive;
-        Proc.runCommand("hypr-floating-mode-toggle", ["hyprctl", "eval", "_G.floating_mode_toggle()"], (output, exitCode) => {
+    property string currentLayoutMode: "tiled"
+
+    FileView {
+        id: layoutModeFile
+        path: "file:///tmp/hypr_layout_mode"
+        watchChanges: true
+        printErrors: false
+        blockLoading: false
+        preload: true
+
+        function syncFromFile() {
+            const raw = (text() || "").trim().toLowerCase();
+            if (raw === "mosaic" || raw === "floating" || raw === "tiled") {
+                root.currentLayoutMode = raw;
+                root.floatingModeActive = (raw === "floating");
+            }
+        }
+
+        onLoaded: syncFromFile()
+        onFileChanged: reload()
+        onLoadFailed: root.currentLayoutMode = root.floatingModeActive ? "floating" : "tiled"
+    }
+
+    function setLayoutMode(mode) {
+        mode = (mode || "tiled").toLowerCase();
+        root.currentLayoutMode = mode;
+        root.floatingModeActive = (mode === "floating");
+        Proc.runCommand("hypr-layout-mode-set", ["hyprctl", "eval", `_G.set_workspace_layout_mode("${mode}")`], (output, exitCode) => {
             if (exitCode !== 0)
-                log.warn("floating mode toggle failed:", output);
+                log.warn("layout mode set failed:", output);
+            layoutModeFile.reload();
             floatingModeFile.reload();
         });
+    }
+
+    function toggleFloatingMode() {
+        if (root.currentLayoutMode === "tiled")
+            setLayoutMode("floating");
+        else if (root.currentLayoutMode === "floating")
+            setLayoutMode("mosaic");
+        else
+            setLayoutMode("tiled");
     }
 }
