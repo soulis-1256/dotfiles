@@ -272,6 +272,38 @@ local layout_last_seen = _G.mosaic_layout_last_seen
 local layout_last_cells = _G.mosaic_last_cells
 local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
 
+-- Transient-shrink settle (N>2 smoothness): a drag mid-flight and a real
+-- close both look like a shrink on the first recalculate. Survivors hold
+-- their CURRENT cells (no solo-fill jump mid-drag, "tile normally, settle
+-- after") while the away window is fresh; a settle poke re-runs recalculate
+-- shortly after, and an away window older than SHRINK_CLOSE_AFTER is treated
+-- as a real close and re-solved. A late drag release still fixes order via
+-- the cursor drop path.
+local shrink_since = {} -- ws_key -> os.clock() when shrink first seen
+local poke_armed = {} -- ws_key -> true while a settle poke is in flight
+local SHRINK_CLOSE_AFTER = 0.6 -- s
+local SHRINK_POKE_DELAY = 400 -- ms
+
+local function shrink_settle_arm(key)
+	local now = os.clock()
+	if not shrink_since[key] then
+		shrink_since[key] = now
+	end
+	if poke_armed[key] then
+		return
+	end
+	poke_armed[key] = true
+	hl.timer(function()
+		poke_armed[key] = nil
+		if not from_this_load() then
+			return
+		end
+		pcall(function()
+			hl.dispatch(hl.dsp.layout("mosaic:settle"))
+		end)
+	end, { timeout = SHRINK_POKE_DELAY, type = "oneshot" })
+end
+
 local function layout_target_id(t, i)
 	local ok, id = pcall(function()
 		local w = t.window
@@ -523,8 +555,10 @@ local function sort_layout_targets(targets, area, stacked)
 
 	local final_ids = nil
 	local stored_ids = nil
+	local kind = nil
 
 	if #returners > 0 then
+		kind = "returner"
 		-- Drag-return: DWINDLE RULE — the drop goes where the CURSOR is.
 		-- recalculate runs synchronously inside dragEnd, so the cursor is
 		-- still on the release cell (same signal dwindle's addTarget uses:
@@ -674,6 +708,7 @@ local function sort_layout_targets(targets, area, stacked)
 			end
 		end
 	elseif #newcomers > 0 then
+		kind = "newcomer"
 		-- Genuine open / inter-workspace move: deterministic rank placement.
 		local base = {}
 		for _, id in ipairs(pruned) do
@@ -697,11 +732,13 @@ local function sort_layout_targets(targets, area, stacked)
 	else
 		local same_set = (#pruned == #incoming_ids)
 		if same_set then
+			kind = "same"
 			-- Keyboard movewindow swap (no transient removal): adopt the
 			-- compositor order wholesale so the move sticks.
 			final_ids = incoming_ids
 			stored_ids = incoming_ids
 		else
+			kind = "shrink"
 			-- Transient shrink (drag in progress, close animating): keep
 			-- survivors in persisted spots, keep the away window in stored
 			-- for its imminent return instead of clobbering.
@@ -730,7 +767,7 @@ local function sort_layout_targets(targets, area, stacked)
 			table.insert(ordered, { target = e.target, archetype = e.archetype, id = id })
 		end
 	end
-	return ordered
+	return ordered, kind, key
 end
 
 -- Numeric area dims. The layout API passes area as {x, y, w, h}; anything
@@ -847,7 +884,7 @@ local function mosaic_recalculate_inner(ctx)
 	local narrow = (W and W < 600) or false
 	local stacked = portrait or narrow
 
-	local ordered = sort_layout_targets(targets, area, stacked)
+	local ordered, decision, wskey = sort_layout_targets(targets, area, stacked)
 	local n = #ordered
 	if n == 0 then
 		return
@@ -871,6 +908,39 @@ local function mosaic_recalculate_inner(ctx)
 		portrait = portrait and true or false,
 		time = os.date("%H:%M:%S"),
 	}
+
+	-- Transient shrink (drag mid-flight or close animating): survivors hold
+	-- their current cells instead of jumping to a fresh N-1 solve, then the
+	-- layout settles once (poke re-runs recalculate; an away window older
+	-- than SHRINK_CLOSE_AFTER falls through = real close).
+	if decision == "shrink" then
+		local now = os.clock()
+		local since = shrink_since[wskey]
+		if since and (now - since) > SHRINK_CLOSE_AFTER then
+			shrink_since[wskey] = nil
+			-- fall through to a fresh solve below
+		else
+			local cells = layout_last_cells[wskey] or {}
+			local complete = #ordered > 0
+			for _, e in ipairs(ordered) do
+				if not cells[e.id] then
+					complete = false
+					break
+				end
+			end
+			if complete then
+				for _, e in ipairs(ordered) do
+					local b = cells[e.id]
+					safe_place(e.target, { x = b.x, y = b.y, w = b.w, h = b.h })
+				end
+				shrink_settle_arm(wskey)
+				return
+			end
+			-- no usable cells: fresh solve below
+		end
+	else
+		shrink_since[wskey] = nil
+	end
 
 	-- N = 1: solo fill. Gaps/borders come from the compositor config and the
 	-- existing tiled smart-gaps workspace rules (no scripted hacks needed).
@@ -1028,6 +1098,12 @@ local function mosaic_recalculate(ctx)
 	active_idmap = nil
 end
 
+-- Settle poke target: `hl.dispatch(hl.dsp.layout("mosaic:settle"))` re-runs
+-- recalculate (the compositor calls recalculate() after layout_msg).
+local function mosaic_layout_msg(ctx, msg)
+	return true
+end
+
 local function register_mosaic_layout()
 	if not (hl.layout and hl.layout.register) then
 		if _G.mosaic_layout_registered then
@@ -1037,7 +1113,7 @@ local function register_mosaic_layout()
 		log("lua:mosaic unavailable (hl.layout.register missing) — legacy floating engine active")
 		return false
 	end
-	local ok, err = pcall(hl.layout.register, "mosaic", { recalculate = mosaic_recalculate })
+	local ok, err = pcall(hl.layout.register, "mosaic", { recalculate = mosaic_recalculate, layout_msg = mosaic_layout_msg })
 	if not ok then
 		if tostring(err):match("already registered") and _G.mosaic_layout_registered then
 			log("lua:mosaic already registered — keeping existing provider")
@@ -1766,6 +1842,11 @@ local MAX_SPILL_SCAN = 20
 -- it moves pre-paint, before first paint).
 local SPILL_SPAWN_WAIT = 250
 local SPILL_BLOCKED = { [8] = true, [9] = true, [10] = true }
+-- Never spill past workspace 10. Binds/pager cover 1-10 (SUPER+1..0), and an
+-- ever-growing chain (11, 12, ...) leaves reachable, rule-less workspaces
+-- behind — the 22:04 session died right after a spill chain escaped there.
+-- A crowded workspace with no hole at or under 10 keeps its window.
+local SPILL_MAX_WS = 10
 
 -- Stable window identity: object handles are unreliable across listings, so
 -- compare normalized addresses (same pattern as floating-mode.lua).
@@ -1829,8 +1910,11 @@ end
 -- so the returned hole is free. Reserved workspaces are never touched nor
 -- landed on. Returns hole or nil. Shared by both spill paths.
 local function spill_make_hole(num)
+	if num >= SPILL_MAX_WS then
+		return nil
+	end
 	local empty_at = nil
-	for k = num + 1, num + MAX_SPILL_SCAN do
+	for k = num + 1, math.min(num + MAX_SPILL_SCAN, SPILL_MAX_WS) do
 		if not SPILL_BLOCKED[k] and spill_ws_empty(k) then
 			empty_at = k
 			break
@@ -2033,6 +2117,48 @@ hl.on("window.open", function(w)
 		return
 	end
 	spill_begin(w, num, ws_id, spill_addr(w), false)
+end)
+
+--------------------------------------------------------------------------------
+-- Boot self-heal: workspace rules set at config load don't always stick
+-- (the workspace may not exist yet), so a mosaic workspace can show as
+-- active while dwindle actually tiles it — until a manual toggle re-points
+-- the rule. Re-assert the rule whenever a workspace becomes active and once
+-- at compositor start. Idempotent: same rule rewritten in place.
+--------------------------------------------------------------------------------
+
+local function ensure_mosaic_rule(ws_id)
+	if not real_layout_ok or not ws_id then
+		return
+	end
+	if not M.is_active(ws_id) then
+		return
+	end
+	set_ws_layout(tonumber(ws_id) or ws_id, "lua:mosaic")
+end
+
+hl.on("hyprland.start", function()
+	if not from_this_load() then
+		return
+	end
+	for id, v in pairs(_G.mosaic_mode.workspaces or {}) do
+		if v then
+			ensure_mosaic_rule(id)
+		end
+	end
+end)
+
+hl.on("workspace.active", function(ws)
+	if not from_this_load() then
+		return
+	end
+	if not real_layout_ok then
+		return
+	end
+	local id = ws and ws.id
+	if id then
+		ensure_mosaic_rule(id)
+	end
 end)
 
 -- Event Listeners
