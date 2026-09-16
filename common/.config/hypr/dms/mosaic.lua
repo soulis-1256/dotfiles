@@ -188,6 +188,394 @@ local function has_fixed_size_rule(w)
 	return FIXED_SIZE_CLASSES[cls] == true
 end
 
+--------------------------------------------------------------------------------
+-- Real tiling backend: lua:mosaic
+--
+-- Registers mosaic as a first-class Hyprland layout (hl.layout.register,
+-- used as `lua:mosaic`). Windows stay TILED: the compositor calls recalculate
+-- and owns geometry/animations/gaps. Floating windows (dialogs, file
+-- managers via window rules, user Super+F floats) never reach recalculate.
+-- When registration is unavailable, the legacy floating engine further below
+-- takes over automatically (guarded by M.real_available()).
+--------------------------------------------------------------------------------
+
+local real_layout_ok = false
+function M.real_available()
+	return real_layout_ok == true
+end
+
+-- Shared first-error throttle: recalculate runs constantly, so never log raw.
+local last_layout_err = nil
+local function log_layout_err(msg)
+	if msg ~= last_layout_err then
+		last_layout_err = msg
+		log("lua:mosaic: " .. tostring(msg))
+	end
+end
+
+-- Defensive classify for layout target windows. Anything unreadable (or a
+-- group target with no window) falls back to canvas = neutral 50/50.
+local function classify_layout_window(w)
+	if not w then
+		return db.ARCHETYPES.canvas
+	end
+	local ok, arch = pcall(db.classify, w)
+	if ok and arch then
+		return arch
+	end
+	return db.ARCHETYPES.canvas
+end
+
+-- Bucket sort for layout targets. Same left-to-right order as the legacy
+-- sorter: sidebar | canvas | editor | terminal. Float archetypes only appear
+-- here if the user manually untiled them, so they place as neutral canvas.
+local function sort_layout_targets(targets)
+	local sidebars, editors, canvases, terminals = {}, {}, {}, {}
+	for _, t in ipairs(targets) do
+		local arch = classify_layout_window(t.window)
+		if arch.float then
+			arch = db.ARCHETYPES.canvas
+		end
+		local item = { target = t, archetype = arch }
+		if arch.name == "sidebar" then
+			table.insert(sidebars, item)
+		elseif arch.name == "editor" then
+			table.insert(editors, item)
+		elseif arch.name == "terminal" then
+			table.insert(terminals, item)
+		else
+			table.insert(canvases, item)
+		end
+	end
+	local ordered = {}
+	for _, it in ipairs(sidebars) do table.insert(ordered, it) end
+	for _, it in ipairs(canvases) do table.insert(ordered, it) end
+	for _, it in ipairs(editors) do table.insert(ordered, it) end
+	for _, it in ipairs(terminals) do table.insert(ordered, it) end
+	return ordered
+end
+
+-- Numeric area dims. The layout API passes area as {x, y, w, h}; anything
+-- else degrades to equal splits (never a crash).
+local function layout_area_dims(area)
+	if type(area) ~= "table" then
+		return nil, nil
+	end
+	local W = tonumber(area.w) or tonumber(area.width)
+	local H = tonumber(area.h) or tonumber(area.height)
+	return W, H
+end
+
+-- Sidebar width as a fraction of W (mirrors the legacy clamp sizing).
+local function layout_sidebar_frac(W, ratio, min_w, max_w)
+	if not W or W <= 0 then
+		return ratio
+	end
+	return clamp(W * ratio, min_w, max_w) / W
+end
+
+-- k full-width rows out of box via chained splits. NOTE: the remainder is
+-- split(box, "bottom", 1 - f), NOT f — "bottom f" is the bottom f-sized
+-- slice, which collapses rows and leaves dead space (invisible at f = 0.5,
+-- which is why only k > 2 ever broke).
+local function layout_rows(ctx, box, k)
+	local out = {}
+	local rest = box
+	for i = 1, k - 1 do
+		local f = 1 / (k - i + 1)
+		table.insert(out, ctx:split(rest, "top", f))
+		rest = ctx:split(rest, "bottom", 1 - f)
+	end
+	table.insert(out, rest)
+	return out
+end
+
+-- k full-height columns out of box via chained splits.
+local function layout_cols(ctx, box, k)
+	local out = {}
+	local rest = box
+	for i = 1, k - 1 do
+		local f = 1 / (k - i + 1)
+		table.insert(out, ctx:split(rest, "left", f))
+		rest = ctx:split(rest, "right", 1 - f)
+	end
+	table.insert(out, rest)
+	return out
+end
+
+-- N = 2 width fraction for the left window (mirrors the legacy duo table).
+local function layout_duo_frac(a1, a2)
+	if a1.name == "canvas" and a2.name == "terminal" then return 0.67 end
+	if a2.name == "canvas" and a1.name == "terminal" then return 0.33 end
+	if a1.name == "editor" and a2.name == "terminal" then return 0.64 end
+	if a2.name == "editor" and a1.name == "terminal" then return 0.36 end
+	if a1.name == "editor" and a2.name == "canvas" then return 0.52 end
+	if a2.name == "editor" and a1.name == "canvas" then return 0.48 end
+	if a1.name == a2.name then return 0.50 end
+	local t1 = a1.target_ratio or 0.50
+	local t2 = a2.target_ratio or 0.50
+	return clamp(t1 / (t1 + t2), 0.32, 0.68)
+end
+
+-- Placement log for the current recalculate (see safe_place). Reset per run.
+-- Declared before safe_place so it binds as an upvalue (Lua lexical scope).
+local active_placements = nil
+
+local function safe_place(target, box)
+	local ok, err = pcall(function()
+		target:place(box)
+	end)
+	if not ok then
+		log_layout_err("place failed: " .. tostring(err))
+		return
+	end
+	-- Record what was actually placed for _G.mosaic_debug().
+	if active_placements then
+		local cls = "?"
+		pcall(function()
+			local w = target.window
+			if w then
+				cls = tostring(w.class or w.initial_class or "?")
+			end
+		end)
+		table.insert(active_placements, {
+			class = cls,
+			x = box.x, y = box.y, w = box.w, h = box.h,
+		})
+	end
+end
+
+local function mosaic_recalculate_inner(ctx)
+	local targets = (ctx and ctx.targets) or {}
+	if #targets == 0 then
+		return
+	end
+	local area = ctx.area
+	if type(area) ~= "table" then
+		return
+	end
+	local ordered = sort_layout_targets(targets)
+	local n = #ordered
+	if n == 0 then
+		return
+	end
+
+	local W, H = layout_area_dims(area)
+	local portrait = (W and H and H > W) or false
+	local narrow = (W and W < 600) or false
+	local stacked = portrait or narrow
+
+	-- Snapshot for _G.mosaic_debug(): what the layout last saw. If targets
+	-- is 0 while windows are visibly there, the workspace rule isn't active
+	-- (or everything is floating) — that is the first thing to check.
+	active_placements = {}
+	_G.mosaic_last_recalc = {
+		targets = #targets,
+		w = W,
+		h = H,
+		portrait = portrait and true or false,
+		time = os.date("%H:%M:%S"),
+	}
+
+	-- N = 1: solo fill. Gaps/borders come from the compositor config and the
+	-- existing tiled smart-gaps workspace rules (no scripted hacks needed).
+	if n == 1 then
+		safe_place(ordered[1].target, area)
+		return
+	end
+
+	-- Portrait/narrow: always stack full-width rows, at any count. Columns
+	-- here would be half (or less) of an already-narrow width: chat/canvas
+	-- content that tolerates narrow-but-tall (landscape sidebar) or
+	-- short-but-wide (stacked rows) breaks when it gets neither — exactly
+	-- what the 2x2 quarters did. Rows keep full width forever and grow
+	-- stably: adding a window resplits heights, never the strategy.
+	if stacked then
+		local rows = layout_rows(ctx, area, n)
+		for i = 1, n do
+			safe_place(ordered[i].target, rows[i])
+		end
+		return
+	end
+
+	-- N = 2 landscape: asymmetric duo, canvas/editor left of terminal.
+	if n == 2 then
+		local a1, a2 = ordered[1].archetype, ordered[2].archetype
+		local f = layout_duo_frac(a1, a2)
+		if a1.name == "sidebar" and a2.name ~= "sidebar" then
+			f = layout_sidebar_frac(W, 0.26, 380, 480)
+		elseif a2.name == "sidebar" and a1.name ~= "sidebar" then
+			f = 1 - layout_sidebar_frac(W, 0.26, 380, 480)
+		end
+		safe_place(ordered[1].target, ctx:split(area, "left", f))
+		safe_place(ordered[2].target, ctx:split(area, "right", 1 - f))
+		return
+	end
+
+	-- N = 3 landscape.
+	if n == 3 then
+		local a1, a2, a3 = ordered[1].archetype, ordered[2].archetype, ordered[3].archetype
+		if a1.name == "sidebar" or a2.name == "sidebar" or a3.name == "sidebar" then
+			-- Sidebar | center | right columns.
+			local fs = layout_sidebar_frac(W, 0.24, 360, 460)
+			local rest = ctx:split(area, "right", 1 - fs)
+			local wr_frac = W and (clamp(W * 0.28, 400, 560) / W) or 0.28
+			local fr = ((1 - fs) > 0) and clamp(wr_frac / (1 - fs), 0, 1) or 0.5
+			safe_place(ordered[1].target, ctx:split(area, "left", fs))
+			safe_place(ordered[2].target, ctx:split(rest, "left", 1 - fr))
+			safe_place(ordered[3].target, ctx:split(rest, "right", fr))
+			return
+		end
+		-- Master left full height, two stacked right.
+		local f = 0.58
+		if (a1.name == "canvas" or a1.name == "editor") and a2.name == "terminal" and a3.name == "terminal" then
+			f = 0.62
+		end
+		local R = ctx:split(area, "right", 1 - f)
+		safe_place(ordered[1].target, ctx:split(area, "left", f))
+		local rows = layout_rows(ctx, R, 2)
+		safe_place(ordered[2].target, rows[1])
+		safe_place(ordered[3].target, rows[2])
+		return
+	end
+
+	-- N = 4 landscape: sidebar variant or clean 2x2 grid.
+	if n == 4 then
+		if ordered[1].archetype.name == "sidebar" then
+			local fs = layout_sidebar_frac(W, 0.22, 340, 460)
+			local rest = ctx:split(area, "right", 1 - fs)
+			local wst_frac = W and (clamp(W * 0.30, 450, 600) / W) or 0.30
+			local rest_w = 1 - fs
+			local fc = (rest_w > 0) and clamp(1 - wst_frac / rest_w, 0, 1) or 0.5
+			safe_place(ordered[1].target, ctx:split(area, "left", fs))
+			safe_place(ordered[2].target, ctx:split(rest, "left", fc))
+			local S = ctx:split(rest, "right", 1 - fc)
+			local rows = layout_rows(ctx, S, 2)
+			safe_place(ordered[3].target, rows[1])
+			safe_place(ordered[4].target, rows[2])
+			return
+		end
+		local L = ctx:split(area, "left", 0.5)
+		local R = ctx:split(area, "right", 0.5)
+		local rL = layout_rows(ctx, L, 2)
+		local rR = layout_rows(ctx, R, 2)
+		safe_place(ordered[1].target, rL[1])
+		safe_place(ordered[2].target, rR[1])
+		safe_place(ordered[3].target, rL[2])
+		safe_place(ordered[4].target, rR[2])
+		return
+	end
+
+	-- N = 5 landscape: masonry (left full | mid 2-stack | right 2-stack).
+	if n == 5 then
+		local L = ctx:split(area, "left", 0.44)
+		local RR = ctx:split(area, "right", 0.56)
+		local M = ctx:split(RR, "left", 0.30 / 0.56)
+		local R = ctx:split(RR, "right", 0.26 / 0.56)
+		safe_place(ordered[1].target, L)
+		local rM = layout_rows(ctx, M, 2)
+		local rR = layout_rows(ctx, R, 2)
+		safe_place(ordered[2].target, rM[1])
+		safe_place(ordered[3].target, rM[2])
+		safe_place(ordered[4].target, rR[1])
+		safe_place(ordered[5].target, rR[2])
+		return
+	end
+
+	-- N > 5 landscape: uniform 3-column grid. Real tiling has no overlapping
+	-- cascade; every target must own non-overlapping space.
+	local rows = math.ceil(n / 3)
+	local full_rows = layout_rows(ctx, area, rows)
+	for r = 1, rows do
+		local from = (r - 1) * 3 + 1
+		local cnt = math.min(3, n - from + 1)
+		if cnt == 3 then
+			local cs = layout_cols(ctx, full_rows[r], 3)
+			for k = 0, 2 do
+				safe_place(ordered[from + k].target, cs[k + 1])
+			end
+		elseif cnt == 2 then
+			safe_place(ordered[from].target, ctx:split(full_rows[r], "left", 0.5))
+			safe_place(ordered[from + 1].target, ctx:split(full_rows[r], "right", 0.5))
+		else
+			safe_place(ordered[from].target, full_rows[r])
+		end
+	end
+end
+
+local function mosaic_recalculate(ctx)
+	local ok, err = pcall(mosaic_recalculate_inner, ctx)
+	if not ok then
+		log_layout_err("recalculate failed: " .. tostring(err))
+	elseif _G.mosaic_last_recalc then
+		_G.mosaic_last_recalc.placements = active_placements or {}
+	end
+	active_placements = nil
+end
+
+local function register_mosaic_layout()
+	if not (hl.layout and hl.layout.register) then
+		log("lua:mosaic unavailable (hl.layout.register missing) — legacy floating engine active")
+		return false
+	end
+	local ok, err = pcall(hl.layout.register, "mosaic", { recalculate = mosaic_recalculate })
+	if not ok then
+		log("lua:mosaic registration failed: " .. tostring(err) .. " — legacy floating engine active")
+		return false
+	end
+	log("lua:mosaic registered as a real tiling layout")
+	return true
+end
+
+real_layout_ok = register_mosaic_layout()
+_G.mosaic_real_layout = real_layout_ok
+
+-- Point a workspace at a tiling algorithm (real-layout path). Repeated calls
+-- for the same workspace update the rule in place.
+local function set_ws_layout(id, layout_name)
+	if not real_layout_ok then
+		return false
+	end
+	local ok, err = pcall(hl.workspace_rule, { workspace = tostring(id), layout = layout_name })
+	log(string.format(">>> WS %s layout -> %s (%s)", tostring(id), layout_name, ok and "ok" or ("FAILED: " .. tostring(err))))
+	return ok
+end
+
+-- One-time cleanup when entering real mosaic: unfloat windows the legacy
+-- floating engine managed and clear its scripted props, so lua:mosaic starts
+-- from clean tiled state. Genuine floats (transients, pinned, utilities,
+-- fixed-size dialogs) are spared.
+local function migrate_legacy_floats(id)
+	for _, w in ipairs(hl.get_workspace_windows(id) or {}) do
+		pcall(function()
+			if is_ignorable(w) then
+				return
+			end
+			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "no_anim", value = "unset" }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = "unset" }))
+			hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = "unset" }))
+			local arch = db.classify(w)
+			if not arch.float and not has_fixed_size_rule(w) and w.floating then
+				hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
+			end
+		end)
+	end
+end
+
+-- Re-assert persisted mosaic workspaces after (re)load: compositor workspace
+-- rules do not survive a restart, the state file does. Migration runs here
+-- too: legacy floats persist across a reload, and floating windows are
+-- invisible to layouts, so without it an old session comes back as a pile of
+-- stale overlapping floats (new tiles land around/under them).
+if real_layout_ok then
+	for id, v in pairs(_G.mosaic_mode.workspaces or {}) do
+		if v then
+			set_ws_layout(id, "lua:mosaic")
+			migrate_legacy_floats(id)
+		end
+	end
+end
+
 -- Orientation helpers.
 -- The solver splits along the SHORT axis so windows keep a usable aspect:
 -- landscape (wide) -> side-by-side columns, portrait (tall) -> stacked rows.
@@ -546,6 +934,13 @@ function M.apply_workspace(ws_id)
 		return
 	end
 
+	-- Real-layout path: the compositor tiles; just make sure this workspace
+	-- points at lua:mosaic. No window iteration (user floats stay floating).
+	if real_layout_ok then
+		set_ws_layout(id, "lua:mosaic")
+		return
+	end
+
 	local mon = resolve_workspace_monitor(id)
 	if not mon then
 		return
@@ -649,15 +1044,24 @@ function M.toggle(ws_id)
 	log(string.format(">>> MOSAIC TOGGLE: WS %s is now %s", tostring(id), next_state and "MOSAIC" or "OFF"))
 
 	if next_state then
-		M.apply_workspace(id)
+		if real_layout_ok then
+			set_ws_layout(id, "lua:mosaic")
+			migrate_legacy_floats(id)
+		else
+			M.apply_workspace(id)
+		end
 	else
-		-- Return windows to native tiling
-		local windows = hl.get_workspace_windows(id) or {}
-		for _, w in ipairs(windows) do
-			if not is_ignorable(w) and w.floating then
-				pcall(function()
-					hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
-				end)
+		if real_layout_ok then
+			set_ws_layout(id, "dwindle")
+		else
+			-- Return windows to native tiling
+			local windows = hl.get_workspace_windows(id) or {}
+			for _, w in ipairs(windows) do
+				if not is_ignorable(w) and w.floating then
+					pcall(function()
+						hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
+					end)
+				end
 			end
 		end
 	end
@@ -685,7 +1089,12 @@ _G.set_workspace_layout_mode = function(mode, ws_id)
 		end
 		_G.mosaic_mode.workspaces[id] = true
 		write_state()
-		M.apply_workspace(id)
+		if real_layout_ok then
+			set_ws_layout(id, "lua:mosaic")
+			migrate_legacy_floats(id)
+		else
+			M.apply_workspace(id)
+		end
 	elseif mode == "floating" then
 		_G.mosaic_mode.workspaces[id] = false
 		write_state()
@@ -707,12 +1116,16 @@ _G.set_workspace_layout_mode = function(mode, ws_id)
 		if _G.floating_mode and _G.floating_mode.workspaces then
 			_G.floating_mode.workspaces[id] = false
 		end
-		for _, w in ipairs(hl.get_workspace_windows(id) or {}) do
-			pcall(function()
-				if not is_ignorable(w) and w.floating then
-					hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
-				end
-			end)
+		if real_layout_ok then
+			set_ws_layout(id, "dwindle")
+		else
+			for _, w in ipairs(hl.get_workspace_windows(id) or {}) do
+				pcall(function()
+					if not is_ignorable(w) and w.floating then
+						hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
+					end
+				end)
+			end
 		end
 	end
 
@@ -749,6 +1162,41 @@ _G.get_workspace_layout_mode = function(ws_id)
 	return "tiled"
 end
 
+-- On-device truth: run `hyprctl eval '_G.mosaic_debug()'` (or cat
+-- /tmp/mosaic_debug.log) when the layout looks wrong and send me the output.
+_G.mosaic_debug = function()
+	local lines = {
+		"real_layout=" .. tostring(real_layout_ok),
+		"hl.layout=" .. tostring(hl.layout ~= nil),
+		"last_err=" .. tostring(last_layout_err),
+	}
+	local ws = _G.mosaic_mode and _G.mosaic_mode.workspaces or {}
+	local ids = {}
+	for id, v in pairs(ws) do
+		if v then
+			table.insert(ids, tostring(id))
+		end
+	end
+	table.sort(ids)
+	table.insert(lines, "mosaic_workspaces={" .. table.concat(ids, ",") .. "}")
+	local r = _G.mosaic_last_recalc or {}
+	table.insert(lines, string.format("last_recalc: targets=%s w=%s h=%s portrait=%s time=%s",
+		tostring(r.targets), tostring(r.w), tostring(r.h), tostring(r.portrait), tostring(r.time)))
+	for _, p in ipairs(r.placements or {}) do
+		table.insert(lines, string.format("  placed %s x=%s y=%s w=%s h=%s",
+			tostring(p.class), tostring(p.x), tostring(p.y), tostring(p.w), tostring(p.h)))
+	end
+	local live = hl.get_active_workspace and hl.get_active_workspace()
+	table.insert(lines, "active_workspace=" .. tostring(live and live.id))
+	local s = table.concat(lines, "\n")
+	local f = io.open("/tmp/mosaic_debug.log", "w")
+	if f then
+		f:write(s .. "\n")
+		f:close()
+	end
+	return s
+end
+
 _G.mosaic_toggle = function(ws_id)
 	M.toggle(ws_id)
 end
@@ -773,6 +1221,7 @@ local function schedule_recalculate(delay)
 end
 
 hl.on("window.open_early", function(w)
+	if real_layout_ok then return end
 	if not w then return end
 	local ws_id = w.workspace and w.workspace.id
 	if not ws_id then
@@ -789,6 +1238,7 @@ hl.on("window.open_early", function(w)
 end)
 
 hl.on("window.open", function(w)
+	if real_layout_ok then return end
 	local ws_id = (w and w.workspace and w.workspace.id)
 	if not ws_id then
 		local aws = hl.get_active_workspace()
@@ -805,6 +1255,7 @@ hl.on("window.open", function(w)
 end)
 
 hl.on("window.close", function(w)
+	if real_layout_ok then return end
 	local ws_id = (w and w.workspace and w.workspace.id)
 	if not ws_id then
 		local aws = hl.get_active_workspace()
@@ -827,6 +1278,7 @@ hl.on("window.close", function(w)
 end)
 
 hl.on("window.move_to_workspace", function(w, ws)
+	if real_layout_ok then return end
 	local ws_id = (ws and ws.id) or (w and w.workspace and w.workspace.id)
 	if ws_id and M.is_active(ws_id) then
 		schedule_recalculate(40)
@@ -834,6 +1286,7 @@ hl.on("window.move_to_workspace", function(w, ws)
 end)
 
 hl.on("workspace.active", function(ws)
+	if real_layout_ok then return end
 	if ws and ws.id and M.is_active(ws.id) then
 		schedule_recalculate(40)
 	end

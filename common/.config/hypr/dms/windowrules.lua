@@ -55,6 +55,15 @@ hl.window_rule({
 	size = {1535, 994},
 })
 
+-- File managers + VLC: tile badly as canvas (fullscreen alone, ~67% in duos),
+-- so they float centered and never enter the lua:mosaic tiled targets.
+-- Mirrors the Nautilus float rule in hyprland.lua.
+hl.window_rule({
+	match = { class = "^(dolphin|org\\.kde\\.dolphin|thunar|nemo|caja|pcmanfm.*|krusader|konqueror|vlc)$" },
+	float = true,
+	center = true,
+})
+
 -- Win11-style floats: hovering them does not steal mouse/keyboard focus
 hl.window_rule({ match = { float = true }, no_follow_mouse = true })
 
