@@ -253,19 +253,23 @@ end
 -- Drag tracking: a drag shows up as shrink (n-1, dragged floated away) then
 -- return (n, dragged re-appended). layout_order keeps the full order through
 -- the shrink (grace period) instead of clobbering to the survivor, so the
--- return is recognized as a returner (not a newcomer) and ordered by DROP
--- POSITION (target.box / window.at centers, x in landscape, y when stacked),
--- not by append order and not by archetype rank. Truly new windows (never in
--- the full order, or pruned after the grace = closed) still use rank.
+-- return is recognized as a returner (not a newcomer). Returners place by the
+-- DWINDLE RULE: cell under the cursor at release (recalculate runs
+-- synchronously inside dragEnd, cursor hasn't moved), cursor half decides
+-- before/after — symmetric both directions. Floating-box centers are only a
+-- fallback. Truly new windows (never in the full order, or pruned after the
+-- grace = closed) still insert at archetype rank.
 -- Drag state lives in _G so a config reload doesn't wipe the user's
 -- arrangement (file-locals would reset and every open would snap back to
 -- archetype order until re-dragged).
 _G.mosaic_layout_order = _G.mosaic_layout_order or {} -- ws_key -> array of ids (full, grace-kept)
 _G.mosaic_layout_prev_present = _G.mosaic_layout_prev_present or {} -- ws_key -> {id -> true}
 _G.mosaic_layout_last_seen = _G.mosaic_layout_last_seen or {} -- ws_key -> {id -> os.clock()}
+_G.mosaic_last_cells = _G.mosaic_last_cells or {} -- ws_key -> {id -> {x,y,w,h}} from last placement
 local layout_order = _G.mosaic_layout_order
 local layout_prev_present = _G.mosaic_layout_prev_present
 local layout_last_seen = _G.mosaic_layout_last_seen
+local layout_last_cells = _G.mosaic_last_cells
 local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
 
 local function layout_target_id(t, i)
@@ -320,6 +324,8 @@ end
 -- Center of a layout target for drop-position detection. Prefers the
 -- compositor target box (drop position right after re-tile); falls back to
 -- window.at/size goals. Returns nil,nil when unreadable (never a crash).
+-- NOTE: t.box can still hold the pre-drag tiled position, so this is only
+-- the fallback. Primary signal is the cursor (dwindle rule below).
 local function layout_target_center(t)
 	local ok, cx, cy = pcall(function()
 		local b = t and t.box
@@ -354,11 +360,88 @@ local function layout_target_center(t)
 	return nil, nil
 end
 
+-- Live cursor position, nil-safe. During a mouse drag the compositor runs
+-- recalculate synchronously inside dragEnd (changeFloatingMode), so the
+-- cursor is still on the release cell — the same signal dwindle's addTarget
+-- uses (window under cursor at drop, cursor half decides before/after).
+local function layout_cursor_pos()
+	local ok, p = pcall(function()
+		return hl.get_cursor_pos()
+	end)
+	if ok and type(p) == "table" then
+		local x, y = tonumber(p.x), tonumber(p.y)
+		if x and y then
+			return x, y
+		end
+	end
+	return nil, nil
+end
+
+local function area_contains(area, x, y)
+	if type(area) ~= "table" or x == nil or y == nil then
+		return false
+	end
+	local ax, ay = tonumber(area.x), tonumber(area.y)
+	local aw = tonumber(area.w) or tonumber(area.width)
+	local ah = tonumber(area.h) or tonumber(area.height)
+	if not (ax and ay and aw and ah) then
+		return false
+	end
+	return x >= ax and x < ax + aw and y >= ay and y < ay + ah
+end
+
+-- Dwindle-rule slot for one returner: cell under the cursor wins (containing
+-- cell, else nearest center — mirrors getNodeFromWindow/windowAt, then
+-- getClosestNode). Cursor on the left/top half of that cell inserts before
+-- its occupant, else after. Returns nil when there are no usable cells.
+local function cursor_slot_for(working, cells, cx, cy, stacked)
+	local slot, found = nil, false
+	for j, sid in ipairs(working) do
+		local b = cells[sid]
+		if b and cx >= b.x and cx < b.x + b.w and cy >= b.y and cy < b.y + b.h then
+			if stacked then
+				slot = (cy < b.y + b.h / 2) and j or (j + 1)
+			else
+				slot = (cx < b.x + b.w / 2) and j or (j + 1)
+			end
+			found = true
+			break
+		end
+	end
+	if not found then
+		local best_j, best_d2 = nil, nil
+		for j, sid in ipairs(working) do
+			local b = cells[sid]
+			if b then
+				local dx, dy = cx - (b.x + b.w / 2), cy - (b.y + b.h / 2)
+				local d2 = dx * dx + dy * dy
+				if not best_d2 or d2 < best_d2 then
+					best_j, best_d2 = j, d2
+				end
+			end
+		end
+		if best_j then
+			local b = cells[working[best_j]]
+			if stacked then
+				slot = (cy < b.y + b.h / 2) and best_j or (best_j + 1)
+			else
+				slot = (cx < b.x + b.w / 2) and best_j or (best_j + 1)
+			end
+			found = true
+		end
+	end
+	if found then
+		slot = math.max(1, math.min(slot, #working + 1))
+		return slot
+	end
+	return nil
+end
+
 -- Bucket order for layout targets (persistent, see above). Float archetypes
 -- only appear here if the user manually untiled them, so they place as
 -- neutral canvas. `stacked` selects the drop axis (y when portrait/narrow
 -- rows, x otherwise) and must match mosaic_recalculate_inner's decision.
-local function sort_layout_targets(targets, stacked)
+local function sort_layout_targets(targets, area, stacked)
 	-- Classify once per unique id; dedupe incoming keeping the LAST
 	-- occurrence (a dragged window re-appended at the end: latest = intent;
 	-- also collapses phantom slots so no cell is ever assigned twice).
@@ -442,7 +525,11 @@ local function sort_layout_targets(targets, stacked)
 	local stored_ids = nil
 
 	if #returners > 0 then
-		-- Drag-return: order by DROP POSITION, never by append or rank.
+		-- Drag-return: DWINDLE RULE — the drop goes where the CURSOR is.
+		-- recalculate runs synchronously inside dragEnd, so the cursor is
+		-- still on the release cell (same signal dwindle's addTarget uses:
+		-- cell under cursor wins, cursor half decides before/after).
+		-- Symmetric both directions, independent of what t.box holds.
 		local old_present = {}
 		for _, id in ipairs(pruned) do
 			if present[id] and not returner_set[id] then
@@ -455,6 +542,35 @@ local function sort_layout_targets(targets, stacked)
 		for _, id in ipairs(old_present) do
 			table.insert(ordered_old, id)
 		end
+		local cells = layout_last_cells[key] or {}
+		local ccx, ccy = layout_cursor_pos()
+		local cursor_ok = ccx ~= nil and area_contains(area, ccx, ccy)
+		local cursor_done = false
+		if cursor_ok then
+			local working = {}
+			for _, id in ipairs(old_present) do
+				table.insert(working, id)
+			end
+			local all_placed = true
+			for _, rid in ipairs(returners) do
+				local slot = cursor_slot_for(working, cells, ccx, ccy, stacked)
+				if not slot then
+					all_placed = false
+					break
+				end
+				table.insert(working, slot, rid)
+			end
+			if all_placed then
+				ordered_old = working
+				cursor_done = true
+			end
+		end
+		if cursor_done then
+			-- placed purely by cursor; newcomers rank in below.
+		else
+		-- Cursor unusable (nil, outside the work area, or no recorded
+		-- cells — e.g. an inter-workspace keybind move-back, not a mouse
+		-- drop): fall back to floating-box centers, then append order.
 		local drop_ok = true
 		for _, rid in ipairs(returners) do
 			local rcx, rcy = layout_target_center(by_id[rid].target)
@@ -541,6 +657,7 @@ local function sort_layout_targets(targets, stacked)
 				end
 			end
 		end
+		end
 		-- Truly new windows (if any arrived the same frame) still rank in.
 		for _, id in ipairs(newcomers) do
 			rank_insert_into(ordered_old, id)
@@ -610,7 +727,7 @@ local function sort_layout_targets(targets, stacked)
 	for _, id in ipairs(final_ids) do
 		local e = by_id[id]
 		if e then
-			table.insert(ordered, { target = e.target, archetype = e.archetype })
+			table.insert(ordered, { target = e.target, archetype = e.archetype, id = id })
 		end
 	end
 	return ordered
@@ -681,6 +798,10 @@ end
 -- Placement log for the current recalculate (see safe_place). Reset per run.
 -- Declared before safe_place so it binds as an upvalue (Lua lexical scope).
 local active_placements = nil
+-- Last placed boxes per run, keyed by layout id (for drop-cell lookup on the
+-- next recalculate). active_idmap maps target userdata -> layout id.
+local active_boxes = nil
+local active_idmap = nil
 
 local function safe_place(target, box)
 	local ok, err = pcall(function()
@@ -689,6 +810,12 @@ local function safe_place(target, box)
 	if not ok then
 		log_layout_err("place failed: " .. tostring(err))
 		return
+	end
+	if active_boxes and active_idmap then
+		local id = active_idmap[target]
+		if id then
+			active_boxes[id] = { x = box.x, y = box.y, w = box.w, h = box.h }
+		end
 	end
 	-- Record what was actually placed for _G.mosaic_debug().
 	if active_placements then
@@ -720,7 +847,7 @@ local function mosaic_recalculate_inner(ctx)
 	local narrow = (W and W < 600) or false
 	local stacked = portrait or narrow
 
-	local ordered = sort_layout_targets(targets, stacked)
+	local ordered = sort_layout_targets(targets, area, stacked)
 	local n = #ordered
 	if n == 0 then
 		return
@@ -730,6 +857,13 @@ local function mosaic_recalculate_inner(ctx)
 	-- is 0 while windows are visibly there, the workspace rule isn't active
 	-- (or everything is floating) — that is the first thing to check.
 	active_placements = {}
+	active_boxes = {}
+	active_idmap = {}
+	for _, e in ipairs(ordered) do
+		if e.target ~= nil and e.id ~= nil then
+			active_idmap[e.target] = e.id
+		end
+	end
 	_G.mosaic_last_recalc = {
 		targets = #targets,
 		w = W,
@@ -767,6 +901,16 @@ local function mosaic_recalculate_inner(ctx)
 			f = layout_sidebar_frac(W, 0.26, 380, 480)
 		elseif a2.name == "sidebar" and a1.name ~= "sidebar" then
 			f = 1 - layout_sidebar_frac(W, 0.26, 380, 480)
+		end
+		-- Usability floor: never squeeze a window under ~400px side by
+		-- side (a terminal there can't render a line of code). Stack full
+		-- width instead. Only bites on narrow landscape areas; portrait
+		-- is stacked long before this (see above).
+		if W and W > 0 and math.min(W * f, W * (1 - f)) < 400 then
+			local rows = layout_rows(ctx, area, 2)
+			safe_place(ordered[1].target, rows[1])
+			safe_place(ordered[2].target, rows[2])
+			return
 		end
 		safe_place(ordered[1].target, ctx:split(area, "left", f))
 		safe_place(ordered[2].target, ctx:split(area, "right", 1 - f))
@@ -871,7 +1015,17 @@ local function mosaic_recalculate(ctx)
 	elseif _G.mosaic_last_recalc then
 		_G.mosaic_last_recalc.placements = active_placements or {}
 	end
+	-- Persist this run's cells for the next recalculate's drop lookup
+	-- (dwindle splits the CURRENT tree, not the pre-drag one).
+	if ok and active_boxes then
+		local kok, k = pcall(layout_ws_key, (ctx and ctx.targets) or {})
+		if kok and k and k ~= "ws:__shared__" then
+			layout_last_cells[k] = active_boxes
+		end
+	end
 	active_placements = nil
+	active_boxes = nil
+	active_idmap = nil
 end
 
 local function register_mosaic_layout()
@@ -1096,6 +1250,15 @@ local function solve_mosaic(items, wa)
 		local width1 = math.floor((wa.w - gap) * w1_ratio)
 		local width2 = wa.w - gap - width1
 
+		-- Usability floor (mirrors the real-layout path): under ~400px a
+		-- side-by-side window is unusable — stack full width instead.
+		if math.min(width1, width2) < 400 then
+			local rows = stack_rows(wa, gap, 2)
+			table.insert(results, { win = w1, rect = rows[1] })
+			table.insert(results, { win = w2, rect = rows[2] })
+			return results
+		end
+
 		table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = width1, h = wa.h } })
 		table.insert(results, { win = w2, rect = { x = wa.x + width1 + gap, y = wa.y, w = width2, h = wa.h } })
 		return results
@@ -1158,10 +1321,19 @@ local function solve_mosaic(items, wa)
 	if n == 4 then
 		local it1, it2, it3, it4 = items[1], items[2], items[3], items[4]
 		local w1, w2, w3, w4 = it1.win, it2.win, it3.win, it4.win
-		-- 2x2 grid works in both orientations. The 3-column sidebar layout
-		-- below would be unusably narrow on portrait, so it is landscape-only.
+		-- Portrait / very narrow: full-width rows like every other count.
+		-- A 2x2 grid here would be two unusable ~500px strips side by side
+		-- (same reason the real-layout path stacks all portrait counts).
+		if is_portrait(wa) or too_narrow_for_columns(wa) then
+			local rows = stack_rows(wa, gap, 4)
+			for i = 1, 4 do
+				table.insert(results, { win = items[i].win, rect = rows[i] })
+			end
+			return results
+		end
+		-- Landscape-only from here (portrait returned above as full rows).
+		-- The 3-column sidebar layout would be unusably narrow on portrait.
 		local has_sidebar = (it1.archetype.name == "sidebar")
-			and not is_portrait(wa) and not too_narrow_for_columns(wa)
 
 		if has_sidebar then
 			-- Sidebar Left (22%) | Center Main (48%) | Right 2-Stack (30%)
@@ -1192,22 +1364,12 @@ local function solve_mosaic(items, wa)
 	end
 
 	-- Case N >= 5: Adaptive Multi-Column Masonry (landscape) /
-	-- 2-column grid (portrait or very narrow, where 3 columns won't fit).
+	-- full-width rows on portrait or very narrow (mirrors the real-layout
+	-- path: columns there would be unusable strips side by side).
 	if is_portrait(wa) or too_narrow_for_columns(wa) then
-		local cols = 2
-		local rows = math.ceil(n / cols)
-		local col_w = math.floor((wa.w - gap) / cols)
-		local col_w2 = wa.w - gap - col_w
-		local row_h = math.floor((wa.h - (rows - 1) * gap) / rows)
+		local rows = stack_rows(wa, gap, n)
 		for i = 1, n do
-			local r = math.floor((i - 1) / cols)
-			local c = (i - 1) % cols
-			local last_row_single = (r == rows - 1) and (n % cols == 1)
-			local cw = last_row_single and wa.w or ((c == 0) and col_w or col_w2)
-			local cx = (last_row_single or c == 0) and wa.x or (wa.x + col_w + gap)
-			local cy = wa.y + r * (row_h + gap)
-			local ch = (r == rows - 1) and (wa.h - (cy - wa.y)) or row_h
-			table.insert(results, { win = items[i].win, rect = { x = cx, y = cy, w = cw, h = ch } })
+			table.insert(results, { win = items[i].win, rect = rows[i] })
 		end
 		return results
 	end
@@ -1235,6 +1397,10 @@ local function solve_mosaic(items, wa)
 
 	return results
 end
+
+-- Test hook (no compositor use): lets the headless harness drive the legacy
+-- geometric solver directly.
+M.solve_for_test = solve_mosaic
 
 -- False only when the client is provably gone (mid-close). Unknown (nil)
 -- counts as live so odd clients never get skipped by accident.
