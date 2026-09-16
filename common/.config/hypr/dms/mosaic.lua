@@ -75,8 +75,17 @@ function M.is_active(ws_id)
 	if not state then
 		return false
 	end
-	if ws_id and state.workspaces and state.workspaces[ws_id] ~= nil then
-		return state.workspaces[ws_id] == true
+	if ws_id then
+		local num_id = tonumber(ws_id)
+		if state.workspaces then
+			if num_id and state.workspaces[num_id] ~= nil then
+				return state.workspaces[num_id] == true
+			elseif state.workspaces[ws_id] ~= nil then
+				return state.workspaces[ws_id] == true
+			elseif state.workspaces[tostring(ws_id)] ~= nil then
+				return state.workspaces[tostring(ws_id)] == true
+			end
+		end
 	end
 	return state.active == true
 end
@@ -138,38 +147,56 @@ local function get_work_area(mon)
 	}
 end
 
--- Sorting windows: sidebars to edges, primary editors in focus/center
+local function resolve_workspace_monitor(ws_id)
+	local monitors = hl.get_monitors() or {}
+	if ws_id then
+		for _, m in ipairs(monitors) do
+			if m.active_workspace and (m.active_workspace.id == ws_id or m.active_workspace.name == tostring(ws_id)) then
+				return m
+			end
+		end
+		for _, w in ipairs(hl.get_workspace_windows(ws_id) or {}) do
+			if _G.resolve_window_monitor then
+				local m = _G.resolve_window_monitor(w)
+				if m then return m end
+			end
+		end
+	end
+	return (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or monitors[1]
+end
+
+-- Sorting windows: sidebars to left, main canvas/editor in center, terminals to right
 local function sort_mosaic_windows(windows)
-	local sidebars, editors, terminals, canvases = {}, {}, {}, {}
+	local sidebars, editors, canvases, terminals = {}, {}, {}, {}
 
 	for _, w in ipairs(windows) do
 		local arch = db.classify(w)
-		w._archetype = arch
+		local item = { win = w, archetype = arch }
 		if arch.name == "sidebar" then
-			table.insert(sidebars, w)
+			table.insert(sidebars, item)
 		elseif arch.name == "editor" then
-			table.insert(editors, w)
+			table.insert(editors, item)
 		elseif arch.name == "terminal" then
-			table.insert(terminals, w)
+			table.insert(terminals, item)
 		else
-			table.insert(canvases, w)
+			table.insert(canvases, item)
 		end
 	end
 
-	-- Order: Sidebars on the left, Editors in the center, Terminals/Canvases on the right
+	-- Order: Sidebars on the left, Canvases/Editors in the center/main, Terminals on the right
 	local ordered = {}
-	for _, w in ipairs(sidebars) do table.insert(ordered, w) end
-	for _, w in ipairs(editors) do table.insert(ordered, w) end
-	for _, w in ipairs(canvases) do table.insert(ordered, w) end
-	for _, w in ipairs(terminals) do table.insert(ordered, w) end
+	for _, it in ipairs(sidebars) do table.insert(ordered, it) end
+	for _, it in ipairs(canvases) do table.insert(ordered, it) end
+	for _, it in ipairs(editors) do table.insert(ordered, it) end
+	for _, it in ipairs(terminals) do table.insert(ordered, it) end
 
 	return ordered
 end
 
 -- The Mosaic Geometric Solver
 -- Returns array of { win = w, rect = { x, y, w, h } }
-local function solve_mosaic(windows, wa)
-	local n = #windows
+local function solve_mosaic(items, wa)
+	local n = #items
 	local results = {}
 	if n == 0 then
 		return results
@@ -179,23 +206,27 @@ local function solve_mosaic(windows, wa)
 
 	-- Case N = 1: Comfortable focal sizing (The Anti-Stretch Rule)
 	if n == 1 then
-		local w = windows[1]
-		local arch = w._archetype or db.classify(w)
+		local it = items[1]
+		local w = it.win
+		local arch = it.archetype or db.classify(w)
 		local target_w, target_h
 
 		if arch.name == "sidebar" then
-			target_w = clamp(math.floor(wa.w * 0.32), 400, 560)
+			target_w = clamp(math.floor(wa.w * 0.30), 380, 520)
 			target_h = wa.h
 		elseif arch.name == "terminal" then
-			target_w = clamp(math.floor(wa.w * 0.65), 720, 1200)
-			target_h = clamp(math.floor(wa.h * 0.85), 520, 850)
-		elseif arch.name == "editor" or arch.name == "canvas" then
-			-- Golden reading focus size: 76% width, 90% height
-			target_w = math.floor(wa.w * 0.78)
+			target_w = clamp(math.floor(wa.w * 0.55), 800, 1150)
+			target_h = clamp(math.floor(wa.h * 0.75), 520, 800)
+		elseif arch.name == "editor" then
+			target_w = clamp(math.floor(wa.w * 0.75), 1100, 1800)
 			target_h = math.floor(wa.h * 0.92)
+		elseif arch.name == "canvas" then
+			-- Web browsers: Tobias Bernard golden reading width: ~1200-1650px or ~70%
+			target_w = clamp(math.floor(wa.w * 0.70), 1200, 1650)
+			target_h = math.floor(wa.h * 0.94)
 		else
-			target_w = math.floor(wa.w * 0.75)
-			target_h = math.floor(wa.h * 0.85)
+			target_w = math.floor(wa.w * 0.72)
+			target_h = math.floor(wa.h * 0.88)
 		end
 
 		local x = wa.x + math.floor((wa.w - target_w) / 2)
@@ -206,18 +237,45 @@ local function solve_mosaic(windows, wa)
 
 	-- Case N = 2: Intelligent Asymmetric or Symmetric Duo
 	if n == 2 then
-		local w1, w2 = windows[1], windows[2]
-		local a1, a2 = w1._archetype, w2._archetype
+		local it1, it2 = items[1], items[2]
+		local a1, a2 = it1.archetype, it2.archetype
+		local w1, w2 = it1.win, it2.win
 
-		local w1_ratio = 0.50
+		-- If one is a sidebar, it gets its fixed comfortable sidebar width
 		if a1.name == "sidebar" and a2.name ~= "sidebar" then
-			w1_ratio = 0.28
+			local w_side = clamp(math.floor(wa.w * 0.26), 380, 480)
+			local w_other = wa.w - gap - w_side
+			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_side, h = wa.h } })
+			table.insert(results, { win = w2, rect = { x = wa.x + w_side + gap, y = wa.y, w = w_other, h = wa.h } })
+			return results
 		elseif a2.name == "sidebar" and a1.name ~= "sidebar" then
-			w1_ratio = 0.72
+			local w_side = clamp(math.floor(wa.w * 0.26), 380, 480)
+			local w_other = wa.w - gap - w_side
+			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_other, h = wa.h } })
+			table.insert(results, { win = w2, rect = { x = wa.x + w_other + gap, y = wa.y, w = w_side, h = wa.h } })
+			return results
+		end
+
+		-- Archetype pairings:
+		local w1_ratio = 0.50
+		if a1.name == "canvas" and a2.name == "terminal" then
+			w1_ratio = 0.67 -- Browser 67%, Terminal 33%
+		elseif a2.name == "canvas" and a1.name == "terminal" then
+			w1_ratio = 0.33
 		elseif a1.name == "editor" and a2.name == "terminal" then
-			w1_ratio = 0.62
+			w1_ratio = 0.64 -- Editor 64%, Terminal 36%
 		elseif a2.name == "editor" and a1.name == "terminal" then
-			w1_ratio = 0.38
+			w1_ratio = 0.36
+		elseif a1.name == "editor" and a2.name == "canvas" then
+			w1_ratio = 0.52 -- Web dev: 52% Editor, 48% Browser
+		elseif a2.name == "editor" and a1.name == "canvas" then
+			w1_ratio = 0.48
+		elseif a1.name == a2.name then
+			w1_ratio = 0.50 -- Clean 50/50 for identical archetypes
+		else
+			local t1 = a1.target_ratio or 0.50
+			local t2 = a2.target_ratio or 0.50
+			w1_ratio = clamp(t1 / (t1 + t2), 0.32, 0.68)
 		end
 
 		local width1 = math.floor((wa.w - gap) * w1_ratio)
@@ -230,37 +288,52 @@ local function solve_mosaic(windows, wa)
 
 	-- Case N = 3: Trio (3 Columns or Master + 2-Stack T-Layout)
 	if n == 3 then
-		local w1, w2, w3 = windows[1], windows[2], windows[3]
-		local has_sidebar = (w1._archetype.name == "sidebar" or w2._archetype.name == "sidebar" or w3._archetype.name == "sidebar")
+		local it1, it2, it3 = items[1], items[2], items[3]
+		local w1, w2, w3 = it1.win, it2.win, it3.win
+		local a1, a2, a3 = it1.archetype, it2.archetype, it3.archetype
 
-		if has_sidebar then
-			-- 3-Column Layout: Sidebar (24%), Center Main (52%), Right Secondary (24%)
-			local ws_side = clamp(math.floor(wa.w * 0.24), 360, 480)
-			local ws_sec = clamp(math.floor(wa.w * 0.26), 400, 540)
-			local ws_main = wa.w - (2 * gap) - ws_side - ws_sec
+		-- If any is sidebar: 3 columns (Sidebar, Center Main, Right Secondary)
+		if a1.name == "sidebar" or a2.name == "sidebar" or a3.name == "sidebar" then
+			local ws_side = clamp(math.floor(wa.w * 0.24), 360, 460)
+			local ws_right = clamp(math.floor(wa.w * 0.28), 400, 560)
+			local ws_center = wa.w - (2 * gap) - ws_side - ws_right
 
 			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = ws_side, h = wa.h } })
-			table.insert(results, { win = w2, rect = { x = wa.x + ws_side + gap, y = wa.y, w = ws_main, h = wa.h } })
-			table.insert(results, { win = w3, rect = { x = wa.x + ws_side + ws_main + (2 * gap), y = wa.y, w = ws_sec, h = wa.h } })
+			table.insert(results, { win = w2, rect = { x = wa.x + ws_side + gap, y = wa.y, w = ws_center, h = wa.h } })
+			table.insert(results, { win = w3, rect = { x = wa.x + ws_side + ws_center + (2 * gap), y = wa.y, w = ws_right, h = wa.h } })
 			return results
-		else
-			-- Master + 2 Stack: Left takes 60% full height, Right splits top/bottom
-			local w_left = math.floor((wa.w - gap) * 0.60)
-			local w_right = wa.w - gap - w_left
+		end
+
+		-- If 1 Main (Canvas or Editor) + 2 Terminals: Left (62%), Right 2-stack (38%)
+		if (a1.name == "canvas" or a1.name == "editor") and (a2.name == "terminal" and a3.name == "terminal") then
+			local w_main = math.floor((wa.w - gap) * 0.62)
+			local w_stack = wa.w - gap - w_main
 			local h_half = math.floor((wa.h - gap) * 0.50)
 			local h_rem = wa.h - gap - h_half
 
-			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_left, h = wa.h } })
-			table.insert(results, { win = w2, rect = { x = wa.x + w_left + gap, y = wa.y, w = w_right, h = h_half } })
-			table.insert(results, { win = w3, rect = { x = wa.x + w_left + gap, y = wa.y + h_half + gap, w = w_right, h = h_rem } })
+			table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_main, h = wa.h } })
+			table.insert(results, { win = w2, rect = { x = wa.x + w_main + gap, y = wa.y, w = w_stack, h = h_half } })
+			table.insert(results, { win = w3, rect = { x = wa.x + w_main + gap, y = wa.y + h_half + gap, w = w_stack, h = h_rem } })
 			return results
 		end
+
+		-- Master + 2-Stack: Left takes 58% full height, Right splits top/bottom
+		local w_left = math.floor((wa.w - gap) * 0.58)
+		local w_right = wa.w - gap - w_left
+		local h_half = math.floor((wa.h - gap) * 0.50)
+		local h_rem = wa.h - gap - h_half
+
+		table.insert(results, { win = w1, rect = { x = wa.x, y = wa.y, w = w_left, h = wa.h } })
+		table.insert(results, { win = w2, rect = { x = wa.x + w_left + gap, y = wa.y, w = w_right, h = h_half } })
+		table.insert(results, { win = w3, rect = { x = wa.x + w_left + gap, y = wa.y + h_half + gap, w = w_right, h = h_rem } })
+		return results
 	end
 
 	-- Case N = 4: Power Grid (Sidebar + Main + 2-Stack OR 2x2 Grid)
 	if n == 4 then
-		local w1, w2, w3, w4 = windows[1], windows[2], windows[3], windows[4]
-		local has_sidebar = (w1._archetype.name == "sidebar")
+		local it1, it2, it3, it4 = items[1], items[2], items[3], items[4]
+		local w1, w2, w3, w4 = it1.win, it2.win, it3.win, it4.win
+		local has_sidebar = (it1.archetype.name == "sidebar")
 
 		if has_sidebar then
 			-- Sidebar Left (22%) | Center Main (48%) | Right 2-Stack (30%)
@@ -291,20 +364,41 @@ local function solve_mosaic(windows, wa)
 	end
 
 	-- Case N >= 5: Adaptive Multi-Column Masonry
-	-- Left takes primary 45%, middle takes 30% split in 2, right takes 25% split in 2
 	local w_left = math.floor((wa.w - (2 * gap)) * 0.44)
 	local w_mid = math.floor((wa.w - (2 * gap)) * 0.30)
 	local w_right = wa.w - (2 * gap) - w_left - w_mid
 	local h_half = math.floor((wa.h - gap) * 0.50)
 	local h_rem = wa.h - gap - h_half
 
-	table.insert(results, { win = windows[1], rect = { x = wa.x, y = wa.y, w = w_left, h = wa.h } })
-	table.insert(results, { win = windows[2], rect = { x = wa.x + w_left + gap, y = wa.y, w = w_mid, h = h_half } })
-	table.insert(results, { win = windows[3], rect = { x = wa.x + w_left + gap, y = wa.y + h_half + gap, w = w_mid, h = h_rem } })
-	table.insert(results, { win = windows[4], rect = { x = wa.x + w_left + w_mid + (2 * gap), y = wa.y, w = w_right, h = h_half } })
-	table.insert(results, { win = windows[5], rect = { x = wa.x + w_left + w_mid + (2 * gap), y = wa.y + h_half + gap, w = w_right, h = h_rem } })
+	table.insert(results, { win = items[1].win, rect = { x = wa.x, y = wa.y, w = w_left, h = wa.h } })
+	table.insert(results, { win = items[2].win, rect = { x = wa.x + w_left + gap, y = wa.y, w = w_mid, h = h_half } })
+	table.insert(results, { win = items[3].win, rect = { x = wa.x + w_left + gap, y = wa.y + h_half + gap, w = w_mid, h = h_rem } })
+	table.insert(results, { win = items[4].win, rect = { x = wa.x + w_left + w_mid + (2 * gap), y = wa.y, w = w_right, h = h_half } })
+	table.insert(results, { win = items[5].win, rect = { x = wa.x + w_left + w_mid + (2 * gap), y = wa.y + h_half + gap, w = w_right, h = h_rem } })
+
+	if n > 5 then
+		for i = 6, n do
+			table.insert(results, { win = items[i].win, rect = { x = wa.x + (i - 5) * 20, y = wa.y + (i - 5) * 20, w = w_mid, h = h_half } })
+		end
+	end
 
 	return results
+end
+
+local function force_unmaximize(w)
+	pcall(function()
+		hl.dispatch(hl.dsp.window.fullscreen({
+			window = w, mode = "maximized", action = "unset", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.fullscreen({
+			window = w, mode = "fullscreen", action = "unset", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.fullscreen_state({
+			window = w, internal = 0, client = 0, action = "set", layout_aware = false,
+		}))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = "unset" }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = "unset" }))
+	end)
 end
 
 -- Apply positions smoothly via Hyprland dispatcher
@@ -319,8 +413,7 @@ function M.apply_workspace(ws_id)
 		return
 	end
 
-	local mon = (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor())
-		or (hl.get_monitors() and hl.get_monitors()[1])
+	local mon = resolve_workspace_monitor(id)
 	if not mon then
 		return
 	end
@@ -337,6 +430,7 @@ function M.apply_workspace(ws_id)
 			else
 				-- Utility window: center gently
 				pcall(function()
+					force_unmaximize(w)
 					if not w.floating then
 						hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
 					end
@@ -356,34 +450,39 @@ function M.apply_workspace(ws_id)
 
 	log(string.format(">>> Applying mosaic to %d windows on WS %s", #layout, tostring(id)))
 
-	for _, item in ipairs(layout) do
-		local w = item.win
-		local rect = item.rect
+	local function apply_geom(w, rect)
 		local th = titlebar_h(w)
+		force_unmaximize(w)
+		if not w.floating then
+			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
+		end
+		hl.dispatch(hl.dsp.window.resize({
+			window = w,
+			x = rect.w,
+			y = rect.h - th,
+			relative = false,
+		}))
+		hl.dispatch(hl.dsp.window.move({
+			window = w,
+			x = rect.x,
+			y = rect.y + th,
+		}))
+	end
 
+	for _, item in ipairs(layout) do
 		pcall(function()
-			-- Float if tiled
-			if not w.floating then
-				hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
-			end
-			-- Unset maximize/fullscreen if active
-			if w.fullscreen and w.fullscreen ~= 0 then
-				hl.dispatch(hl.dsp.window.fullscreen({ window = w, action = "unset" }))
-			end
-			-- Apply geometry
-			hl.dispatch(hl.dsp.window.resize({
-				window = w,
-				x = rect.w,
-				y = rect.h - th,
-				relative = false,
-			}))
-			hl.dispatch(hl.dsp.window.move({
-				window = w,
-				x = rect.x,
-				y = rect.y + th,
-			}))
+			apply_geom(item.win, item.rect)
 		end)
 	end
+
+	-- Delayed second pass to enforce geometry after Wayland client buffer negotiation (e.g. Zen / Firefox)
+	hl.timer(function()
+		for _, item in ipairs(layout) do
+			pcall(function()
+				apply_geom(item.win, item.rect)
+			end)
+		end
+	end, { timeout = 120, type = "oneshot" })
 end
 
 -- Toggle Mosaic Mode for Workspace
@@ -469,11 +568,19 @@ _G.set_workspace_layout_mode = function(mode, ws_id)
 		end
 	end
 
-	local lf = io.open("/tmp/hypr_layout_mode", "w")
-	if lf then
-		lf:write(mode .. "\n")
-		lf:close()
+	local function write_indicator(path, content)
+		local f = io.open(path, "w")
+		if f then
+			f:write(content)
+			f:close()
+		end
 	end
+
+	local home = os.getenv("HOME") or ""
+	write_indicator("/tmp/hypr_layout_mode", mode .. "\n")
+	write_indicator(home .. "/.cache/hypr_layout_mode", mode .. "\n")
+	write_indicator("/tmp/hypr_floating_mode", (mode == "floating" and "1\n" or "0\n"))
+	write_indicator(home .. "/.cache/hypr_floating_mode", (mode == "floating" and "1\n" or "0\n"))
 end
 
 _G.get_workspace_layout_mode = function(ws_id)
@@ -514,33 +621,62 @@ local function schedule_recalculate(delay)
 		if ws and ws.id and M.is_active(ws.id) then
 			M.apply_workspace(ws.id)
 		end
-	end, { timeout = delay or 80, type = "oneshot" })
+	end, { timeout = delay or 40, type = "oneshot" })
 end
 
-hl.on("window.open", function(w)
-	local ws_id = w and w.workspace and w.workspace.id
+hl.on("window.open_early", function(w)
+	if not w then return end
+	local ws_id = w.workspace and w.workspace.id
+	if not ws_id then
+		local aws = hl.get_active_workspace()
+		ws_id = aws and aws.id
+	end
 	if ws_id and M.is_active(ws_id) then
-		schedule_recalculate(100)
+		pcall(function()
+			hl.dispatch(hl.dsp.window.set_prop({
+				window = w, prop = "no_anim", value = "1",
+			}))
+		end)
+	end
+end)
+
+hl.on("window.open", function(w)
+	local ws_id = (w and w.workspace and w.workspace.id)
+	if not ws_id then
+		local aws = hl.get_active_workspace()
+		ws_id = aws and aws.id
+	end
+	if ws_id and M.is_active(ws_id) then
+		schedule_recalculate(30)
+		hl.timer(function()
+			if M.is_active(ws_id) then
+				M.apply_workspace(ws_id)
+			end
+		end, { timeout = 150, type = "oneshot" })
 	end
 end)
 
 hl.on("window.close", function(w)
-	local ws_id = w and w.workspace and w.workspace.id
+	local ws_id = (w and w.workspace and w.workspace.id)
+	if not ws_id then
+		local aws = hl.get_active_workspace()
+		ws_id = aws and aws.id
+	end
 	if ws_id and M.is_active(ws_id) then
-		schedule_recalculate(50)
+		schedule_recalculate(30)
 	end
 end)
 
 hl.on("window.move_to_workspace", function(w, ws)
 	local ws_id = (ws and ws.id) or (w and w.workspace and w.workspace.id)
 	if ws_id and M.is_active(ws_id) then
-		schedule_recalculate(80)
+		schedule_recalculate(40)
 	end
 end)
 
 hl.on("workspace.active", function(ws)
 	if ws and ws.id and M.is_active(ws.id) then
-		schedule_recalculate(60)
+		schedule_recalculate(40)
 	end
 end)
 

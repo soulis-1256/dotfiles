@@ -183,6 +183,10 @@ Item {
         case "doNotDisturb":
             coreDetailLoader.sourceComponent = doNotDisturbDetailComponent;
             break;
+        case "floatingMode":
+        case "layoutMode":
+            coreDetailLoader.sourceComponent = layoutModeDetailComponent;
+            break;
         default:
             return;
         }
@@ -228,6 +232,11 @@ Item {
     Component {
         id: doNotDisturbDetailComponent
         DoNotDisturbDetail {}
+    }
+
+    Component {
+        id: layoutModeDetailComponent
+        LayoutModeDetail {}
     }
 
     Component {

@@ -142,10 +142,10 @@ QtObject {
         },
         {
             "id": "floatingMode",
-            "text": I18n.tr("Floating Mode"),
-            "description": I18n.tr("Float all windows, Windows-style"),
+            "text": I18n.tr("Layout Mode"),
+            "description": I18n.tr("Tiled, Floating, or Mosaic layout"),
             "icon": "layers",
-            "type": "toggle",
+            "type": "action",
             "enabled": CompositorService.isHyprland,
             "warning": !CompositorService.isHyprland ? I18n.tr("Requires Hyprland") : undefined
         },

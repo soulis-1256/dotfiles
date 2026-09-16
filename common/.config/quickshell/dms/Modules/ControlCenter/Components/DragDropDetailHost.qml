@@ -35,6 +35,9 @@ Item {
                 return audioInputDetailComponent;
             case "battery":
                 return batteryDetailComponent;
+            case "floatingMode":
+            case "layoutMode":
+                return layoutModeDetailComponent;
             default:
                 return null;
             }
@@ -64,6 +67,11 @@ Item {
     Component {
         id: batteryDetailComponent
         BatteryDetail {}
+    }
+
+    Component {
+        id: layoutModeDetailComponent
+        LayoutModeDetail {}
     }
 
     Component {

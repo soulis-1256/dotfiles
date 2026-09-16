@@ -9,6 +9,8 @@ function detailHeightForSection(section, maxHeight, pluginInstance) {
             return Math.min(200, maxHeight);
         return Math.min(560, maxHeight);
     }
+    if (section === "floatingMode" || section === "layoutMode")
+        return Math.min(235, maxHeight);
     if (section.startsWith("brightnessSlider_"))
         return Math.min(400, maxHeight);
     if (section.startsWith("plugin_")) {
