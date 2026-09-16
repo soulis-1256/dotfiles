@@ -148,6 +148,7 @@ end
 require("dms.layout")
 require("dms.cursor")
 require("dms.floating-mode")
+require("dms.mosaic")
 require("dms.binds")
 require("dms.binds-user")
 require("dms.windowrules")

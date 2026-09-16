@@ -109,6 +109,15 @@ local function toggle_workspace_floating()
 end
 hl.bind("SUPER + x", toggle_workspace_floating, { description = "Toggle workspace floating mode" })
 
+hl.unbind("SUPER + m")
+hl.unbind("SUPER + M")
+local function toggle_mosaic()
+	if _G.mosaic_toggle then
+		_G.mosaic_toggle()
+	end
+end
+hl.bind("SUPER + m", toggle_mosaic, { description = "Toggle workspace mosaic layout mode" })
+
 hl.unbind("SUPER + up")
 hl.unbind("SUPER + down")
 hl.bind("SUPER + up", function()
