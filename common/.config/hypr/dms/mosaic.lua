@@ -70,6 +70,18 @@ local function load_state()
 end
 load_state()
 
+-- hyprctl reload does not unregister hl.on / hl.timer from the previous
+-- load. Ignore callbacks that belong to an older copy of this file (same
+-- pattern as floating-mode.lua). Without this, rapid saves stack N
+-- generations of spill handlers that all fire per open and fight over the
+-- newcomer (extra holes, double moves). mosaic_recalculate itself is NOT
+-- guarded: whichever provider the compositor calls must place windows.
+_G.mosaic_epoch = (_G.mosaic_epoch or 0) + 1
+local EPOCH = _G.mosaic_epoch
+local function from_this_load()
+	return _G.mosaic_epoch == EPOCH
+end
+
 function M.is_active(ws_id)
 	local state = _G.mosaic_mode
 	if not state then
@@ -245,9 +257,15 @@ end
 -- POSITION (target.box / window.at centers, x in landscape, y when stacked),
 -- not by append order and not by archetype rank. Truly new windows (never in
 -- the full order, or pruned after the grace = closed) still use rank.
-local layout_order = {} -- ws_key -> array of target ids (full, grace-kept)
-local layout_prev_present = {} -- ws_key -> {id -> true} from last recalculate
-local layout_last_seen = {} -- ws_key -> {id -> os.clock()}
+-- Drag state lives in _G so a config reload doesn't wipe the user's
+-- arrangement (file-locals would reset and every open would snap back to
+-- archetype order until re-dragged).
+_G.mosaic_layout_order = _G.mosaic_layout_order or {} -- ws_key -> array of ids (full, grace-kept)
+_G.mosaic_layout_prev_present = _G.mosaic_layout_prev_present or {} -- ws_key -> {id -> true}
+_G.mosaic_layout_last_seen = _G.mosaic_layout_last_seen or {} -- ws_key -> {id -> os.clock()}
+local layout_order = _G.mosaic_layout_order
+local layout_prev_present = _G.mosaic_layout_prev_present
+local layout_last_seen = _G.mosaic_layout_last_seen
 local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
 
 local function layout_target_id(t, i)
@@ -858,14 +876,23 @@ end
 
 local function register_mosaic_layout()
 	if not (hl.layout and hl.layout.register) then
+		if _G.mosaic_layout_registered then
+			log("lua:mosaic provider already serving (hl.layout unavailable this load) — keeping real backend")
+			return true
+		end
 		log("lua:mosaic unavailable (hl.layout.register missing) — legacy floating engine active")
 		return false
 	end
 	local ok, err = pcall(hl.layout.register, "mosaic", { recalculate = mosaic_recalculate })
 	if not ok then
+		if tostring(err):match("already registered") and _G.mosaic_layout_registered then
+			log("lua:mosaic already registered — keeping existing provider")
+			return true
+		end
 		log("lua:mosaic registration failed: " .. tostring(err) .. " — legacy floating engine active")
 		return false
 	end
+	_G.mosaic_layout_registered = true
 	log("lua:mosaic registered as a real tiling layout")
 	return true
 end
@@ -1361,6 +1388,9 @@ function M.apply_workspace(ws_id)
 	-- Skips windows that died since (e.g. closed via hyprbar just now) so we
 	-- never dispatch resizes at a dead client mid-close.
 	hl.timer(function()
+		if not from_this_load() then
+			return
+		end
 		for _, item in ipairs(layout) do
 			if is_live_window(item.win) then
 				pcall(function()
@@ -1782,7 +1812,12 @@ function M.exec(cmd)
 		hl.dispatch(hl.dsp.focus({ workspace = tostring(hole) }))
 	end)
 	log(string.format(">>> SPILL-EXEC: WS %d crowded, switched to WS %d, spawning in %dms", num, hole, SPILL_SPAWN_WAIT))
-	hl.timer(spawn, { timeout = SPILL_SPAWN_WAIT, type = "oneshot" })
+	hl.timer(function()
+		if not from_this_load() then
+			return
+		end
+		spawn()
+	end, { timeout = SPILL_SPAWN_WAIT, type = "oneshot" })
 end
 
 _G.mosaic_exec = function(cmd)
@@ -1794,6 +1829,9 @@ end
 -- still in flight (steam -> 8) must not be spilled elsewhere. Address-less
 -- windows defer to window.open (no dedupe possible pre-paint).
 hl.on("window.open_early", function(w)
+	if not from_this_load() then
+		return
+	end
 	if not real_layout_ok or not w then
 		return
 	end
@@ -1813,6 +1851,9 @@ hl.on("window.open_early", function(w)
 end)
 
 hl.on("window.open", function(w)
+	if not from_this_load() then
+		return
+	end
 	if not real_layout_ok or not w then
 		return
 	end
@@ -1836,6 +1877,9 @@ local function schedule_recalculate(delay)
 	end
 	debounce_timer = hl.timer(function()
 		debounce_timer = nil
+		if not from_this_load() then
+			return
+		end
 		local ws = hl.get_active_workspace()
 		if ws and ws.id and M.is_active(ws.id) then
 			M.apply_workspace(ws.id)
@@ -1844,6 +1888,9 @@ local function schedule_recalculate(delay)
 end
 
 hl.on("window.open_early", function(w)
+	if not from_this_load() then
+		return
+	end
 	if real_layout_ok then return end
 	if not w then return end
 	local ws_id = w.workspace and w.workspace.id
@@ -1861,6 +1908,9 @@ hl.on("window.open_early", function(w)
 end)
 
 hl.on("window.open", function(w)
+	if not from_this_load() then
+		return
+	end
 	if real_layout_ok then return end
 	local ws_id = (w and w.workspace and w.workspace.id)
 	if not ws_id then
@@ -1870,6 +1920,9 @@ hl.on("window.open", function(w)
 	if ws_id and M.is_active(ws_id) then
 		schedule_recalculate(30)
 		hl.timer(function()
+			if not from_this_load() then
+				return
+			end
 			if M.is_active(ws_id) then
 				M.apply_workspace(ws_id)
 			end
@@ -1878,6 +1931,9 @@ hl.on("window.open", function(w)
 end)
 
 hl.on("window.close", function(w)
+	if not from_this_load() then
+		return
+	end
 	if real_layout_ok then return end
 	local ws_id = (w and w.workspace and w.workspace.id)
 	if not ws_id then
@@ -1889,6 +1945,9 @@ hl.on("window.close", function(w)
 		-- when back in a strict range. While still cascading, survivors keep
 		-- their spots instead of reshuffling around the dying window.
 		hl.timer(function()
+			if not from_this_load() then
+				return
+			end
 			if not M.is_active(ws_id) then
 				return
 			end
@@ -1901,6 +1960,9 @@ hl.on("window.close", function(w)
 end)
 
 hl.on("window.move_to_workspace", function(w, ws)
+	if not from_this_load() then
+		return
+	end
 	if real_layout_ok then return end
 	local ws_id = (ws and ws.id) or (w and w.workspace and w.workspace.id)
 	if ws_id and M.is_active(ws_id) then
@@ -1909,6 +1971,9 @@ hl.on("window.move_to_workspace", function(w, ws)
 end)
 
 hl.on("workspace.active", function(ws)
+	if not from_this_load() then
+		return
+	end
 	if real_layout_ok then return end
 	if ws and ws.id and M.is_active(ws.id) then
 		schedule_recalculate(40)
