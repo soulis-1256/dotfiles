@@ -124,7 +124,7 @@ M.RULES = {
 	{ pattern = "^microsoft%-edge.*", archetype = "canvas" },
 	{ pattern = "^vivaldi.*", archetype = "canvas" },
 	{ pattern = "^mpv$", archetype = "canvas" },
-	{ pattern = "^vlc$", archetype = "canvas" },
+	{ pattern = "^vlc$", archetype = "utility" }, -- floats centered like a dialog, not stretched as canvas
 	{ pattern = "^celluloid$", archetype = "canvas" },
 	{ pattern = "^clapper$", archetype = "canvas" },
 	{ pattern = "^gimp.*", archetype = "canvas" },
@@ -135,6 +135,20 @@ M.RULES = {
 	{ pattern = "^libreoffice.*", archetype = "canvas" },
 	{ pattern = "^soffice%.bin$", archetype = "canvas" },
 	{ pattern = "^virt%-manager$", archetype = "canvas" },
+
+	-- File managers: transient tasks, float centered at their natural size
+	-- instead of tiling as canvas (fullscreen alone, ~67% next to a terminal).
+	-- Mirrors the `float = true` philosophy Nautilus already has in hyprland.lua.
+	{ pattern = "^dolphin$", archetype = "utility" },
+	{ pattern = "^org%.kde%.dolphin$", archetype = "utility" },
+	{ pattern = "^nautilus$", archetype = "utility" },
+	{ pattern = "^org%.gnome%.nautilus$", archetype = "utility" },
+	{ pattern = "^thunar$", archetype = "utility" },
+	{ pattern = "^nemo$", archetype = "utility" },
+	{ pattern = "^caja$", archetype = "utility" },
+	{ pattern = "^pcmanfm.*", archetype = "utility" },
+	{ pattern = "^krusader$", archetype = "utility" },
+	{ pattern = "^konqueror$", archetype = "utility" },
 
 	-- Utilities / Modals (Ignored by Mosaic, float freely)
 	{ pattern = "^pavucontrol$", archetype = "utility" },

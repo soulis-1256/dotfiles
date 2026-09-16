@@ -165,6 +165,55 @@ local function resolve_workspace_monitor(ws_id)
 	return (hl.get_monitor_at_cursor and hl.get_monitor_at_cursor()) or monitors[1]
 end
 
+-- Windows with a Hyprland `size = {...}` rule must keep their fixed size
+-- instead of being stretched to fill. Mirror of windowrules.lua + the
+-- SKIP_GEOMETRY_CLASS list in floating-mode.lua.
+local FIXED_SIZE_CLASSES = {
+	["com.danklinux.dms"] = true,
+	["org.gnome.loupe"] = true,
+}
+
+local function has_fixed_size_rule(w)
+	if not w then
+		return false
+	end
+	local cls = (w.class or w.initial_class or w.initialClass or ""):lower()
+	return FIXED_SIZE_CLASSES[cls] == true
+end
+
+-- Orientation helpers.
+-- The solver splits along the SHORT axis so windows keep a usable aspect:
+-- landscape (wide) -> side-by-side columns, portrait (tall) -> stacked rows.
+-- This is derived from the live work area each time, so it adapts to any
+-- monitor / rotation / scale without hardcoded resolutions.
+local function is_portrait(wa)
+	return (wa.h or 0) > (wa.w or 0)
+end
+
+-- True when the work area is too narrow for any side-by-side layout to
+-- honor minimum usable widths. Falls back to stacking even on landscape
+-- (tiny outputs, scaled VMs, unexplored systems).
+local function too_narrow_for_columns(wa)
+	return (wa.w or 0) < 600
+end
+
+-- Vertical stack of n full-width rows. Returns array of rects.
+local function stack_rows(wa, gap, n)
+	local rects = {}
+	if n <= 0 then
+		return rects
+	end
+	local total_gap = (n - 1) * gap
+	local base_h = math.floor((wa.h - total_gap) / n)
+	local y = wa.y
+	for i = 1, n do
+		local h = (i < n) and base_h or (wa.h - (y - wa.y))
+		table.insert(rects, { x = wa.x, y = y, w = wa.w, h = h })
+		y = y + h + gap
+	end
+	return rects
+end
+
 -- Sorting windows: sidebars to left, main canvas/editor in center, terminals to right
 local function sort_mosaic_windows(windows)
 	local sidebars, editors, canvases, terminals = {}, {}, {}, {}
@@ -204,34 +253,24 @@ local function solve_mosaic(items, wa)
 
 	local gap = wa.gap or 8
 
-	-- Case N = 1: Comfortable focal sizing (The Anti-Stretch Rule)
+	-- Case N = 1: single window fills the whole work area, unless it has
+	-- a Hyprland fixed-size rule (or is a floating utility) — then keep it
+	-- centered at its current size.
 	if n == 1 then
 		local it = items[1]
 		local w = it.win
 		local arch = it.archetype or db.classify(w)
-		local target_w, target_h
-
-		if arch.name == "sidebar" then
-			target_w = clamp(math.floor(wa.w * 0.30), 380, 520)
-			target_h = wa.h
-		elseif arch.name == "terminal" then
-			target_w = clamp(math.floor(wa.w * 0.55), 800, 1150)
-			target_h = clamp(math.floor(wa.h * 0.75), 520, 800)
-		elseif arch.name == "editor" then
-			target_w = clamp(math.floor(wa.w * 0.75), 1100, 1800)
-			target_h = math.floor(wa.h * 0.92)
-		elseif arch.name == "canvas" then
-			-- Web browsers: Tobias Bernard golden reading width: ~1200-1650px or ~70%
-			target_w = clamp(math.floor(wa.w * 0.70), 1200, 1650)
-			target_h = math.floor(wa.h * 0.94)
-		else
-			target_w = math.floor(wa.w * 0.72)
-			target_h = math.floor(wa.h * 0.88)
+		if arch.float or has_fixed_size_rule(w) then
+			local uw = w.size and w.size.x or wa.w
+			local uh = w.size and w.size.y or wa.h
+			uw = math.min(uw, wa.w)
+			uh = math.min(uh, wa.h)
+			local x = wa.x + math.floor((wa.w - uw) / 2)
+			local y = wa.y + math.floor((wa.h - uh) / 2)
+			table.insert(results, { win = w, rect = { x = x, y = y, w = uw, h = uh } })
+			return results
 		end
-
-		local x = wa.x + math.floor((wa.w - target_w) / 2)
-		local y = wa.y + math.floor((wa.h - target_h) / 2)
-		table.insert(results, { win = w, rect = { x = x, y = y, w = target_w, h = target_h } })
+		table.insert(results, { win = w, rect = { x = wa.x, y = wa.y, w = wa.w, h = wa.h } })
 		return results
 	end
 
@@ -240,6 +279,17 @@ local function solve_mosaic(items, wa)
 		local it1, it2 = items[1], items[2]
 		local a1, a2 = it1.archetype, it2.archetype
 		local w1, w2 = it1.win, it2.win
+
+		-- Portrait / very narrow: stack full-width rows (top/bottom 50/50).
+		-- Side-by-side columns on a tall screen produce skinny strips that
+		-- clients can't honor (their min widths overflow -> visual overlap).
+		-- Scoped to portrait/narrow only; landscape keeps columns below.
+		if is_portrait(wa) or too_narrow_for_columns(wa) then
+			local rows = stack_rows(wa, gap, 2)
+			table.insert(results, { win = w1, rect = rows[1] })
+			table.insert(results, { win = w2, rect = rows[2] })
+			return results
+		end
 
 		-- If one is a sidebar, it gets its fixed comfortable sidebar width
 		if a1.name == "sidebar" and a2.name ~= "sidebar" then
@@ -292,6 +342,16 @@ local function solve_mosaic(items, wa)
 		local w1, w2, w3 = it1.win, it2.win, it3.win
 		local a1, a2, a3 = it1.archetype, it2.archetype, it3.archetype
 
+		-- Portrait / very narrow: 3 full-width rows. Columns here would be
+		-- ~1/3 of an already-narrow width (unusable + overflow overlap).
+		if is_portrait(wa) or too_narrow_for_columns(wa) then
+			local rows = stack_rows(wa, gap, 3)
+			table.insert(results, { win = w1, rect = rows[1] })
+			table.insert(results, { win = w2, rect = rows[2] })
+			table.insert(results, { win = w3, rect = rows[3] })
+			return results
+		end
+
 		-- If any is sidebar: 3 columns (Sidebar, Center Main, Right Secondary)
 		if a1.name == "sidebar" or a2.name == "sidebar" or a3.name == "sidebar" then
 			local ws_side = clamp(math.floor(wa.w * 0.24), 360, 460)
@@ -333,7 +393,10 @@ local function solve_mosaic(items, wa)
 	if n == 4 then
 		local it1, it2, it3, it4 = items[1], items[2], items[3], items[4]
 		local w1, w2, w3, w4 = it1.win, it2.win, it3.win, it4.win
+		-- 2x2 grid works in both orientations. The 3-column sidebar layout
+		-- below would be unusably narrow on portrait, so it is landscape-only.
 		local has_sidebar = (it1.archetype.name == "sidebar")
+			and not is_portrait(wa) and not too_narrow_for_columns(wa)
 
 		if has_sidebar then
 			-- Sidebar Left (22%) | Center Main (48%) | Right 2-Stack (30%)
@@ -363,7 +426,27 @@ local function solve_mosaic(items, wa)
 		end
 	end
 
-	-- Case N >= 5: Adaptive Multi-Column Masonry
+	-- Case N >= 5: Adaptive Multi-Column Masonry (landscape) /
+	-- 2-column grid (portrait or very narrow, where 3 columns won't fit).
+	if is_portrait(wa) or too_narrow_for_columns(wa) then
+		local cols = 2
+		local rows = math.ceil(n / cols)
+		local col_w = math.floor((wa.w - gap) / cols)
+		local col_w2 = wa.w - gap - col_w
+		local row_h = math.floor((wa.h - (rows - 1) * gap) / rows)
+		for i = 1, n do
+			local r = math.floor((i - 1) / cols)
+			local c = (i - 1) % cols
+			local last_row_single = (r == rows - 1) and (n % cols == 1)
+			local cw = last_row_single and wa.w or ((c == 0) and col_w or col_w2)
+			local cx = (last_row_single or c == 0) and wa.x or (wa.x + col_w + gap)
+			local cy = wa.y + r * (row_h + gap)
+			local ch = (r == rows - 1) and (wa.h - (cy - wa.y)) or row_h
+			table.insert(results, { win = items[i].win, rect = { x = cx, y = cy, w = cw, h = ch } })
+		end
+		return results
+	end
+
 	local w_left = math.floor((wa.w - (2 * gap)) * 0.44)
 	local w_mid = math.floor((wa.w - (2 * gap)) * 0.30)
 	local w_right = wa.w - (2 * gap) - w_left - w_mid
