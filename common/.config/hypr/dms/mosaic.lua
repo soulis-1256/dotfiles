@@ -238,57 +238,43 @@ local function classify_layout_window(w)
 	return db.ARCHETYPES.canvas
 end
 
--- Persistent arrangement per workspace. Hyprland mouse drags (SUPER+drag)
--- float the window and re-tile it on release via newTarget (append at end),
--- so target order alone cannot tell left-drop from right-drop: dragging the
--- right window left still re-appends at the end, and vice versa. Keyboard
--- movewindow swaps adjacent targets in place (no transient removal), which
--- IS visible as a same-set reorder. Newcomers insert at archetype rank, so
--- open placement stays deterministic (zen still lands left of ghostty).
--- Sizes always follow archetype (duo_frac handles both orders), so a moved
--- window keeps its share on either side. Keyed by workspace id read off the
--- targets; the "__shared__" fallback degrades gracefully (fresh rank per
--- call, drags not remembered across workspace switches), never a crash.
+-- Arrangement vs compositor list.
 --
--- Drag tracking: a drag shows up as shrink (n-1, dragged floated away) then
--- return (n, dragged re-appended). layout_order keeps the full order through
--- the shrink (grace period) instead of clobbering to the survivor, so the
--- return is recognized as a returner (not a newcomer). Returners place by the
--- DWINDLE RULE: cell under the cursor at release (recalculate runs
--- synchronously inside dragEnd, cursor hasn't moved), cursor half decides
--- before/after — symmetric both directions. Floating-box centers are only a
--- fallback. Truly new windows (never in the full order, or pruned after the
--- grace = closed) still insert at archetype rank.
--- Drag state lives in _G so a config reload doesn't wipe the user's
--- arrangement (file-locals would reset and every open would snap back to
--- archetype order until re-dragged).
-_G.mosaic_layout_order = _G.mosaic_layout_order or {} -- ws_key -> array of ids (full, grace-kept)
+-- lua:mosaic cannot positional-reorder on drop. Hyprland's tiled drag
+-- floats the window, then newTarget() re-appends it at the end of m_targets.
+-- Keyboard movewindow DOES swap m_targets in place. So compositor order is
+-- the truth for swaps/opens/closes, and a lie for mouse drops.
+--
+-- During drag (shrink): Hyprland owns the floating window. Survivors hold
+-- their last mosaic cells — no N-1 recast, no solo-fill jump.
+-- After drop (returner): cursor slot (dwindle addTarget rule), persist that
+-- order, recast mosaic. Quiet recalculates keep the persisted order even
+-- though Hyprland still has the window appended, so the drop does not yank
+-- back. A real compositor reorder (keyboard swap) is incoming != last
+-- compositor list and is adopted.
+-- Opens still rank-insert (zen left of ghostty). State lives in _G so a
+-- reload does not snap everyone back to archetype order.
+_G.mosaic_layout_order = _G.mosaic_layout_order or {} -- ws_key -> visual id order
+_G.mosaic_layout_compositor = _G.mosaic_layout_compositor or {} -- ws_key -> last incoming ids
 _G.mosaic_layout_prev_present = _G.mosaic_layout_prev_present or {} -- ws_key -> {id -> true}
 _G.mosaic_layout_last_seen = _G.mosaic_layout_last_seen or {} -- ws_key -> {id -> os.clock()}
-_G.mosaic_last_cells = _G.mosaic_last_cells or {} -- ws_key -> {id -> {x,y,w,h}} from last placement
+_G.mosaic_last_cells = _G.mosaic_last_cells or {} -- ws_key -> last FULL mosaic cells
 local layout_order = _G.mosaic_layout_order
+local layout_compositor = _G.mosaic_layout_compositor
 local layout_prev_present = _G.mosaic_layout_prev_present
 local layout_last_seen = _G.mosaic_layout_last_seen
 local layout_last_cells = _G.mosaic_last_cells
 local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
 
--- Transient-shrink settle (N>2 smoothness): a drag mid-flight and a real
--- close both look like a shrink on the first recalculate. Survivors hold
--- their CURRENT cells (no solo-fill jump mid-drag, "tile normally, settle
--- after") while the away window is fresh; a settle poke re-runs recalculate
--- shortly after, and an away window older than SHRINK_CLOSE_AFTER is treated
--- as a real close and re-solved. A late drag release still fixes order via
--- the cursor drop path.
-local shrink_since = {} -- ws_key -> os.clock() when shrink first seen
-local poke_armed = {} -- ws_key -> true while a settle poke is in flight
-local SHRINK_CLOSE_AFTER = 0.6 -- s
-local SHRINK_POKE_DELAY = 400 -- ms
+-- Shrink poke: drag and close both look like n-1 on the first recalculate.
+-- Hold cells, then re-check. A still-floating missing window is a drag
+-- (keep holding). A gone window is a close (recast mosaic). File-local is
+-- fine: a reload just holds one more beat.
+local shrink_seen = {} -- ws_key -> true after the first shrink frame
+local poke_armed = {}
+local SHRINK_POKE_MS = 400
 
-local function shrink_settle_arm(key)
-	local now = os.clock()
-	if not shrink_since[key] then
-		shrink_since[key] = now
-	end
+local function settle_arm(key)
 	if poke_armed[key] then
 		return
 	end
@@ -301,28 +287,184 @@ local function shrink_settle_arm(key)
 		pcall(function()
 			hl.dispatch(hl.dsp.layout("mosaic:settle"))
 		end)
-	end, { timeout = SHRINK_POKE_DELAY, type = "oneshot" })
+	end, { timeout = SHRINK_POKE_MS, type = "oneshot" })
+end
+
+-- One-line drop diagnostics: what the sorter saw on drag-relevant
+-- transitions (returner/shrink). Read with `cat /tmp/mosaic_drop.log`
+-- after reproducing one bad drag. Rare events only, no per-frame spam.
+local DROP_LOG = "/tmp/mosaic_drop.log"
+-- %d throws on fractional widths (splits are floats like 1286.4) — and a
+-- throw here would fail the entire recalculate. Always format defensively.
+local function fmt_n(v)
+	local n = tonumber(v)
+	if not n or n ~= n or n == math.huge or n == -math.huge then
+		return "?"
+	end
+	return tostring(math.floor(n + 0.5))
+end
+local function trace_ids(ids, by_id)
+	local parts = {}
+	for _, id in ipairs(ids or {}) do
+		local cls = "?"
+		local e = by_id and by_id[id]
+		if e and e.target then
+			pcall(function()
+				local w = e.target.window
+				if w then
+					cls = tostring(w.class or w.initial_class or "?")
+				end
+			end)
+		end
+		table.insert(parts, cls)
+	end
+	return table.concat(parts, ",")
+end
+local function trace_drop(line)
+	pcall(function()
+		local f = io.open(DROP_LOG, "a")
+		if not f then
+			return
+		end
+		if f:seek("end") > 200000 then
+			f:close()
+			f = io.open(DROP_LOG, "w")
+			if not f then
+				return
+			end
+		end
+		f:write(os.date("[%H:%M:%S] ") .. line .. "\n")
+		f:close()
+	end)
+end
+
+local function window_layout_id(w)
+	if not w then
+		return nil
+	end
+	local sid = w.stable_id
+	local addr = w.address
+	local s1 = (sid ~= nil) and tostring(sid) or ""
+	local s2 = (addr ~= nil) and tostring(addr):lower() or ""
+	if s1 ~= "" or s2 ~= "" then
+		return "w:" .. s1 .. "@" .. s2
+	end
+	return nil
 end
 
 local function layout_target_id(t, i)
 	local ok, id = pcall(function()
-		local w = t.window
-		if not w then
-			return nil
-		end
-		local sid = w.stable_id
-		local addr = w.address
-		local s1 = (sid ~= nil) and tostring(sid) or ""
-		local s2 = (addr ~= nil) and tostring(addr):lower() or ""
-		if s1 ~= "" or s2 ~= "" then
-			return "w:" .. s1 .. "@" .. s2
-		end
-		return nil
+		return window_layout_id(t.window)
 	end)
 	if ok and id then
 		return id
 	end
 	return "i:" .. tostring(i)
+end
+
+local function ids_equal(a, b)
+	if #a ~= #b then
+		return false
+	end
+	for i = 1, #a do
+		if a[i] ~= b[i] then
+			return false
+		end
+	end
+	return true
+end
+
+local function ids_copy(src)
+	local out = {}
+	for _, id in ipairs(src or {}) do
+		table.insert(out, id)
+	end
+	return out
+end
+
+local function archetype_rank(arch)
+	if not arch or not arch.name then
+		return 2
+	end
+	if arch.name == "sidebar" then
+		return 1
+	elseif arch.name == "editor" then
+		return 3
+	elseif arch.name == "terminal" then
+		return 4
+	end
+	return 2
+end
+
+-- True when a missing id is still a mapped float on this workspace (drag).
+-- false = gone (close). nil = unknown (hold one beat).
+local function missing_is_drag(key, missing_ids)
+	if not missing_ids or #missing_ids == 0 then
+		return false
+	end
+	local ws = tostring(key or ""):match("^ws:(.+)$")
+	if not ws or ws == "__shared__" then
+		return nil
+	end
+	local ok, wins = pcall(function()
+		return hl.get_workspace_windows(tonumber(ws) or ws)
+	end)
+	if not ok or type(wins) ~= "table" then
+		return nil
+	end
+	local floating = {}
+	for _, w in ipairs(wins) do
+		local is_f = false
+		pcall(function()
+			is_f = w.floating and true or false
+		end)
+		if is_f then
+			local id = nil
+			pcall(function()
+				id = window_layout_id(w)
+			end)
+			if id then
+				floating[id] = true
+			end
+		end
+	end
+	for _, id in ipairs(missing_ids) do
+		if floating[id] then
+			return true
+		end
+	end
+	return false
+end
+
+local function layout_target_center(t)
+	local ok, cx, cy = pcall(function()
+		local b = t and t.box
+		if type(b) == "table" then
+			local x = tonumber(b.x)
+			local y = tonumber(b.y)
+			local w = tonumber(b.w) or tonumber(b.width)
+			local h = tonumber(b.h) or tonumber(b.height)
+			if x and y and w and h then
+				return x + w / 2, y + h / 2
+			end
+		end
+		local wobj = t and t.window
+		if wobj then
+			local at, sz = wobj.at, wobj.size
+			if type(at) == "table" and type(sz) == "table" then
+				local ax, ay = tonumber(at.x), tonumber(at.y)
+				local sx, sy = tonumber(sz.x), tonumber(sz.y)
+				if ax and ay and sx and sy then
+					return ax + sx / 2, ay + sy / 2
+				end
+			end
+		end
+		return nil, nil
+	end)
+	if ok then
+		return cx, cy
+	end
+	return nil, nil
 end
 
 local function layout_ws_key(targets)
@@ -339,63 +481,9 @@ local function layout_ws_key(targets)
 	return "ws:__shared__"
 end
 
-local function archetype_rank(arch)
-	if not arch or not arch.name then
-		return 2
-	end
-	if arch.name == "sidebar" then
-		return 1
-	elseif arch.name == "editor" then
-		return 3
-	elseif arch.name == "terminal" then
-		return 4
-	end
-	return 2 -- canvas and everything else
-end
-
--- Center of a layout target for drop-position detection. Prefers the
--- compositor target box (drop position right after re-tile); falls back to
--- window.at/size goals. Returns nil,nil when unreadable (never a crash).
--- NOTE: t.box can still hold the pre-drag tiled position, so this is only
--- the fallback. Primary signal is the cursor (dwindle rule below).
-local function layout_target_center(t)
-	local ok, cx, cy = pcall(function()
-		local b = t and t.box
-		if type(b) == "table" then
-			local x = tonumber(b.x)
-			local y = tonumber(b.y)
-			local w = tonumber(b.w) or tonumber(b.width)
-			local h = tonumber(b.h) or tonumber(b.height)
-			if x and y and w and h then
-				return x + w / 2, y + h / 2
-			end
-		end
-		local wobj = t and t.window
-		if wobj then
-			local at = wobj.at
-			local sz = wobj.size
-			if type(at) == "table" and type(sz) == "table" then
-				local ax = tonumber(at.x)
-				local ay = tonumber(at.y)
-				local sx = tonumber(sz.x)
-				local sy = tonumber(sz.y)
-				if ax and ay and sx and sy then
-					return ax + sx / 2, ay + sy / 2
-				end
-			end
-		end
-		return nil, nil
-	end)
-	if ok then
-		return cx, cy
-	end
-	return nil, nil
-end
-
--- Live cursor position, nil-safe. During a mouse drag the compositor runs
--- recalculate synchronously inside dragEnd (changeFloatingMode), so the
--- cursor is still on the release cell — the same signal dwindle's addTarget
--- uses (window under cursor at drop, cursor half decides before/after).
+-- Live cursor position, nil-safe. Drop recalculate runs inside dragEnd, so
+-- the cursor is still on the release cell (dwindle addTarget: window under
+-- cursor, half decides before/after).
 local function layout_cursor_pos()
 	local ok, p = pcall(function()
 		return hl.get_cursor_pos()
@@ -469,6 +557,62 @@ local function cursor_slot_for(working, cells, cx, cy, stacked)
 	return nil
 end
 
+-- Insert id into list at the first slot whose occupant ranks after it.
+local function rank_insert_into(list, id, by_id)
+	local r = archetype_rank(by_id[id] and by_id[id].archetype)
+	local at = #list + 1
+	for j, eid in ipairs(list) do
+		local er = by_id[eid] and archetype_rank(by_id[eid].archetype) or 2
+		if er > r then
+			at = j
+			break
+		end
+	end
+	table.insert(list, at, id)
+end
+
+-- Place a returner by cursor (dwindle rule), else floating-box center, else
+-- keep its pre-drag slot. Mutates `working` (survivor ids) in place.
+local function place_returner(working, rid, by_id, cells, area, stacked)
+	local ccx, ccy = layout_cursor_pos()
+	if ccx ~= nil and area_contains(area, ccx, ccy) then
+		local slot = cursor_slot_for(working, cells, ccx, ccy, stacked)
+		if slot then
+			table.insert(working, slot, rid)
+			return "cursor", slot, ccx, ccy
+		end
+	end
+	local rcx, rcy = layout_target_center(by_id[rid] and by_id[rid].target)
+	if rcx ~= nil then
+		local best, best_j, best_d2 = nil, nil, nil
+		for j, sid in ipairs(working) do
+			local scx, scy = layout_target_center(by_id[sid] and by_id[sid].target)
+			if scx ~= nil then
+				local dx, dy = rcx - scx, rcy - scy
+				local d2 = dx * dx + dy * dy
+				if not best_d2 or d2 < best_d2 then
+					best, best_j, best_d2 = sid, j, d2
+				end
+			end
+		end
+		if best_j then
+			local at = best_j
+			local bcx, bcy = layout_target_center(by_id[best] and by_id[best].target)
+			if bcx ~= nil then
+				if stacked and rcy > bcy then
+					at = at + 1
+				elseif (not stacked) and rcx > bcx then
+					at = at + 1
+				end
+			end
+			table.insert(working, at, rid)
+			return "center", at, rcx, rcy
+		end
+	end
+	table.insert(working, rid)
+	return "append", #working, nil, nil
+end
+
 -- Bucket order for layout targets (persistent, see above). Float archetypes
 -- only appear here if the user manually untiled them, so they place as
 -- neutral canvas. `stacked` selects the drop axis (y when portrait/narrow
@@ -498,11 +642,11 @@ local function sort_layout_targets(targets, area, stacked)
 	end
 
 	local key = layout_ws_key(targets)
+	local now = os.clock()
 	local prev = layout_order[key] or {}
 	local prev_present = layout_prev_present[key] or {}
 	local last_seen = layout_last_seen[key] or {}
 	layout_last_seen[key] = last_seen
-	local now = os.clock()
 	local present = {}
 	for _, id in ipairs(incoming_ids) do
 		present[id] = true
@@ -511,8 +655,7 @@ local function sort_layout_targets(targets, area, stacked)
 
 	-- Full order with grace: keep missing ids that vanished recently (drag
 	-- float-away). Older missing ids are closes: drop them for good.
-	local pruned = {}
-	local pruned_set = {}
+	local pruned, pruned_set = {}, {}
 	for _, id in ipairs(prev) do
 		if present[id] then
 			table.insert(pruned, id)
@@ -528,8 +671,7 @@ local function sort_layout_targets(targets, area, stacked)
 		end
 	end
 
-	local newcomers, returners = {}, {}
-	local returner_set = {}
+	local newcomers, returners, returner_set = {}, {}, {}
 	for _, id in ipairs(incoming_ids) do
 		if not pruned_set[id] then
 			table.insert(newcomers, id)
@@ -539,177 +681,46 @@ local function sort_layout_targets(targets, area, stacked)
 		end
 	end
 
-	-- Survivors (+ returners) in persisted order; newcomers handled below.
-	local function rank_insert_into(list, id)
-		local r = archetype_rank(by_id[id].archetype)
-		local at = #list + 1
-		for j, eid in ipairs(list) do
-			local er = by_id[eid] and archetype_rank(by_id[eid].archetype) or 2
-			if er > r then
-				at = j
-				break
-			end
+	local missing = {}
+	for _, id in ipairs(pruned) do
+		if not present[id] then
+			table.insert(missing, id)
 		end
-		table.insert(list, at, id)
 	end
 
-	local final_ids = nil
-	local stored_ids = nil
-	local kind = nil
+	local kind, final_ids, stored_ids
 
 	if #returners > 0 then
 		kind = "returner"
-		-- Drag-return: DWINDLE RULE — the drop goes where the CURSOR is.
-		-- recalculate runs synchronously inside dragEnd, so the cursor is
-		-- still on the release cell (same signal dwindle's addTarget uses:
-		-- cell under cursor wins, cursor half decides before/after).
-		-- Symmetric both directions, independent of what t.box holds.
-		local old_present = {}
+		shrink_seen[key] = nil
+		local working = {}
 		for _, id in ipairs(pruned) do
 			if present[id] and not returner_set[id] then
-				-- survivors in old order; returners placed via drop below
-				table.insert(old_present, id)
-			end
-		end
-		-- Start from survivors in old order; place each returner by drop.
-		local ordered_old = {}
-		for _, id in ipairs(old_present) do
-			table.insert(ordered_old, id)
-		end
-		local cells = layout_last_cells[key] or {}
-		local ccx, ccy = layout_cursor_pos()
-		local cursor_ok = ccx ~= nil and area_contains(area, ccx, ccy)
-		local cursor_done = false
-		if cursor_ok then
-			local working = {}
-			for _, id in ipairs(old_present) do
 				table.insert(working, id)
 			end
-			local all_placed = true
-			for _, rid in ipairs(returners) do
-				local slot = cursor_slot_for(working, cells, ccx, ccy, stacked)
-				if not slot then
-					all_placed = false
-					break
-				end
-				table.insert(working, slot, rid)
-			end
-			if all_placed then
-				ordered_old = working
-				cursor_done = true
-			end
 		end
-		if cursor_done then
-			-- placed purely by cursor; newcomers rank in below.
-		else
-		-- Cursor unusable (nil, outside the work area, or no recorded
-		-- cells — e.g. an inter-workspace keybind move-back, not a mouse
-		-- drop): fall back to floating-box centers, then append order.
-		local drop_ok = true
+		local cells = layout_last_cells[key] or {}
+		local how, slot, cx, cy = "none", nil, nil, nil
 		for _, rid in ipairs(returners) do
-			local rcx, rcy = layout_target_center(by_id[rid].target)
-			if rcx == nil then
-				drop_ok = false
-				break
-			end
-			if #ordered_old == 1 and #incoming_ids == 2 then
-				-- 1+1: the reported case. Left/top drop goes first.
-				local sid = ordered_old[1]
-				local scx, scy = layout_target_center(by_id[sid].target)
-				if scx == nil then
-					drop_ok = false
-					break
-				end
-				if stacked then
-					ordered_old = (rcy < scy) and { rid, sid } or { sid, rid }
-				else
-					ordered_old = (rcx < scx) and { rid, sid } or { sid, rid }
-				end
-			else
-				-- N>2: swap the returner with the closest survivor cell
-				-- (Hyprland swap semantics). Falls back to append below.
-				local best, best_d2 = nil, nil
-				for _, sid in ipairs(ordered_old) do
-					local scx, scy = layout_target_center(by_id[sid].target)
-					if scx ~= nil then
-						local dx, dy = rcx - scx, rcy - scy
-						local d2 = dx * dx + dy * dy
-						if not best_d2 or d2 < best_d2 then
-							best, best_d2 = sid, d2
-						end
-					end
-				end
-				if not best then
-					drop_ok = false
-					break
-				end
-				-- Insert at the closest cell's slot (shift, don't swap):
-				-- dropping onto a cell takes it, others slide. For N=2
-				-- this equals swap; for N>2 it matches tab-reorder feel.
-				local at = #ordered_old + 1
-				for j, eid in ipairs(ordered_old) do
-					if eid == best then
-						at = j
-						break
-					end
-				end
-				-- Decide before/after within the cell by drop axis.
-				local bcx, bcy = layout_target_center(by_id[best].target)
-				if bcx ~= nil then
-					if stacked and rcy > bcy then
-						at = at + 1
-					elseif (not stacked) and rcx > bcx then
-						at = at + 1
-					end
-				end
-				table.insert(ordered_old, at, rid)
-			end
+			how, slot, cx, cy = place_returner(working, rid, by_id, cells, area, stacked)
 		end
-		if not drop_ok then
-			-- Centers unreadable (or multi-returner race): incoming append
-			-- order still beats archetype rank for a drag.
-			ordered_old = {}
-			for _, id in ipairs(incoming_ids) do
-				if returner_set[id] or pruned_set[id] then
-					table.insert(ordered_old, id)
-				end
-			end
-			-- Any pruned-present ids missing from incoming (shouldn't
-			-- happen here) keep old relative order at the front.
-			for _, id in ipairs(pruned) do
-				if present[id] and not returner_set[id] then
-					local found = false
-					for _, e in ipairs(ordered_old) do
-						if e == id then
-							found = true
-							break
-						end
-					end
-					if not found then
-						table.insert(ordered_old, 1, id)
-					end
-				end
-			end
-		end
-		end
-		-- Truly new windows (if any arrived the same frame) still rank in.
 		for _, id in ipairs(newcomers) do
-			rank_insert_into(ordered_old, id)
+			rank_insert_into(working, id, by_id)
 		end
-		final_ids = ordered_old
-		-- Stored keeps remaining grace-away ids (multi-drag) at the end.
-		stored_ids = {}
-		for _, id in ipairs(final_ids) do
-			table.insert(stored_ids, id)
-		end
+		final_ids = working
+		stored_ids = ids_copy(final_ids)
 		for _, id in ipairs(pruned) do
 			if not present[id] then
 				table.insert(stored_ids, id)
 			end
 		end
+		trace_drop(string.format(
+			"ws=%s decision=returner how=%s cursor=%s,%s slot=%s incoming=[%s] final=[%s]",
+			tostring(key), tostring(how), fmt_n(cx), fmt_n(cy), tostring(slot),
+			trace_ids(incoming_ids, by_id), trace_ids(final_ids, by_id)))
 	elseif #newcomers > 0 then
 		kind = "newcomer"
-		-- Genuine open / inter-workspace move: deterministic rank placement.
+		shrink_seen[key] = nil
 		local base = {}
 		for _, id in ipairs(pruned) do
 			if present[id] then
@@ -717,39 +728,71 @@ local function sort_layout_targets(targets, area, stacked)
 			end
 		end
 		for _, id in ipairs(newcomers) do
-			rank_insert_into(base, id)
+			rank_insert_into(base, id, by_id)
 		end
 		final_ids = base
-		stored_ids = {}
-		for _, id in ipairs(final_ids) do
-			table.insert(stored_ids, id)
-		end
+		stored_ids = ids_copy(final_ids)
 		for _, id in ipairs(pruned) do
 			if not present[id] then
 				table.insert(stored_ids, id)
 			end
 		end
-	else
-		local same_set = (#pruned == #incoming_ids)
-		if same_set then
-			kind = "same"
-			-- Keyboard movewindow swap (no transient removal): adopt the
-			-- compositor order wholesale so the move sticks.
-			final_ids = incoming_ids
-			stored_ids = incoming_ids
-		else
-			kind = "shrink"
-			-- Transient shrink (drag in progress, close animating): keep
-			-- survivors in persisted spots, keep the away window in stored
-			-- for its imminent return instead of clobbering.
-			local base = {}
+	elseif #missing > 0 then
+		-- Shrink: drag float-away or close. First frame always holds.
+		-- A later poke that sees the missing window gone recasts as close.
+		local drag = missing_is_drag(key, missing)
+		local treat_close = (drag == false and shrink_seen[key] == true)
+		if treat_close then
+			kind = "close"
+			shrink_seen[key] = nil
+			final_ids = {}
 			for _, id in ipairs(pruned) do
 				if present[id] then
-					table.insert(base, id)
+					table.insert(final_ids, id)
 				end
 			end
-			final_ids = base
-			stored_ids = pruned
+			stored_ids = ids_copy(final_ids)
+			trace_drop(string.format(
+				"ws=%s decision=close incoming=[%s] final=[%s]",
+				tostring(key), trace_ids(incoming_ids, by_id), trace_ids(final_ids, by_id)))
+		else
+			kind = "shrink"
+			shrink_seen[key] = true
+			settle_arm(key)
+			final_ids = {}
+			for _, id in ipairs(pruned) do
+				if present[id] then
+					table.insert(final_ids, id)
+				end
+			end
+			stored_ids = ids_copy(pruned)
+			trace_drop(string.format(
+				"ws=%s decision=shrink drag=%s incoming=[%s] kept=[%s]",
+				tostring(key), tostring(drag),
+				trace_ids(incoming_ids, by_id), trace_ids(final_ids, by_id)))
+		end
+	else
+		-- Same set. If Hyprland's list did not change, keep the persisted
+		-- visual order (drop correction must survive later recalculates).
+		-- If Hyprland's list DID change, that is a keyboard swap: adopt it.
+		local last_comp = layout_compositor[key] or {}
+		if #prev == 0 or not ids_equal(incoming_ids, last_comp) then
+			kind = "same"
+			shrink_seen[key] = nil
+			final_ids = incoming_ids
+			stored_ids = ids_copy(incoming_ids)
+		else
+			kind = "quiet"
+			final_ids = {}
+			for _, id in ipairs(prev) do
+				if present[id] then
+					table.insert(final_ids, id)
+				end
+			end
+			if #final_ids == 0 then
+				final_ids = incoming_ids
+			end
+			stored_ids = ids_copy(final_ids)
 		end
 	end
 
@@ -758,6 +801,7 @@ local function sort_layout_targets(targets, area, stacked)
 	else
 		layout_order[key] = stored_ids
 	end
+	layout_compositor[key] = ids_copy(incoming_ids)
 	layout_prev_present[key] = present
 
 	local ordered = {}
@@ -906,40 +950,31 @@ local function mosaic_recalculate_inner(ctx)
 		w = W,
 		h = H,
 		portrait = portrait and true or false,
+		decision = decision,
 		time = os.date("%H:%M:%S"),
 	}
+	_G.mosaic_last_decision = decision
 
-	-- Transient shrink (drag mid-flight or close animating): survivors hold
-	-- their current cells instead of jumping to a fresh N-1 solve, then the
-	-- layout settles once (poke re-runs recalculate; an away window older
-	-- than SHRINK_CLOSE_AFTER falls through = real close).
+	-- Transient shrink (drag mid-flight): survivors hold their last mosaic
+	-- cells. Hyprland owns the floating dragged window. Recast happens on
+	-- drop (returner) or once a close is confirmed.
 	if decision == "shrink" then
-		local now = os.clock()
-		local since = shrink_since[wskey]
-		if since and (now - since) > SHRINK_CLOSE_AFTER then
-			shrink_since[wskey] = nil
-			-- fall through to a fresh solve below
-		else
-			local cells = layout_last_cells[wskey] or {}
-			local complete = #ordered > 0
-			for _, e in ipairs(ordered) do
-				if not cells[e.id] then
-					complete = false
-					break
-				end
+		local cells = (wskey and layout_last_cells[wskey]) or {}
+		local complete = #ordered > 0
+		for _, e in ipairs(ordered) do
+			if not cells[e.id] then
+				complete = false
+				break
 			end
-			if complete then
-				for _, e in ipairs(ordered) do
-					local b = cells[e.id]
-					safe_place(e.target, { x = b.x, y = b.y, w = b.w, h = b.h })
-				end
-				shrink_settle_arm(wskey)
-				return
-			end
-			-- no usable cells: fresh solve below
 		end
-	else
-		shrink_since[wskey] = nil
+		if complete then
+			for _, e in ipairs(ordered) do
+				local b = cells[e.id]
+				safe_place(e.target, { x = b.x, y = b.y, w = b.w, h = b.h })
+			end
+			return
+		end
+		-- no usable cells: fall through to a fresh solve of the survivors
 	end
 
 	-- N = 1: solo fill. Gaps/borders come from the compositor config and the
@@ -1085,9 +1120,10 @@ local function mosaic_recalculate(ctx)
 	elseif _G.mosaic_last_recalc then
 		_G.mosaic_last_recalc.placements = active_placements or {}
 	end
-	-- Persist this run's cells for the next recalculate's drop lookup
-	-- (dwindle splits the CURRENT tree, not the pre-drag one).
-	if ok and active_boxes then
+	-- Persist this run's cells for the next drop lookup. Skip shrink: that
+	-- placement is a hold of the previous mosaic, and overwriting would
+	-- drop the dragged window's old cell.
+	if ok and active_boxes and _G.mosaic_last_decision ~= "shrink" then
 		local kok, k = pcall(layout_ws_key, (ctx and ctx.targets) or {})
 		if kok and k and k ~= "ws:__shared__" then
 			layout_last_cells[k] = active_boxes
@@ -1795,8 +1831,9 @@ _G.mosaic_debug = function()
 	table.sort(ids)
 	table.insert(lines, "mosaic_workspaces={" .. table.concat(ids, ",") .. "}")
 	local r = _G.mosaic_last_recalc or {}
-	table.insert(lines, string.format("last_recalc: targets=%s w=%s h=%s portrait=%s time=%s",
-		tostring(r.targets), tostring(r.w), tostring(r.h), tostring(r.portrait), tostring(r.time)))
+	table.insert(lines, string.format("last_recalc: targets=%s w=%s h=%s portrait=%s decision=%s time=%s",
+		tostring(r.targets), tostring(r.w), tostring(r.h), tostring(r.portrait),
+		tostring(r.decision), tostring(r.time)))
 	for _, p in ipairs(r.placements or {}) do
 		table.insert(lines, string.format("  placed %s x=%s y=%s w=%s h=%s",
 			tostring(p.class), tostring(p.x), tostring(p.y), tostring(p.w), tostring(p.h)))
@@ -1804,7 +1841,11 @@ _G.mosaic_debug = function()
 	local live = hl.get_active_workspace and hl.get_active_workspace()
 	table.insert(lines, "active_workspace=" .. tostring(live and live.id))
 	for k, order in pairs(layout_order or {}) do
-		table.insert(lines, "order[" .. tostring(k) .. "]=" .. table.concat(order or {}, ","))
+		local short = {}
+		for _, id in ipairs(order or {}) do
+			table.insert(short, tostring(id):sub(-12))
+		end
+		table.insert(lines, "order[" .. tostring(k) .. "]=" .. table.concat(short, ","))
 	end
 	local s = table.concat(lines, "\n")
 	local f = io.open("/tmp/mosaic_debug.log", "w")
