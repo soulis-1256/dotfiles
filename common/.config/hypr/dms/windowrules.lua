@@ -97,6 +97,8 @@ _G.hyprbars_blacklist = {
 		"google-chrome",
 		"[lL]ocal[sS]end",
 		"org\\.localsend\\.localsend_app",
+		-- Loupe is GTK4/adwaita with its own CSD headerbar
+		"org\\.gnome\\.Loupe",
 		"[sS]team.*",
 		"com\\.danklinux\\.dms",
 		"steam_app_.*",

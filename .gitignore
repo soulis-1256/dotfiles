@@ -31,6 +31,7 @@ secrets.fish
 *.local.fish
 *.local.sh
 *.local.lua
+common/.config/mimeapps.list
 
 # Auto-generated DMS fragments
 outputs.lua
