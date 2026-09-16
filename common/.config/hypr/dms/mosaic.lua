@@ -226,32 +226,375 @@ local function classify_layout_window(w)
 	return db.ARCHETYPES.canvas
 end
 
--- Bucket sort for layout targets. Same left-to-right order as the legacy
--- sorter: sidebar | canvas | editor | terminal. Float archetypes only appear
--- here if the user manually untiled them, so they place as neutral canvas.
-local function sort_layout_targets(targets)
-	local sidebars, editors, canvases, terminals = {}, {}, {}, {}
+-- Persistent arrangement per workspace. Hyprland mouse drags (SUPER+drag)
+-- float the window and re-tile it on release via newTarget (append at end),
+-- so target order alone cannot tell left-drop from right-drop: dragging the
+-- right window left still re-appends at the end, and vice versa. Keyboard
+-- movewindow swaps adjacent targets in place (no transient removal), which
+-- IS visible as a same-set reorder. Newcomers insert at archetype rank, so
+-- open placement stays deterministic (zen still lands left of ghostty).
+-- Sizes always follow archetype (duo_frac handles both orders), so a moved
+-- window keeps its share on either side. Keyed by workspace id read off the
+-- targets; the "__shared__" fallback degrades gracefully (fresh rank per
+-- call, drags not remembered across workspace switches), never a crash.
+--
+-- Drag tracking: a drag shows up as shrink (n-1, dragged floated away) then
+-- return (n, dragged re-appended). layout_order keeps the full order through
+-- the shrink (grace period) instead of clobbering to the survivor, so the
+-- return is recognized as a returner (not a newcomer) and ordered by DROP
+-- POSITION (target.box / window.at centers, x in landscape, y when stacked),
+-- not by append order and not by archetype rank. Truly new windows (never in
+-- the full order, or pruned after the grace = closed) still use rank.
+local layout_order = {} -- ws_key -> array of target ids (full, grace-kept)
+local layout_prev_present = {} -- ws_key -> {id -> true} from last recalculate
+local layout_last_seen = {} -- ws_key -> {id -> os.clock()}
+local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
+
+local function layout_target_id(t, i)
+	local ok, id = pcall(function()
+		local w = t.window
+		if not w then
+			return nil
+		end
+		local sid = w.stable_id
+		local addr = w.address
+		local s1 = (sid ~= nil) and tostring(sid) or ""
+		local s2 = (addr ~= nil) and tostring(addr):lower() or ""
+		if s1 ~= "" or s2 ~= "" then
+			return "w:" .. s1 .. "@" .. s2
+		end
+		return nil
+	end)
+	if ok and id then
+		return id
+	end
+	return "i:" .. tostring(i)
+end
+
+local function layout_ws_key(targets)
 	for _, t in ipairs(targets) do
+		local ok, wid = pcall(function()
+			local w = t.window
+			local ws = w and w.workspace
+			return ws and ws.id
+		end)
+		if ok and wid ~= nil then
+			return "ws:" .. tostring(wid)
+		end
+	end
+	return "ws:__shared__"
+end
+
+local function archetype_rank(arch)
+	if not arch or not arch.name then
+		return 2
+	end
+	if arch.name == "sidebar" then
+		return 1
+	elseif arch.name == "editor" then
+		return 3
+	elseif arch.name == "terminal" then
+		return 4
+	end
+	return 2 -- canvas and everything else
+end
+
+-- Center of a layout target for drop-position detection. Prefers the
+-- compositor target box (drop position right after re-tile); falls back to
+-- window.at/size goals. Returns nil,nil when unreadable (never a crash).
+local function layout_target_center(t)
+	local ok, cx, cy = pcall(function()
+		local b = t and t.box
+		if type(b) == "table" then
+			local x = tonumber(b.x)
+			local y = tonumber(b.y)
+			local w = tonumber(b.w) or tonumber(b.width)
+			local h = tonumber(b.h) or tonumber(b.height)
+			if x and y and w and h then
+				return x + w / 2, y + h / 2
+			end
+		end
+		local wobj = t and t.window
+		if wobj then
+			local at = wobj.at
+			local sz = wobj.size
+			if type(at) == "table" and type(sz) == "table" then
+				local ax = tonumber(at.x)
+				local ay = tonumber(at.y)
+				local sx = tonumber(sz.x)
+				local sy = tonumber(sz.y)
+				if ax and ay and sx and sy then
+					return ax + sx / 2, ay + sy / 2
+				end
+			end
+		end
+		return nil, nil
+	end)
+	if ok then
+		return cx, cy
+	end
+	return nil, nil
+end
+
+-- Bucket order for layout targets (persistent, see above). Float archetypes
+-- only appear here if the user manually untiled them, so they place as
+-- neutral canvas. `stacked` selects the drop axis (y when portrait/narrow
+-- rows, x otherwise) and must match mosaic_recalculate_inner's decision.
+local function sort_layout_targets(targets, stacked)
+	-- Classify once per unique id; dedupe incoming keeping the LAST
+	-- occurrence (a dragged window re-appended at the end: latest = intent;
+	-- also collapses phantom slots so no cell is ever assigned twice).
+	local by_id, last_pos = {}, {}
+	for i, t in ipairs(targets) do
+		local id = layout_target_id(t, i)
 		local arch = classify_layout_window(t.window)
 		if arch.float then
 			arch = db.ARCHETYPES.canvas
 		end
-		local item = { target = t, archetype = arch }
-		if arch.name == "sidebar" then
-			table.insert(sidebars, item)
-		elseif arch.name == "editor" then
-			table.insert(editors, item)
-		elseif arch.name == "terminal" then
-			table.insert(terminals, item)
+		by_id[id] = { target = t, archetype = arch }
+		last_pos[id] = i
+	end
+	local incoming = {}
+	for id, pos in pairs(last_pos) do
+		table.insert(incoming, { id = id, pos = pos })
+	end
+	table.sort(incoming, function(a, b) return a.pos < b.pos end)
+	local incoming_ids = {}
+	for _, e in ipairs(incoming) do
+		table.insert(incoming_ids, e.id)
+	end
+
+	local key = layout_ws_key(targets)
+	local prev = layout_order[key] or {}
+	local prev_present = layout_prev_present[key] or {}
+	local last_seen = layout_last_seen[key] or {}
+	layout_last_seen[key] = last_seen
+	local now = os.clock()
+	local present = {}
+	for _, id in ipairs(incoming_ids) do
+		present[id] = true
+		last_seen[id] = now
+	end
+
+	-- Full order with grace: keep missing ids that vanished recently (drag
+	-- float-away). Older missing ids are closes: drop them for good.
+	local pruned = {}
+	local pruned_set = {}
+	for _, id in ipairs(prev) do
+		if present[id] then
+			table.insert(pruned, id)
+			pruned_set[id] = true
 		else
-			table.insert(canvases, item)
+			local seen = last_seen[id]
+			if seen and (now - seen) < LAYOUT_DRAG_GRACE then
+				table.insert(pruned, id)
+				pruned_set[id] = true
+			else
+				last_seen[id] = nil
+			end
 		end
 	end
+
+	local newcomers, returners = {}, {}
+	local returner_set = {}
+	for _, id in ipairs(incoming_ids) do
+		if not pruned_set[id] then
+			table.insert(newcomers, id)
+		elseif not prev_present[id] then
+			table.insert(returners, id)
+			returner_set[id] = true
+		end
+	end
+
+	-- Survivors (+ returners) in persisted order; newcomers handled below.
+	local function rank_insert_into(list, id)
+		local r = archetype_rank(by_id[id].archetype)
+		local at = #list + 1
+		for j, eid in ipairs(list) do
+			local er = by_id[eid] and archetype_rank(by_id[eid].archetype) or 2
+			if er > r then
+				at = j
+				break
+			end
+		end
+		table.insert(list, at, id)
+	end
+
+	local final_ids = nil
+	local stored_ids = nil
+
+	if #returners > 0 then
+		-- Drag-return: order by DROP POSITION, never by append or rank.
+		local old_present = {}
+		for _, id in ipairs(pruned) do
+			if present[id] and not returner_set[id] then
+				-- survivors in old order; returners placed via drop below
+				table.insert(old_present, id)
+			end
+		end
+		-- Start from survivors in old order; place each returner by drop.
+		local ordered_old = {}
+		for _, id in ipairs(old_present) do
+			table.insert(ordered_old, id)
+		end
+		local drop_ok = true
+		for _, rid in ipairs(returners) do
+			local rcx, rcy = layout_target_center(by_id[rid].target)
+			if rcx == nil then
+				drop_ok = false
+				break
+			end
+			if #ordered_old == 1 and #incoming_ids == 2 then
+				-- 1+1: the reported case. Left/top drop goes first.
+				local sid = ordered_old[1]
+				local scx, scy = layout_target_center(by_id[sid].target)
+				if scx == nil then
+					drop_ok = false
+					break
+				end
+				if stacked then
+					ordered_old = (rcy < scy) and { rid, sid } or { sid, rid }
+				else
+					ordered_old = (rcx < scx) and { rid, sid } or { sid, rid }
+				end
+			else
+				-- N>2: swap the returner with the closest survivor cell
+				-- (Hyprland swap semantics). Falls back to append below.
+				local best, best_d2 = nil, nil
+				for _, sid in ipairs(ordered_old) do
+					local scx, scy = layout_target_center(by_id[sid].target)
+					if scx ~= nil then
+						local dx, dy = rcx - scx, rcy - scy
+						local d2 = dx * dx + dy * dy
+						if not best_d2 or d2 < best_d2 then
+							best, best_d2 = sid, d2
+						end
+					end
+				end
+				if not best then
+					drop_ok = false
+					break
+				end
+				-- Insert at the closest cell's slot (shift, don't swap):
+				-- dropping onto a cell takes it, others slide. For N=2
+				-- this equals swap; for N>2 it matches tab-reorder feel.
+				local at = #ordered_old + 1
+				for j, eid in ipairs(ordered_old) do
+					if eid == best then
+						at = j
+						break
+					end
+				end
+				-- Decide before/after within the cell by drop axis.
+				local bcx, bcy = layout_target_center(by_id[best].target)
+				if bcx ~= nil then
+					if stacked and rcy > bcy then
+						at = at + 1
+					elseif (not stacked) and rcx > bcx then
+						at = at + 1
+					end
+				end
+				table.insert(ordered_old, at, rid)
+			end
+		end
+		if not drop_ok then
+			-- Centers unreadable (or multi-returner race): incoming append
+			-- order still beats archetype rank for a drag.
+			ordered_old = {}
+			for _, id in ipairs(incoming_ids) do
+				if returner_set[id] or pruned_set[id] then
+					table.insert(ordered_old, id)
+				end
+			end
+			-- Any pruned-present ids missing from incoming (shouldn't
+			-- happen here) keep old relative order at the front.
+			for _, id in ipairs(pruned) do
+				if present[id] and not returner_set[id] then
+					local found = false
+					for _, e in ipairs(ordered_old) do
+						if e == id then
+							found = true
+							break
+						end
+					end
+					if not found then
+						table.insert(ordered_old, 1, id)
+					end
+				end
+			end
+		end
+		-- Truly new windows (if any arrived the same frame) still rank in.
+		for _, id in ipairs(newcomers) do
+			rank_insert_into(ordered_old, id)
+		end
+		final_ids = ordered_old
+		-- Stored keeps remaining grace-away ids (multi-drag) at the end.
+		stored_ids = {}
+		for _, id in ipairs(final_ids) do
+			table.insert(stored_ids, id)
+		end
+		for _, id in ipairs(pruned) do
+			if not present[id] then
+				table.insert(stored_ids, id)
+			end
+		end
+	elseif #newcomers > 0 then
+		-- Genuine open / inter-workspace move: deterministic rank placement.
+		local base = {}
+		for _, id in ipairs(pruned) do
+			if present[id] then
+				table.insert(base, id)
+			end
+		end
+		for _, id in ipairs(newcomers) do
+			rank_insert_into(base, id)
+		end
+		final_ids = base
+		stored_ids = {}
+		for _, id in ipairs(final_ids) do
+			table.insert(stored_ids, id)
+		end
+		for _, id in ipairs(pruned) do
+			if not present[id] then
+				table.insert(stored_ids, id)
+			end
+		end
+	else
+		local same_set = (#pruned == #incoming_ids)
+		if same_set then
+			-- Keyboard movewindow swap (no transient removal): adopt the
+			-- compositor order wholesale so the move sticks.
+			final_ids = incoming_ids
+			stored_ids = incoming_ids
+		else
+			-- Transient shrink (drag in progress, close animating): keep
+			-- survivors in persisted spots, keep the away window in stored
+			-- for its imminent return instead of clobbering.
+			local base = {}
+			for _, id in ipairs(pruned) do
+				if present[id] then
+					table.insert(base, id)
+				end
+			end
+			final_ids = base
+			stored_ids = pruned
+		end
+	end
+
+	if #stored_ids == 0 then
+		layout_order[key] = nil
+	else
+		layout_order[key] = stored_ids
+	end
+	layout_prev_present[key] = present
+
 	local ordered = {}
-	for _, it in ipairs(sidebars) do table.insert(ordered, it) end
-	for _, it in ipairs(canvases) do table.insert(ordered, it) end
-	for _, it in ipairs(editors) do table.insert(ordered, it) end
-	for _, it in ipairs(terminals) do table.insert(ordered, it) end
+	for _, id in ipairs(final_ids) do
+		local e = by_id[id]
+		if e then
+			table.insert(ordered, { target = e.target, archetype = e.archetype })
+		end
+	end
 	return ordered
 end
 
@@ -354,16 +697,16 @@ local function mosaic_recalculate_inner(ctx)
 	if type(area) ~= "table" then
 		return
 	end
-	local ordered = sort_layout_targets(targets)
-	local n = #ordered
-	if n == 0 then
-		return
-	end
-
 	local W, H = layout_area_dims(area)
 	local portrait = (W and H and H > W) or false
 	local narrow = (W and W < 600) or false
 	local stacked = portrait or narrow
+
+	local ordered = sort_layout_targets(targets, stacked)
+	local n = #ordered
+	if n == 0 then
+		return
+	end
 
 	-- Snapshot for _G.mosaic_debug(): what the layout last saw. If targets
 	-- is 0 while windows are visibly there, the workspace rule isn't active
@@ -1188,6 +1531,9 @@ _G.mosaic_debug = function()
 	end
 	local live = hl.get_active_workspace and hl.get_active_workspace()
 	table.insert(lines, "active_workspace=" .. tostring(live and live.id))
+	for k, order in pairs(layout_order or {}) do
+		table.insert(lines, "order[" .. tostring(k) .. "]=" .. table.concat(order or {}, ","))
+	end
 	local s = table.concat(lines, "\n")
 	local f = io.open("/tmp/mosaic_debug.log", "w")
 	if f then
@@ -1204,6 +1550,283 @@ end
 _G.mosaic_apply = function(ws_id)
 	M.apply_workspace(ws_id)
 end
+
+--------------------------------------------------------------------------------
+-- Overflow spill (real-layout path): a mosaic workspace holds at most
+-- MAX_MOSAIC_WINDOWS tiled windows. A window opening onto a crowded mosaic
+-- workspace never paints there: pre-paint (open_early) moves it straight to
+-- the hole and the viewport follows, so first paint reads as "opened there".
+-- Occupied targets shift onward transitively to make space. System-reserved
+-- workspaces (8 silent steam, 9 games, 10 pinned) are never landing pads and
+-- their contents never shift. For keybind launches prefer M.exec(cmd):
+-- switch-then-wait-then-spawn, so the client maps directly onto the hole and
+-- the reactive path stays a fallback for external launchers (spotlight).
+--------------------------------------------------------------------------------
+
+local MAX_MOSAIC_WINDOWS = 6
+local MAX_SPILL_SCAN = 20
+-- Proactive spawn wait: viewport lands on the hole first, client maps after
+-- the beat so the switch reads as intentional (reactive path needs no wait:
+-- it moves pre-paint, before first paint).
+local SPILL_SPAWN_WAIT = 250
+local SPILL_BLOCKED = { [8] = true, [9] = true, [10] = true }
+
+-- Stable window identity: object handles are unreliable across listings, so
+-- compare normalized addresses (same pattern as floating-mode.lua).
+local function spill_addr(w)
+	if not w then
+		return nil
+	end
+	local ok, raw = pcall(function()
+		if not w.address then
+			return nil
+		end
+		return tostring(w.address):lower()
+	end)
+	if not ok or not raw or raw == "" then
+		return nil
+	end
+	if raw:find("^0x") then
+		return raw
+	end
+	return "0x" .. raw
+end
+
+-- Tiled (layout-managed) windows on a workspace, optionally excluding one by
+-- address. Exclusion makes the count exact whether or not the newcomer is in
+-- the listing yet.
+local function spill_tiled_on(ws_id, exclude_addr)
+	local out = {}
+	for _, w in ipairs(hl.get_workspace_windows(ws_id) or {}) do
+		if not is_ignorable(w) and is_live_window(w) then
+			if not (exclude_addr and spill_addr(w) == exclude_addr) then
+				local ok, arch = pcall(db.classify, w)
+				if ok and arch and not arch.float then
+					table.insert(out, w)
+				end
+			end
+		end
+	end
+	return out
+end
+
+local function spill_ws_empty(ws_id)
+	for _, w in ipairs(hl.get_workspace_windows(ws_id) or {}) do
+		if not is_ignorable(w) and is_live_window(w) then
+			return false
+		end
+	end
+	return true
+end
+
+local function spill_move_contents(from_id, to_id)
+	for _, ow in ipairs(hl.get_workspace_windows(from_id) or {}) do
+		pcall(function()
+			if not is_ignorable(ow) and is_live_window(ow) then
+				hl.dispatch(hl.dsp.window.move({ window = ow, workspace = tostring(to_id) }))
+			end
+		end)
+	end
+end
+
+-- First empty, non-reserved workspace ahead + shift the chain back-to-front
+-- so the returned hole is free. Reserved workspaces are never touched nor
+-- landed on. Returns hole or nil. Shared by both spill paths.
+local function spill_make_hole(num)
+	local empty_at = nil
+	for k = num + 1, num + MAX_SPILL_SCAN do
+		if not SPILL_BLOCKED[k] and spill_ws_empty(k) then
+			empty_at = k
+			break
+		end
+	end
+	if not empty_at then
+		return nil
+	end
+	local hole = empty_at
+	for k = empty_at - 1, num + 1, -1 do
+		if not SPILL_BLOCKED[k] and not SPILL_BLOCKED[k + 1] then
+			spill_move_contents(k, k + 1)
+			hole = k
+		end
+	end
+	return hole
+end
+
+-- At most one in-flight spill per window address: window.open_early and
+-- window.open both fire for the same window, and whichever runs first owns
+-- it. Entries expire (clock skew / dropped timers must never block a future
+-- window reusing an address).
+local spill_pending = {}
+
+local function spill_claimed(addr)
+	if not addr then
+		return false
+	end
+	local t = spill_pending[addr]
+	return t ~= nil and (os.clock() - t) < 5
+end
+
+local function spill_forget(addr)
+	if addr then
+		spill_pending[addr] = nil
+	end
+end
+
+-- One staged flow, earliest available trigger. Pre-paint (open_early) moves
+-- the newcomer to the hole BEFORE first paint and follows with the viewport,
+-- so it never flashes on the crowded workspace. Synchronous: no delayed
+-- second beat (that delay is what read as open-here-switch-move). pre_paint
+-- skips the liveness check (unmapped is expected before first paint, not
+-- death). Returns true when a flow started.
+local function spill_begin(w, num, ws_id, newcomer_addr, pre_paint)
+	if newcomer_addr and spill_claimed(newcomer_addr) then
+		return false
+	end
+	if not pre_paint and not is_live_window(w) then
+		return false
+	end
+	local cur = w.workspace and w.workspace.id
+	if tonumber(cur) ~= num then
+		return false -- already moved elsewhere
+	end
+	local okc, arch = pcall(db.classify, w)
+	if not (okc and arch and not arch.float) then
+		return false -- dialogs/floats never spill
+	end
+	-- Crowded? With a known address the count excludes the newcomer, so
+	-- listing lag can't skew it. Without one, require strictly over max
+	-- (a lagging listing then only delays, never false-spills).
+	local crowded
+	if newcomer_addr then
+		crowded = #spill_tiled_on(num, newcomer_addr) >= MAX_MOSAIC_WINDOWS
+	else
+		crowded = #spill_tiled_on(num, nil) > MAX_MOSAIC_WINDOWS
+	end
+	if not crowded then
+		return false -- room after all
+	end
+	local hole = spill_make_hole(num)
+	if not hole then
+		log(string.format(">>> SPILL: WS %d crowded but no empty workspace ahead; leaving window", num))
+		return false
+	end
+	if newcomer_addr then
+		spill_pending[newcomer_addr] = os.clock()
+	end
+	-- The hole continues the mosaic session, not dwindle: mark + point it
+	-- at lua:mosaic before anything lands there.
+	pcall(function()
+		_G.mosaic_mode.workspaces[hole] = true
+		write_state()
+		set_ws_layout(hole, "lua:mosaic")
+	end)
+	-- Move pre-paint (never flashes on the crowded ws), then follow with
+	-- the viewport when the user is still looking at the crowded ws. The
+	-- pending claim is intentionally KEPT (expires in 5s): window.open fires
+	-- right after open_early while the async move may not be visible in
+	-- listings yet, and without the claim it would make a second hole.
+	pcall(function()
+		hl.dispatch(hl.dsp.window.move({ window = w, workspace = tostring(hole) }))
+	end)
+	local cur_ws = hl.get_active_workspace and hl.get_active_workspace()
+	if cur_ws and tonumber(cur_ws.id) == num then
+		pcall(function()
+			hl.dispatch(hl.dsp.focus({ workspace = tostring(hole) }))
+		end)
+	end
+	log(string.format(">>> SPILL: WS %d crowded, window opened on WS %d", num, hole))
+	return true
+end
+
+-- Proactive launch: switch-then-wait-then-spawn. If the active mosaic
+-- workspace is crowded, make the hole, go there, and only then spawn, so the
+-- client maps directly onto the hole (no reactive move at all). Otherwise
+-- spawn immediately. Keybinds (terminal etc.) should use this; external
+-- launchers (spotlight) fall through to the reactive spill_begin above.
+function M.exec(cmd)
+	if not cmd or cmd == "" then
+		return
+	end
+	local function spawn()
+		pcall(function()
+			hl.dispatch(hl.dsp.exec_cmd(cmd))
+		end)
+	end
+	if not real_layout_ok then
+		spawn()
+		return
+	end
+	local aws = hl.get_active_workspace and hl.get_active_workspace()
+	local num = aws and tonumber(aws.id)
+	if not (aws and aws.id and num and num > 0 and M.is_active(aws.id)) then
+		spawn()
+		return
+	end
+	if #spill_tiled_on(num, nil) < MAX_MOSAIC_WINDOWS then
+		spawn()
+		return
+	end
+	local hole = spill_make_hole(num)
+	if not hole then
+		log(string.format(">>> SPILL-EXEC: WS %d crowded but no empty workspace ahead; spawning here", num))
+		spawn()
+		return
+	end
+	pcall(function()
+		_G.mosaic_mode.workspaces[hole] = true
+		write_state()
+		set_ws_layout(hole, "lua:mosaic")
+	end)
+	pcall(function()
+		hl.dispatch(hl.dsp.focus({ workspace = tostring(hole) }))
+	end)
+	log(string.format(">>> SPILL-EXEC: WS %d crowded, switched to WS %d, spawning in %dms", num, hole, SPILL_SPAWN_WAIT))
+	hl.timer(spawn, { timeout = SPILL_SPAWN_WAIT, type = "oneshot" })
+end
+
+_G.mosaic_exec = function(cmd)
+	M.exec(cmd)
+end
+
+-- Preferred trigger: pre-paint, so the switch precedes any flash on the
+-- crowded workspace. Never guess the workspace here: rule-assigned opens
+-- still in flight (steam -> 8) must not be spilled elsewhere. Address-less
+-- windows defer to window.open (no dedupe possible pre-paint).
+hl.on("window.open_early", function(w)
+	if not real_layout_ok or not w then
+		return
+	end
+	local ws_id = w.workspace and w.workspace.id
+	if not ws_id then
+		return
+	end
+	local num = tonumber(ws_id)
+	if not (num and num > 0 and M.is_active(ws_id)) then
+		return
+	end
+	local addr = spill_addr(w)
+	if not addr then
+		return
+	end
+	spill_begin(w, num, ws_id, addr, true)
+end)
+
+hl.on("window.open", function(w)
+	if not real_layout_ok or not w then
+		return
+	end
+	local ws_id = (w and w.workspace and w.workspace.id)
+	if not ws_id then
+		local aws = hl.get_active_workspace()
+		ws_id = aws and aws.id
+	end
+	local num = tonumber(ws_id)
+	if not (ws_id and num and num > 0 and M.is_active(ws_id)) then
+		return
+	end
+	spill_begin(w, num, ws_id, spill_addr(w), false)
+end)
 
 -- Event Listeners
 local debounce_timer = nil

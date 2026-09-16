@@ -12,9 +12,19 @@ hl.unbind("SUPER + SHIFT + parenright")
 hl.bind("SUPER + SHIFT + parenright", hl.dsp.window.move({ workspace = "10" }), { description = "Move to workspace 10" })
 hl.unbind("SUPER + T")
 hl.unbind("SUPER + grave")
-hl.bind("SUPER + grave", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
+-- Crowded mosaic workspaces spill: switch-then-wait-then-spawn via mosaic_exec
+-- so the terminal maps directly onto the hole (no open-here-switch-move flash).
+-- Falls back to plain exec when mosaic is unavailable (e.g. hyprctl reload race).
+local function spawn_ghostty()
+	if _G.mosaic_exec then
+		_G.mosaic_exec("ghostty")
+	else
+		hl.dispatch(hl.dsp.exec_cmd("ghostty"))
+	end
+end
+hl.bind("SUPER + grave", spawn_ghostty, { description = "Terminal (ghostty)" })
 hl.unbind("SUPER + asciitilde")
-hl.bind("SUPER + asciitilde", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
+hl.bind("SUPER + asciitilde", spawn_ghostty, { description = "Terminal (ghostty)" })
 local function addr_of(w)
 	if not w or not w.address then
 		return nil
