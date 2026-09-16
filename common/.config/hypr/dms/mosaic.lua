@@ -144,6 +144,13 @@ local function get_work_area(mon)
 		w = logical_w - res_left - res_right - (gap * 2),
 		h = logical_h - res_top - res_bottom - (gap * 2),
 		gap = gap,
+		-- Gapless full-bleed area (reserved bar space still respected).
+		-- Used for solo-window fills so a single window looks maximized:
+		-- no gaps, and apply_geom zeroes borders/rounding for it.
+		fx = mon.x + res_left,
+		fy = mon.y + res_top,
+		fw = logical_w - res_left - res_right,
+		fh = logical_h - res_top - res_bottom,
 	}
 end
 
@@ -270,7 +277,7 @@ local function solve_mosaic(items, wa)
 			table.insert(results, { win = w, rect = { x = x, y = y, w = uw, h = uh } })
 			return results
 		end
-		table.insert(results, { win = w, rect = { x = wa.x, y = wa.y, w = wa.w, h = wa.h } })
+		table.insert(results, { win = w, rect = { x = wa.fx, y = wa.fy, w = wa.fw, h = wa.fh }, solo = true })
 		return results
 	end
 
@@ -461,11 +468,54 @@ local function solve_mosaic(items, wa)
 
 	if n > 5 then
 		for i = 6, n do
-			table.insert(results, { win = items[i].win, rect = { x = wa.x + (i - 5) * 20, y = wa.y + (i - 5) * 20, w = w_mid, h = h_half } })
+			-- Wrap the drift so a deep stack stays on screen instead of
+			-- sliding off the work area on new/unexplored setups.
+			local step = ((i - 6) % 10) * 20
+			table.insert(results, { win = items[i].win, rect = { x = wa.x + step, y = wa.y + step, w = w_mid, h = h_half } })
 		end
 	end
 
 	return results
+end
+
+-- False only when the client is provably gone (mid-close). Unknown (nil)
+-- counts as live so odd clients never get skipped by accident.
+local function is_live_window(w)
+	if not w then
+		return false
+	end
+	local ok, mapped = pcall(function()
+		return w.mapped
+	end)
+	if ok and mapped == false then
+		return false
+	end
+	return true
+end
+
+-- True when the workspace is in the loose cascade zone (landscape N>5):
+-- overflow windows overlap by design, so re-tiling on every close just
+-- reshuffles the stack and fights the close animation. Survivors keep
+-- their spots instead. Portrait/narrow grids stay strict (no overlap).
+local function in_cascade_zone(ws_id)
+	local mon = resolve_workspace_monitor(ws_id)
+	if not mon then
+		return false
+	end
+	local wa = get_work_area(mon)
+	if is_portrait(wa) or too_narrow_for_columns(wa) then
+		return false
+	end
+	local n = 0
+	for _, w in ipairs(hl.get_workspace_windows(ws_id) or {}) do
+		if not is_ignorable(w) and is_live_window(w) then
+			local ok, arch = pcall(db.classify, w)
+			if ok and arch and not arch.float then
+				n = n + 1
+			end
+		end
+	end
+	return n > 5
 end
 
 local function force_unmaximize(w)
@@ -533,11 +583,22 @@ function M.apply_workspace(ws_id)
 
 	log(string.format(">>> Applying mosaic to %d windows on WS %s", #layout, tostring(id)))
 
-	local function apply_geom(w, rect)
+	local function apply_geom(w, rect, solo)
+		if not is_live_window(w) then
+			return
+		end
 		local th = titlebar_h(w)
 		force_unmaximize(w)
 		if not w.floating then
 			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
+		end
+		if solo then
+			-- Solo fill: chromeless like a maximize (smart-gaps equivalent
+			-- for mosaic floats, which the tiled workspace rules don't match).
+			pcall(function()
+				hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = 0 }))
+				hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = 0 }))
+			end)
 		end
 		hl.dispatch(hl.dsp.window.resize({
 			window = w,
@@ -554,16 +615,20 @@ function M.apply_workspace(ws_id)
 
 	for _, item in ipairs(layout) do
 		pcall(function()
-			apply_geom(item.win, item.rect)
+			apply_geom(item.win, item.rect, item.solo)
 		end)
 	end
 
-	-- Delayed second pass to enforce geometry after Wayland client buffer negotiation (e.g. Zen / Firefox)
+	-- Delayed second pass to enforce geometry after Wayland client buffer negotiation (e.g. Zen / Firefox).
+	-- Skips windows that died since (e.g. closed via hyprbar just now) so we
+	-- never dispatch resizes at a dead client mid-close.
 	hl.timer(function()
 		for _, item in ipairs(layout) do
-			pcall(function()
-				apply_geom(item.win, item.rect)
-			end)
+			if is_live_window(item.win) then
+				pcall(function()
+					apply_geom(item.win, item.rect, item.solo)
+				end)
+			end
 		end
 	end, { timeout = 120, type = "oneshot" })
 end
@@ -746,7 +811,18 @@ hl.on("window.close", function(w)
 		ws_id = aws and aws.id
 	end
 	if ws_id and M.is_active(ws_id) then
-		schedule_recalculate(30)
+		-- Loose close: let the close animation finish, then only re-tile
+		-- when back in a strict range. While still cascading, survivors keep
+		-- their spots instead of reshuffling around the dying window.
+		hl.timer(function()
+			if not M.is_active(ws_id) then
+				return
+			end
+			if in_cascade_zone(ws_id) then
+				return
+			end
+			M.apply_workspace(ws_id)
+		end, { timeout = 200, type = "oneshot" })
 	end
 end)
 
