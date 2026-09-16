@@ -76,13 +76,7 @@ hl.bind("ALT + TAB", function()
 	alt_tab(false)
 end, { description = "Switch to next window" })
 hl.unbind("SUPER + F")
-hl.bind("SUPER + F", function()
-	if _G.floating_mode_toggle_window_float then
-		_G.floating_mode_toggle_window_float()
-		return
-	end
-	hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
-end, { description = "Toggle floating" })
+hl.bind("SUPER + F", hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
 hl.unbind("SUPER + space")
 hl.bind("SUPER + space", hl.dsp.exec_raw("hyprctl switchxkblayout all next"), { locked = true, description = "Switch keyboard layout" })
 hl.bind("F22", hl.dsp.send_shortcut({ mods = "CTRL + SHIFT", key = "G", window = "class:^(discord)$" }), { description = "Discord start streaming" })
