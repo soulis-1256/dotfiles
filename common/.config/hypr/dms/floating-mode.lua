@@ -783,8 +783,12 @@ local function bump_gen()
 	apply_gen = apply_gen + 1
 	return apply_gen
 end
+M.bump_gen = bump_gen
 
 local function any_floating_mode()
+	if _G.layout_manager and _G.layout_manager.any_floating then
+		return _G.layout_manager.any_floating()
+	end
 	local state = _G.floating_mode
 	if state and state.active == true then
 		return true
@@ -798,6 +802,7 @@ local function any_floating_mode()
 	end
 	return false
 end
+M.any_floating_mode = any_floating_mode
 
 -- While fully tiled, ignore client maximize requests so Zen/Discord cannot
 -- immediately re-max after we unset. Off again whenever any workspace is
@@ -856,6 +861,7 @@ local function sync_mode_guards()
 		end
 	end
 end
+M.sync_mode_guards = sync_mode_guards
 
 -- `action = "unset"` with no mode does not clear xdg maximize (Zen stays
 -- fullscreen=1 after tiling). Set both compositor and client state to none.
@@ -1363,6 +1369,7 @@ local function apply_mode_to_windows(windows, want_floating, gen, ws_id)
 	settle_mode(gen, want_floating, ws_id)
 	return count
 end
+M.apply_mode_to_windows = apply_mode_to_windows
 
 function M.toggle()
 	local state = _G.floating_mode
@@ -1424,6 +1431,9 @@ function M.toggle_workspace(ws_id)
 end
 
 function M.is_active(ws_id)
+	if _G.layout_manager and _G.layout_manager.get_mode then
+		return _G.layout_manager.get_mode(ws_id) == "floating"
+	end
 	local state = _G.floating_mode
 	if not state then
 		return false

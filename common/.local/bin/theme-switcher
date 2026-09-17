@@ -294,6 +294,16 @@ apply_theme() {
 
     local saved_float=""
     local saved_ws=""
+    local saved_layout=""
+    local saved_layout_mode=""
+    if [[ -f "${HOME}/.cache/hypr_layout_state.json" ]]; then
+        saved_layout="$(cat "${HOME}/.cache/hypr_layout_state.json" 2>/dev/null || true)"
+    fi
+    if [[ -f "${HOME}/.cache/hypr_layout_mode" ]]; then
+        saved_layout_mode="$(cat "${HOME}/.cache/hypr_layout_mode" 2>/dev/null || true)"
+    elif [[ -f /tmp/hypr_layout_mode ]]; then
+        saved_layout_mode="$(cat /tmp/hypr_layout_mode 2>/dev/null || true)"
+    fi
     if [[ -f "${HOME}/.cache/hypr_floating_mode" ]]; then
         saved_float="$(head -c 1 "${HOME}/.cache/hypr_floating_mode" 2>/dev/null || true)"
     elif [[ -f /tmp/hypr_floating_mode ]]; then
@@ -347,7 +357,14 @@ apply_theme() {
     if command -v hyprctl &>/dev/null && hyprctl activewindow &>/dev/null; then
         hyprctl reload &>/dev/null || true
         echo -e "  ${GREEN}✓${NC} Reloaded Hyprland configuration"
-        # Theme chrome must not clobber Super+Z / Super+X floating state.
+        # Theme chrome must not clobber layout state or Super+Z / Super+X floating state.
+        if [[ -n "$saved_layout" ]]; then
+            printf '%s\n' "$saved_layout" > "${HOME}/.cache/hypr_layout_state.json"
+        fi
+        if [[ -n "$saved_layout_mode" ]]; then
+            printf '%s\n' "$saved_layout_mode" > "${HOME}/.cache/hypr_layout_mode"
+            printf '%s\n' "$saved_layout_mode" > /tmp/hypr_layout_mode
+        fi
         if [[ -n "$saved_float" ]]; then
             printf '%s\n' "$saved_float" > "${HOME}/.cache/hypr_floating_mode"
             printf '%s\n' "$saved_float" > /tmp/hypr_floating_mode

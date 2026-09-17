@@ -706,7 +706,15 @@ hl.layer_rule({
         onLoadFailed: root.floatingWorkspaces = {}
     }
 
-    property string currentLayoutMode: "tiled"
+    property string currentLayoutMode: "mosaic"
+
+    Connections {
+        target: Hyprland
+        function onFocusedWorkspaceChanged() {
+            layoutModeFile.reload();
+            floatingModeFile.reload();
+        }
+    }
 
     FileView {
         id: layoutModeFile
@@ -726,11 +734,11 @@ hl.layer_rule({
 
         onLoaded: syncFromFile()
         onFileChanged: reload()
-        onLoadFailed: root.currentLayoutMode = root.floatingModeActive ? "floating" : "tiled"
+        onLoadFailed: root.currentLayoutMode = root.floatingModeActive ? "floating" : "mosaic"
     }
 
     function setLayoutMode(mode) {
-        mode = (mode || "tiled").toLowerCase();
+        mode = (mode || "mosaic").toLowerCase();
         root.currentLayoutMode = mode;
         root.floatingModeActive = (mode === "floating");
         Proc.runCommand("hypr-layout-mode-set", ["hyprctl", "eval", `_G.set_workspace_layout_mode("${mode}")`], (output, exitCode) => {
@@ -742,11 +750,11 @@ hl.layer_rule({
     }
 
     function toggleFloatingMode() {
-        if (root.currentLayoutMode === "tiled")
+        if (root.currentLayoutMode === "mosaic")
             setLayoutMode("floating");
         else if (root.currentLayoutMode === "floating")
-            setLayoutMode("mosaic");
-        else
             setLayoutMode("tiled");
+        else
+            setLayoutMode("mosaic");
     }
 }

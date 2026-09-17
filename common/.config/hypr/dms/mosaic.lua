@@ -83,6 +83,9 @@ local function from_this_load()
 end
 
 function M.is_active(ws_id)
+	if _G.layout_manager and _G.layout_manager.get_mode then
+		return _G.layout_manager.get_mode(ws_id) == "mosaic"
+	end
 	local state = _G.mosaic_mode
 	if not state then
 		return false
@@ -294,9 +297,13 @@ local function settle_arm(key)
 		if M.poke_visible then
 			pcall(M.poke_visible)
 		else
-			pcall(function()
-				hl.dispatch(hl.dsp.layout("mosaic:settle"))
-			end)
+			local focused = hl.get_active_workspace and hl.get_active_workspace()
+			local focused_id = focused and focused.id
+			if focused_id and M.is_active(focused_id) then
+				pcall(function()
+					hl.dispatch(hl.dsp.layout("mosaic:settle"))
+				end)
+			end
 		end
 	end, { timeout = SHRINK_POKE_MS, type = "oneshot" })
 end
@@ -1449,6 +1456,7 @@ local function set_ws_layout(id, layout_name)
 	log(string.format(">>> WS %s layout -> %s (%s)", tostring(id), layout_name, ok and "ok" or ("FAILED: " .. tostring(err))))
 	return ok
 end
+M.set_ws_layout = set_ws_layout
 
 -- Recast every visible mosaic workspace. Needed when a window leaves an
 -- unfocused monitor: Hyprland may not recalculate that workspace, and
@@ -1465,9 +1473,13 @@ function M.poke_visible()
 			set_ws_layout(id, "lua:mosaic")
 		end
 	end
-	pcall(function()
-		hl.dispatch(hl.dsp.layout("mosaic:settle"))
-	end)
+	local focused = hl.get_active_workspace and hl.get_active_workspace()
+	local focused_id = focused and focused.id
+	if focused_id and M.is_active(focused_id) then
+		pcall(function()
+			hl.dispatch(hl.dsp.layout("mosaic:settle"))
+		end)
+	end
 end
 
 -- One-time cleanup when entering real mosaic: unfloat windows the legacy
@@ -1490,6 +1502,7 @@ local function migrate_legacy_floats(id)
 		end)
 	end
 end
+M.migrate_legacy_floats = migrate_legacy_floats
 
 -- Re-assert persisted mosaic workspaces after (re)load: compositor workspace
 -- rules do not survive a restart, the state file does. Migration runs here
