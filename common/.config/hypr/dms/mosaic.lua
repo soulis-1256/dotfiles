@@ -18,6 +18,9 @@ end
 M.log = log
 
 -- State management
+local MOSAIC_FLOAT_W = 1100
+local MOSAIC_FLOAT_H = 700
+
 _G.mosaic_mode = _G.mosaic_mode or {
 	active = false,
 	workspaces = {},
@@ -104,6 +107,8 @@ function M.is_active(ws_id)
 	end
 	return state.active == true
 end
+_G.mosaic_mode.is_active = M.is_active
+_G.mosaic_is_active = M.is_active
 
 -- Helpers
 local function clamp(val, min_v, max_v)
@@ -136,6 +141,37 @@ local function is_ignorable(w)
 		return true
 	end
 	return false
+end
+
+-- Stable window identity: object handles are unreliable across listings, so
+-- compare normalized addresses (same pattern as floating-mode.lua).
+local function spill_addr(w)
+	if not w then
+		return nil
+	end
+	local ok, raw = pcall(function()
+		if not w.address then
+			return nil
+		end
+		return tostring(w.address):lower()
+	end)
+	if not ok or not raw or raw == "" then
+		return nil
+	end
+	if raw:find("^0x") then
+		return raw
+	end
+	return "0x" .. raw
+end
+
+local function live_window_by_addr(addr)
+	if not addr then return nil end
+	for _, win in ipairs(hl.get_windows() or {}) do
+		if spill_addr(win) == addr then
+			return win
+		end
+	end
+	return nil
 end
 
 local function get_work_area(mon)
@@ -193,6 +229,14 @@ end
 local FIXED_SIZE_CLASSES = {
 	["com.danklinux.dms"] = true,
 	["org.gnome.loupe"] = true,
+	["dolphin"] = true,
+	["org.kde.dolphin"] = true,
+	["nautilus"] = true,
+	["org.gnome.nautilus"] = true,
+	["thunar"] = true,
+	["nemo"] = true,
+	["caja"] = true,
+	["vlc"] = true,
 }
 
 local function has_fixed_size_rule(w)
@@ -457,6 +501,7 @@ local function missing_is_drag(key, missing_ids)
 		return nil
 	end
 	local floating = {}
+	local explicit_floats = {}
 	for _, w in ipairs(wins) do
 		local is_f = false
 		pcall(function()
@@ -467,15 +512,40 @@ local function missing_is_drag(key, missing_ids)
 			pcall(function()
 				id = window_layout_id(w)
 			end)
+			local addr = spill_addr(w)
+			local is_exp = false
+			if _G.mosaic_explicit_floats then
+				if (id and _G.mosaic_explicit_floats[id]) or (addr and _G.mosaic_explicit_floats[addr]) then
+					is_exp = true
+				end
+			end
+			local ok, arch = pcall(db.classify, w)
+			if (ok and arch and arch.float) or has_fixed_size_rule(w) or is_ignorable(w) then
+				is_exp = true
+			end
 			if id then
-				floating[id] = true
+				if is_exp then
+					explicit_floats[id] = true
+				else
+					floating[id] = true
+				end
 			end
 		end
 	end
+	local has_drag = false
+	local has_float = false
 	for _, id in ipairs(missing_ids) do
-		if floating[id] then
-			return true
+		if explicit_floats[id] then
+			has_float = true
+		elseif floating[id] then
+			has_drag = true
 		end
+	end
+	if has_drag then
+		return true
+	end
+	if has_float then
+		return "float"
 	end
 	return false
 end
@@ -696,6 +766,16 @@ local function sort_layout_targets(targets, area, stacked)
 		present[id] = true
 		last_seen[id] = now
 	end
+	if _G.mosaic_explicit_floats then
+		for _, id in ipairs(incoming_ids) do
+			_G.mosaic_explicit_floats[id] = nil
+			local t = by_id[id] and by_id[id].target
+			local addr = t and t.window and spill_addr(t.window)
+			if addr then
+				_G.mosaic_explicit_floats[addr] = nil
+			end
+		end
+	end
 
 	-- Full order with grace: keep missing ids that vanished recently (drag
 	-- float-away). Older missing ids are closes: drop them for good.
@@ -785,13 +865,10 @@ local function sort_layout_targets(targets, area, stacked)
 		-- Shrink: drag float-away, close, or move to another monitor.
 		-- A window already on another workspace is a move: recast immediately
 		-- so the leftover window expands without a workspace-switch refresh.
-		-- A still-floating window on THIS workspace is a drag: hold cells.
-		-- Unknown/first-frame-gone still holds one beat (close vs drag race).
+		-- Intentional floats (user-floated or natural utility) recast immediately.
+		-- A still-floating window on THIS workspace that could be a mouse drag holds cells.
 		local drag = missing_is_drag(key, missing)
-		-- Move-away is certain (window already on another ws): recast now.
-		-- A true close still holds one frame so a drag that isn't floating
-		-- yet doesn't solo-fill then snap back.
-		local treat_close = (drag == "move") or (drag == false and shrink_seen[key] == true)
+		local treat_close = (drag == "move") or (drag == "float") or (drag == false and shrink_seen[key] == true)
 		if treat_close then
 			kind = "close"
 			shrink_seen[key] = nil
@@ -1018,13 +1095,19 @@ end
 
 local function collect_splits(cells, ordered)
 	local v, h = {}, {}
-	local function add(map, pos, side, id)
+	local function get_slot(map, pos)
 		pos = math.floor((tonumber(pos) or 0) + 0.5)
-		local s = map[pos]
-		if not s then
-			s = { pos = pos, lo = {}, hi = {} }
-			map[pos] = s
+		for spos, s in pairs(map) do
+			if math.abs(spos - pos) <= 2 then
+				return s
+			end
 		end
+		local s = { pos = pos, lo = {}, hi = {} }
+		map[pos] = s
+		return s
+	end
+	local function add(map, pos, side, id)
+		local s = get_slot(map, pos)
 		table.insert(s[side], id)
 	end
 	for _, e in ipairs(ordered) do
@@ -1047,12 +1130,107 @@ local function collect_splits(cells, ordered)
 	return splits
 end
 
+local function has_id(tbl, id)
+	for _, v in ipairs(tbl or {}) do
+		if v == id then
+			return true
+		end
+	end
+	return false
+end
+
+local function find_window_at(cells, ordered, cx, cy)
+	for _, e in ipairs(ordered) do
+		local b = cells[e.id]
+		if b and cx >= b.x and cx < b.x + b.w and cy >= b.y and cy < b.y + b.h then
+			return e.id
+		end
+	end
+	local best_id, best_d2 = nil, math.huge
+	for _, e in ipairs(ordered) do
+		local b = cells[e.id]
+		if b then
+			local mid_x = b.x + b.w / 2
+			local mid_y = b.y + b.h / 2
+			local dx = cx - mid_x
+			local dy = cy - mid_y
+			local d2 = dx * dx + dy * dy
+			if d2 < best_d2 then
+				best_id, best_d2 = e.id, d2
+			end
+		end
+	end
+	return best_id
+end
+
+local function pick_splits_for_window(splits, b, target_id, cx, cy)
+	local left_split, right_split = nil, nil
+	local top_split, bottom_split = nil, nil
+
+	for _, s in ipairs(splits) do
+		if s.axis == "x" then
+			if has_id(s.hi, target_id) and math.abs(s.pos - b.x) <= 3 then
+				left_split = s
+			end
+			if has_id(s.lo, target_id) and math.abs(s.pos - (b.x + b.w)) <= 3 then
+				right_split = s
+			end
+		elseif s.axis == "y" then
+			if has_id(s.hi, target_id) and math.abs(s.pos - b.y) <= 3 then
+				top_split = s
+			end
+			if has_id(s.lo, target_id) and math.abs(s.pos - (b.y + b.h)) <= 3 then
+				bottom_split = s
+			end
+		end
+	end
+
+	local split_x = nil
+	if left_split and right_split then
+		split_x = (cx < b.x + b.w / 2) and left_split or right_split
+	else
+		split_x = left_split or right_split
+	end
+
+	local split_y = nil
+	if top_split and bottom_split then
+		split_y = (cy < b.y + b.h / 2) and top_split or bottom_split
+	else
+		split_y = top_split or bottom_split
+	end
+
+	return split_x, split_y
+end
+
 local function apply_split(cells, split, new_pos, area)
 	local min = RESIZE_MIN
+	if area and (area.w or area.width) and (area.h or area.height) then
+		local w = tonumber(area.w or area.width) or 1000
+		local h = tonumber(area.h or area.height) or 1000
+		min = math.max(120, math.min(RESIZE_MIN, math.floor(math.min(w, h) * 0.15)))
+	end
+
 	if split.axis == "x" then
-		local lo = (area and area.x or 0) + min
-		local hi = (area and area.x or 0) + (area and area.w or 0) - min
-		new_pos = clamp(new_pos, lo, hi)
+		local min_pos = (area and (area.x or 0) or 0) + min
+		for _, id in ipairs(split.lo) do
+			local b = cells[id]
+			if b then
+				min_pos = math.max(min_pos, b.x + min)
+			end
+		end
+		local max_pos = (area and ((area.x or 0) + (area.w or area.width or 0)) or 10000) - min
+		for _, id in ipairs(split.hi) do
+			local b = cells[id]
+			if b then
+				local r = b.x + b.w
+				max_pos = math.min(max_pos, r - min)
+			end
+		end
+		if min_pos <= max_pos then
+			new_pos = clamp(new_pos, min_pos, max_pos)
+		else
+			new_pos = clamp(new_pos, max_pos, min_pos)
+		end
 		for _, id in ipairs(split.lo) do
 			local b = cells[id]
 			if b then
@@ -1068,9 +1246,26 @@ local function apply_split(cells, split, new_pos, area)
 			end
 		end
 	else
-		local lo = (area and area.y or 0) + min
-		local hi = (area and area.y or 0) + (area and area.h or 0) - min
-		new_pos = clamp(new_pos, lo, hi)
+		local min_pos = (area and (area.y or 0) or 0) + min
+		for _, id in ipairs(split.lo) do
+			local b = cells[id]
+			if b then
+				min_pos = math.max(min_pos, b.y + min)
+			end
+		end
+		local max_pos = (area and ((area.y or 0) + (area.h or area.height or 0)) or 10000) - min
+		for _, id in ipairs(split.hi) do
+			local b = cells[id]
+			if b then
+				local r = b.y + b.h
+				max_pos = math.min(max_pos, r - min)
+			end
+		end
+		if min_pos <= max_pos then
+			new_pos = clamp(new_pos, min_pos, max_pos)
+		else
+			new_pos = clamp(new_pos, max_pos, min_pos)
+		end
 		for _, id in ipairs(split.lo) do
 			local b = cells[id]
 			if b then
@@ -1099,67 +1294,76 @@ local function nearest_split(splits, cx, cy, maxd)
 	return best
 end
 
-local function split_from_state(splits, st)
-	if not st or not st.axis or not st.lo or not st.hi then
-		return nil
-	end
-	local function same(a, b)
-		if #a ~= #b then
-			return false
-		end
-		local set = {}
-		for _, id in ipairs(b) do
-			set[id] = true
-		end
-		for _, id in ipairs(a) do
-			if not set[id] then
-				return false
-			end
-		end
-		return true
-	end
-	for _, s in ipairs(splits) do
-		if s.axis == st.axis and same(s.lo, st.lo) and same(s.hi, st.hi) then
-			return s
-		end
-	end
-	return nil
-end
-
 local function maybe_resize_cells(cells, ordered, area)
+	local st = _G.mosaic_resize_state
+	if not st then
+		return false
+	end
+
 	local cx, cy = layout_cursor_pos()
-	if cx == nil or type(area) ~= "table" then
+	if cx == nil or cy == nil or type(area) ~= "table" then
 		return false
 	end
 	local splits = collect_splits(cells, ordered)
 	if #splits == 0 then
 		return false
 	end
-	local st = _G.mosaic_resize_state
-	local split = split_from_state(splits, st)
-	if not split then
-		split = nearest_split(splits, cx, cy, (st and 1e9) or RESIZE_EDGE)
+
+	if not st.initialized then
+		local ox = st.ox or cx
+		local oy = st.oy or cy
+		local target_id = find_window_at(cells, ordered, ox, oy)
+		local split_x, split_y = nil, nil
+		if target_id and cells[target_id] then
+			split_x, split_y = pick_splits_for_window(splits, cells[target_id], target_id, ox, oy)
+		end
+		if not split_x and not split_y then
+			local nearest = nearest_split(splits, ox, oy, RESIZE_EDGE * 2)
+			if nearest then
+				if nearest.axis == "x" then
+					split_x = nearest
+				else
+					split_y = nearest
+				end
+			end
+		end
+
+		st.target_id = target_id
+		st.ox = ox
+		st.oy = oy
+		st.split_x = split_x
+		st.split_y = split_y
+		st.orig_cells = copy_cells(cells)
+		st.initialized = true
 	end
-	if not split then
+
+	if not (st.split_x or st.split_y) then
 		return false
 	end
-	local new_pos
-	if st then
-		st.axis, st.lo, st.hi = split.axis, split.lo, split.hi
-		if st.orig_pos == nil then
-			st.orig_pos = split.pos
-			st.ox, st.oy = cx, cy
+
+	if st.orig_cells then
+		for id, b in pairs(st.orig_cells) do
+			if cells[id] then
+				cells[id].x = b.x
+				cells[id].y = b.y
+				cells[id].w = b.w
+				cells[id].h = b.h
+			end
 		end
-		if split.axis == "x" then
-			new_pos = st.orig_pos + (cx - (st.ox or cx))
-		else
-			new_pos = st.orig_pos + (cy - (st.oy or cy))
-		end
-	else
-		new_pos = (split.axis == "x") and cx or cy
 	end
-	apply_split(cells, split, new_pos, area)
-	return true
+
+	local modified = false
+	if st.split_x then
+		local new_x = st.split_x.pos + (cx - st.ox)
+		apply_split(cells, st.split_x, new_x, area)
+		modified = true
+	end
+	if st.split_y then
+		local new_y = st.split_y.pos + (cy - st.oy)
+		apply_split(cells, st.split_y, new_y, area)
+		modified = true
+	end
+	return modified
 end
 
 local function place_cells(ordered, cells)
@@ -1481,6 +1685,22 @@ function M.poke_visible()
 		end)
 	end
 end
+
+function M.poke_workspace(ws_id)
+	if not real_layout_ok then
+		if ws_id and M.is_active(ws_id) then
+			M.apply_workspace(ws_id)
+		end
+		return
+	end
+	if ws_id and M.is_active(ws_id) then
+		set_ws_layout(tonumber(ws_id) or ws_id, "lua:mosaic")
+	end
+	pcall(function()
+		hl.dispatch(hl.dsp.layout("mosaic:settle"))
+	end)
+end
+_G.mosaic_poke_workspace = M.poke_workspace
 
 -- One-time cleanup when entering real mosaic: unfloat windows the legacy
 -- floating engine managed and clear its scripted props, so lua:mosaic starts
@@ -1878,6 +2098,85 @@ local function force_unmaximize(w)
 	end)
 end
 
+local function enforce_float_geometry(w)
+	local addr = spill_addr(w)
+	if addr then
+		_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
+		_G.mosaic_explicit_floats[addr] = true
+		local fresh = live_window_by_addr(addr)
+		if fresh then w = fresh end
+	elseif not w then
+		w = hl.get_active_window()
+	end
+	if not w or not is_live_window(w) then
+		return
+	end
+	local wid = window_layout_id(w)
+	if wid then
+		_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
+		_G.mosaic_explicit_floats[wid] = true
+	end
+	if is_ignorable(w) then
+		return
+	end
+	if w.fullscreen == 2 then
+		return
+	end
+	if w.size then
+		local sx = w.size.x or 0
+		local sy = w.size.y or 0
+		if sx > 0 and sy > 0 and sx < 450 and sy < 350 then
+			return
+		end
+	end
+	local cls = (w.class or w.initial_class or w.initialClass or ""):lower()
+	if cls:match("calc") then
+		return
+	end
+
+	local ws_id = w.workspace and w.workspace.id
+	if not ws_id then
+		local aws = hl.get_active_workspace()
+		ws_id = aws and aws.id
+	end
+	if not (ws_id and M.is_active(ws_id)) then
+		return
+	end
+
+	local mon = resolve_workspace_monitor(ws_id)
+	if not mon then
+		return
+	end
+	local wa = get_work_area(mon)
+
+	local fw = math.min(MOSAIC_FLOAT_W, math.max(400, wa.w - 32))
+	local fh = math.min(MOSAIC_FLOAT_H, math.max(300, wa.h - 32))
+	local th = titlebar_h(w)
+	local ch = math.max(200, fh - th)
+	local fx = wa.x + math.floor((wa.w - fw) / 2)
+	local fy = wa.y + math.floor((wa.h - fh) / 2) + th
+
+	pcall(function()
+		force_unmaximize(w)
+		if not w.floating then
+			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
+		end
+		hl.dispatch(hl.dsp.window.resize({
+			window = w,
+			x = fw,
+			y = ch,
+			relative = false,
+		}))
+		hl.dispatch(hl.dsp.window.move({
+			window = w,
+			x = fx,
+			y = fy,
+		}))
+	end)
+end
+
+_G.mosaic_enforce_float_geometry = enforce_float_geometry
+
 -- Apply positions smoothly via Hyprland dispatcher
 function M.apply_workspace(ws_id)
 	local ws = ws_id and { id = ws_id } or hl.get_active_workspace()
@@ -1912,19 +2211,8 @@ function M.apply_workspace(ws_id)
 			if not arch.float then
 				table.insert(mosaic_windows, w)
 			else
-				-- Utility window: center gently
-				pcall(function()
-					force_unmaximize(w)
-					if not w.floating then
-						hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
-					end
-					local uw = math.min(w.size.x, wa.w - 40)
-					local uh = math.min(w.size.y, wa.h - 40)
-					local ux = wa.x + math.floor((wa.w - uw) / 2)
-					local uy = wa.y + math.floor((wa.h - uh) / 2)
-					hl.dispatch(hl.dsp.window.resize({ window = w, x = uw, y = uh, relative = false }))
-					hl.dispatch(hl.dsp.window.move({ window = w, x = ux, y = uy }))
-				end)
+				-- Utility window: center gently at static size
+				enforce_float_geometry(w)
 			end
 		end
 	end
@@ -2173,22 +2461,90 @@ _G.mosaic_is_active_here = function()
 	return ws and ws.id and M.is_active(ws.id) or false
 end
 
+-- Super+RMB on a float must use the compositor grab. lua:mosaic never
+-- sees floating windows, and with mosaic_resize_state set, nearest_split
+-- uses an unbounded search — so the bind would drag a tiled split behind
+-- the float instead of resizing it. Floats are no_follow_mouse, so the
+-- active window is often a tile even when the cursor is on a float.
+local function cursor_over_float()
+	local cx, cy = layout_cursor_pos()
+	if cx ~= nil then
+		local best_float, best_hist = nil, math.huge
+		for _, w in ipairs(hl.get_windows() or {}) do
+			pcall(function()
+				if not is_live_window(w) then
+					return
+				end
+				local hidden = false
+				pcall(function()
+					hidden = w.hidden and true or false
+				end)
+				if hidden then
+					return
+				end
+				local at, sz = w.at, w.size
+				if type(at) ~= "table" or type(sz) ~= "table" then
+					return
+				end
+				local x, y = tonumber(at.x), tonumber(at.y)
+				local sw, sh = tonumber(sz.x), tonumber(sz.y)
+				if not (x and y and sw and sh) then
+					return
+				end
+				local th = titlebar_h(w)
+				if not (cx >= x and cx < x + sw and cy >= (y - th) and cy < y + sh) then
+					return
+				end
+				if not w.floating then
+					return
+				end
+				local hist = 9999
+				pcall(function()
+					hist = tonumber(w.focus_history_id or w.focusHistoryID) or 9999
+				end)
+				if hist < best_hist then
+					best_hist = hist
+					best_float = w
+				end
+			end)
+		end
+		return best_float ~= nil
+	end
+	local w = hl.get_active_window and hl.get_active_window()
+	local floating = false
+	pcall(function()
+		floating = w and w.floating and true or false
+	end)
+	return floating
+end
+
+local function compositor_mouse_resize()
+	pcall(function()
+		hl.dispatch(hl.dsp.window.resize())
+	end)
+end
+
 function M.resize_begin()
 	local ws = hl.get_active_workspace and hl.get_active_workspace()
 	if not (ws and ws.id and M.is_active(ws.id) and real_layout_ok) then
-		pcall(function()
-			hl.dispatch(hl.dsp.window.resize())
-		end)
+		compositor_mouse_resize()
 		return
 	end
-	local c = nil
-	pcall(function()
-		c = hl.get_cursor_pos()
-	end)
+	if cursor_over_float() then
+		compositor_mouse_resize()
+		return
+	end
+
+	-- Start compositor mouse resize grab so Hyprland displays the native
+	-- directional drag cursor (nw-resize, ne-resize, etc.) and routes mouse events.
+	compositor_mouse_resize()
+
+	local cx, cy = layout_cursor_pos()
 	_G.mosaic_resize_state = {
 		t = os.clock(),
-		x = c and c.x,
-		y = c and c.y,
+		ox = cx,
+		oy = cy,
+		initialized = false,
 	}
 	local function tick()
 		if not from_this_load() or not _G.mosaic_resize_state then
@@ -2241,27 +2597,6 @@ local DP1_MIN = 1
 local DP1_MAX = 7
 local DP2_MIN = 10
 local DP2_MAX = 19
-
--- Stable window identity: object handles are unreliable across listings, so
--- compare normalized addresses (same pattern as floating-mode.lua).
-local function spill_addr(w)
-	if not w then
-		return nil
-	end
-	local ok, raw = pcall(function()
-		if not w.address then
-			return nil
-		end
-		return tostring(w.address):lower()
-	end)
-	if not ok or not raw or raw == "" then
-		return nil
-	end
-	if raw:find("^0x") then
-		return raw
-	end
-	return "0x" .. raw
-end
 
 -- Tiled (layout-managed) windows on a workspace, optionally excluding one by
 -- address. Exclusion makes the count exact whether or not the newcomer is in
@@ -2575,6 +2910,25 @@ hl.on("window.open", function(w)
 	if not (ws_id and num and num > 0 and M.is_active(ws_id)) then
 		return
 	end
+	local is_float = false
+	pcall(function()
+		if w.floating then
+			is_float = true
+		else
+			local ok, arch = pcall(db.classify, w)
+			if ok and arch and arch.float then
+				is_float = true
+			end
+		end
+	end)
+	if is_float then
+		enforce_float_geometry(w)
+		hl.timer(function()
+			if not from_this_load() then return end
+			enforce_float_geometry(w)
+		end, { timeout = 80, type = "oneshot" })
+		return
+	end
 	spill_begin(w, num, ws_id, spill_addr(w), false)
 end)
 
@@ -2671,6 +3025,25 @@ hl.on("window.open", function(w)
 		ws_id = aws and aws.id
 	end
 	if ws_id and M.is_active(ws_id) then
+		local is_float = false
+		pcall(function()
+			if w and w.floating then
+				is_float = true
+			else
+				local ok, arch = pcall(db.classify, w)
+				if ok and arch and arch.float then
+					is_float = true
+				end
+			end
+		end)
+		if is_float then
+			enforce_float_geometry(w)
+			hl.timer(function()
+				if not from_this_load() then return end
+				enforce_float_geometry(w)
+			end, { timeout = 80, type = "oneshot" })
+			return
+		end
 		schedule_recalculate(30)
 		hl.timer(function()
 			if not from_this_load() then

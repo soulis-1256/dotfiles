@@ -39,29 +39,30 @@ hl.window_rule({
 	pin = true,
 })
 
--- DMS Settings: float at the current size, centered on the focused monitor
+-- DMS Settings: float at compact size, centered on the focused monitor
 hl.window_rule({
 	match = { class = "^(com\\.danklinux\\.dms)$", title = "^(Settings)$" },
 	float = true,
 	center = true,
-	size = {1535, 994},
+	size = {1100, 700},
 })
 
--- Loupe Image Viewer: float at fixed dimensions, centered (matching DMS Settings)
+-- Loupe Image Viewer: float at compact size, centered (matching DMS Settings)
 hl.window_rule({
 	match = { class = "^(org\\.gnome\\.Loupe)$" },
 	float = true,
 	center = true,
-	size = {1535, 994},
+	size = {1100, 700},
 })
 
 -- File managers + VLC: tile badly as canvas (fullscreen alone, ~67% in duos),
--- so they float centered and never enter the lua:mosaic tiled targets.
+-- so they float centered at static compact size and never enter the lua:mosaic tiled targets.
 -- Mirrors the Nautilus float rule in hyprland.lua.
 hl.window_rule({
 	match = { class = "^(dolphin|org\\.kde\\.dolphin|thunar|nemo|caja|pcmanfm.*|krusader|konqueror|vlc)$" },
 	float = true,
 	center = true,
+	size = {1100, 700},
 })
 
 -- Win11-style floats: hovering them does not steal mouse/keyboard focus

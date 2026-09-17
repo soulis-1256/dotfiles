@@ -85,8 +85,82 @@ hl.unbind("ALT + TAB")
 hl.bind("ALT + TAB", function()
 	alt_tab(false)
 end, { description = "Switch to next window" })
+local function toggle_floating()
+	local w = hl.get_active_window()
+	if not w then
+		hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
+		return
+	end
+	local ws_id = w.workspace and w.workspace.id
+	if not ws_id then
+		local aws = hl.get_active_workspace()
+		ws_id = aws and aws.id
+	end
+	local is_mosaic = false
+	pcall(function()
+		if _G.mosaic_is_active then
+			is_mosaic = _G.mosaic_is_active(ws_id)
+		elseif _G.mosaic_mode and _G.mosaic_mode.is_active then
+			is_mosaic = _G.mosaic_mode.is_active(ws_id)
+		end
+	end)
+
+	if is_mosaic then
+		local was_floating = w.floating
+		local addr = nil
+		pcall(function()
+			if w.address then
+				addr = tostring(w.address):lower()
+				if not addr:find("^0x") then addr = "0x" .. addr end
+			end
+		end)
+
+		if not was_floating then
+			-- Tiling -> Floating
+			if addr and _G.mosaic_explicit_floats then
+				_G.mosaic_explicit_floats[addr] = true
+			end
+			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
+			if _G.mosaic_enforce_float_geometry then
+				_G.mosaic_enforce_float_geometry(w)
+				hl.timer(function()
+					if _G.mosaic_enforce_float_geometry then
+						_G.mosaic_enforce_float_geometry(w)
+					end
+				end, { timeout = 50, type = "oneshot" })
+			end
+			-- Poke mosaic to retile remaining tiled windows immediately
+			hl.timer(function()
+				if _G.mosaic_poke_workspace then
+					_G.mosaic_poke_workspace(ws_id)
+				elseif _G.mosaic_apply then
+					_G.mosaic_apply(ws_id)
+				end
+			end, { timeout = 30, type = "oneshot" })
+		else
+			-- Floating -> Tiling
+			if addr and _G.mosaic_explicit_floats then
+				_G.mosaic_explicit_floats[addr] = nil
+			end
+			hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
+			-- Poke mosaic to retile with the newly tiled window
+			hl.timer(function()
+				if _G.mosaic_poke_workspace then
+					_G.mosaic_poke_workspace(ws_id)
+				elseif _G.mosaic_apply then
+					_G.mosaic_apply(ws_id)
+				end
+			end, { timeout = 40, type = "oneshot" })
+		end
+	else
+		hl.dispatch(hl.dsp.window.float({ window = w, action = "toggle" }))
+	end
+end
+
 hl.unbind("SUPER + F")
-hl.bind("SUPER + F", hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
+hl.bind("SUPER + F", toggle_floating, { description = "Toggle floating" })
+hl.unbind("SUPER + SHIFT + T")
+hl.bind("SUPER + SHIFT + T", toggle_floating, { description = "Toggle floating" })
 hl.unbind("SUPER + space")
 hl.bind("SUPER + space", hl.dsp.exec_raw("hyprctl switchxkblayout all next"), { locked = true, description = "Switch keyboard layout" })
 hl.bind("F22", hl.dsp.send_shortcut({ mods = "CTRL + SHIFT", key = "G", window = "class:^(discord)$" }), { description = "Discord start streaming" })
@@ -141,9 +215,9 @@ hl.bind("SUPER + down", function()
 	end
 end, { description = "Restore window size (floating mode)" })
 
--- Mosaic owns Super+RMB resize: lua:mosaic's resizeTarget ignores the
--- compositor delta and would snap the window back. Non-mosaic falls through
--- to the normal mouse resize grab.
+-- Mosaic Super+RMB resize: mosaic_resize_begin dispatches window.resize()
+-- so Hyprland shows the native drag cursor and grabs pointer motion for both
+-- tiled and floating windows, while lua:mosaic tracks the cell splits for tiled mode.
 hl.unbind("SUPER + mouse:273")
 hl.bind("SUPER + mouse:273", function()
 	if _G.mosaic_resize_begin then
