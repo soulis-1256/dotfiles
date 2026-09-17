@@ -2236,12 +2236,11 @@ local MAX_SPILL_SCAN = 20
 -- the beat so the switch reads as intentional (reactive path needs no wait:
 -- it moves pre-paint, before first paint).
 local SPILL_SPAWN_WAIT = 250
-local SPILL_BLOCKED = { [8] = true, [9] = true, [10] = true }
--- Never spill past workspace 10. Binds/pager cover 1-10 (SUPER+1..0), and an
--- ever-growing chain (11, 12, ...) leaves reachable, rule-less workspaces
--- behind — the 22:04 session died right after a spill chain escaped there.
--- A crowded workspace with no hole at or under 10 keeps its window.
-local SPILL_MAX_WS = 10
+local SPILL_BLOCKED = { [8] = true, [9] = true }
+local DP1_MIN = 1
+local DP1_MAX = 7
+local DP2_MIN = 10
+local DP2_MAX = 19
 
 -- Stable window identity: object handles are unreliable across listings, so
 -- compare normalized addresses (same pattern as floating-mode.lua).
@@ -2292,6 +2291,15 @@ local function spill_ws_empty(ws_id)
 end
 
 local function spill_move_contents(from_id, to_id)
+	pcall(function()
+		if _G.layout_manager and _G.layout_manager.set_mode then
+			_G.layout_manager.set_mode(to_id, "mosaic")
+		else
+			_G.mosaic_mode.workspaces[to_id] = true
+			write_state()
+			set_ws_layout(to_id, "lua:mosaic")
+		end
+	end)
 	for _, ow in ipairs(hl.get_workspace_windows(from_id) or {}) do
 		pcall(function()
 			if not is_ignorable(ow) and is_live_window(ow) then
@@ -2301,31 +2309,79 @@ local function spill_move_contents(from_id, to_id)
 	end
 end
 
--- First empty, non-reserved workspace ahead + shift the chain back-to-front
--- so the returned hole is free. Reserved workspaces are never touched nor
--- landed on. Returns hole or nil. Shared by both spill paths.
+-- Monitor-aware hole finder:
+-- On DP-1 (1..7): scans ahead up to 7, wraps around 1..num-1, or falls back to DP-2 (10..19).
+-- On DP-2 (10..19): scans ahead up to 19, wraps around 10..num-1, or falls back to DP-1 (1..7).
+-- Shifts the chain forward when empty_at is ahead on the same monitor.
 local function spill_make_hole(num)
-	if num >= SPILL_MAX_WS then
+	if not num or num < 1 then
 		return nil
 	end
-	local empty_at = nil
-	for k = num + 1, math.min(num + MAX_SPILL_SCAN, SPILL_MAX_WS) do
-		if not SPILL_BLOCKED[k] and spill_ws_empty(k) then
-			empty_at = k
-			break
+
+	local function find_empty(start_ws, end_ws)
+		if start_ws > end_ws then
+			return nil
 		end
+		for k = start_ws, end_ws do
+			if not SPILL_BLOCKED[k] and spill_ws_empty(k) then
+				return k
+			end
+		end
+		return nil
 	end
+
+	local is_dp2 = (num >= DP2_MIN and num <= DP2_MAX)
+	local is_dp1 = (num >= DP1_MIN and num <= DP1_MAX)
+	local empty_at = nil
+
+	if is_dp2 then
+		-- DP-2: primary search ahead on DP-2
+		empty_at = find_empty(num + 1, DP2_MAX)
+		-- Wrap around on DP-2 if not found ahead
+		if not empty_at and num > DP2_MIN then
+			empty_at = find_empty(DP2_MIN, num - 1)
+		end
+		-- Fallback to DP-1 if DP-2 is completely full
+		if not empty_at then
+			empty_at = find_empty(DP1_MIN, DP1_MAX)
+		end
+	elseif is_dp1 then
+		-- DP-1: primary search ahead on DP-1 (1..7, skipping 8/9)
+		empty_at = find_empty(num + 1, DP1_MAX)
+		-- Wrap around on DP-1 if not found ahead
+		if not empty_at and num > DP1_MIN then
+			empty_at = find_empty(DP1_MIN, num - 1)
+		end
+		-- Fallback to DP-2 if DP-1 is completely full
+		if not empty_at then
+			empty_at = find_empty(DP2_MIN, DP2_MAX)
+		end
+	else
+		-- Generic workspace: search ahead up to MAX_SPILL_SCAN
+		empty_at = find_empty(num + 1, num + MAX_SPILL_SCAN)
+	end
+
 	if not empty_at then
 		return nil
 	end
-	local hole = empty_at
-	for k = empty_at - 1, num + 1, -1 do
-		if not SPILL_BLOCKED[k] and not SPILL_BLOCKED[k + 1] then
-			spill_move_contents(k, k + 1)
-			hole = k
+
+	-- If empty_at is ahead of num on the same monitor, shift chain forward so hole is num + 1
+	local same_monitor = (is_dp2 and (empty_at >= DP2_MIN and empty_at <= DP2_MAX))
+		or (is_dp1 and (empty_at >= DP1_MIN and empty_at <= DP1_MAX))
+
+	if same_monitor and empty_at > num then
+		local hole = empty_at
+		for k = empty_at - 1, num + 1, -1 do
+			if not SPILL_BLOCKED[k] and not SPILL_BLOCKED[k + 1] then
+				spill_move_contents(k, k + 1)
+				hole = k
+			end
 		end
+		return hole
 	end
-	return hole
+
+	-- Wrap-around or cross-monitor fallback: empty_at is already empty, use it directly as hole
+	return empty_at
 end
 
 -- At most one in-flight spill per window address: window.open_early and
@@ -2392,9 +2448,13 @@ local function spill_begin(w, num, ws_id, newcomer_addr, pre_paint)
 	-- The hole continues the mosaic session, not dwindle: mark + point it
 	-- at lua:mosaic before anything lands there.
 	pcall(function()
-		_G.mosaic_mode.workspaces[hole] = true
-		write_state()
-		set_ws_layout(hole, "lua:mosaic")
+		if _G.layout_manager and _G.layout_manager.set_mode then
+			_G.layout_manager.set_mode(hole, "mosaic")
+		else
+			_G.mosaic_mode.workspaces[hole] = true
+			write_state()
+			set_ws_layout(hole, "lua:mosaic")
+		end
 	end)
 	-- Move pre-paint (never flashes on the crowded ws), then follow with
 	-- the viewport when the user is still looking at the crowded ws. The
@@ -2449,9 +2509,13 @@ function M.exec(cmd)
 		return
 	end
 	pcall(function()
-		_G.mosaic_mode.workspaces[hole] = true
-		write_state()
-		set_ws_layout(hole, "lua:mosaic")
+		if _G.layout_manager and _G.layout_manager.set_mode then
+			_G.layout_manager.set_mode(hole, "mosaic")
+		else
+			_G.mosaic_mode.workspaces[hole] = true
+			write_state()
+			set_ws_layout(hole, "lua:mosaic")
+		end
 	end)
 	pcall(function()
 		hl.dispatch(hl.dsp.focus({ workspace = tostring(hole) }))

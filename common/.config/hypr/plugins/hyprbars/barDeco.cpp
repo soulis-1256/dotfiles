@@ -27,6 +27,8 @@
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
 
+#include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
+
 #include "globals.hpp"
 #include "BarPassElement.hpp"
 
@@ -60,7 +62,12 @@ CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
 
 CHyprBar::~CHyprBar() {
     if (m_bBorderHoverActive) {
-        Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+        if (g_pEventLoopManager) {
+            g_pEventLoopManager->doLater([]() {
+                if (Pointer::Cursor::overrideController)
+                    Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+            });
+        }
         m_bBorderHoverActive = false;
     }
     std::erase(g_pGlobalState->bars, m_self);
