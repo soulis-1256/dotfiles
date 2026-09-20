@@ -6427,6 +6427,25 @@
     "description": "Use animated wave progress bars for media playback"
   },
   {
+    "section": "mediaPriorityPlayers",
+    "label": "Priority Media Players",
+    "tabIndex": 16,
+    "category": "Media Player",
+    "keywords": [
+      "audio",
+      "media",
+      "mpris",
+      "music",
+      "playback",
+      "player",
+      "players",
+      "prefer",
+      "priority",
+      "spotify"
+    ],
+    "icon": "star"
+  },
+  {
     "section": "audioScrollMode",
     "label": "Scroll Wheel",
     "tabIndex": 16,

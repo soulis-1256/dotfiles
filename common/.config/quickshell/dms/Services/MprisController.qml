@@ -117,6 +117,13 @@ Singleton {
     onAvailablePlayersChanged: _resolveActivePlayer()
     Component.onCompleted: _resolveActivePlayer()
 
+    Connections {
+        target: SettingsData
+        function onMediaPriorityPlayersChanged() {
+            root._resolveActivePlayer();
+        }
+    }
+
     Instantiator {
         model: root.availablePlayers
         delegate: Connections {
@@ -133,7 +140,45 @@ Singleton {
         return player && player.playbackState === MprisPlaybackState.Stopped && !player.trackTitle && !player.trackArtist;
     }
 
+    function playerMatchesPattern(player: MprisPlayer, pattern: string): bool {
+        const pat = pattern.toLowerCase().trim();
+        if (!pat)
+            return false;
+        const identity = (player.identity || "").toLowerCase();
+        const desktopEntry = ("desktopEntry" in player && player.desktopEntry) ? String(player.desktopEntry).toLowerCase() : "";
+        if (identity.includes(pat) || desktopEntry.includes(pat))
+            return true;
+        if (pat.indexOf(".") !== -1) {
+            const parts = pat.split(".");
+            const lastPart = parts[parts.length - 1];
+            if (lastPart && (identity.includes(lastPart) || desktopEntry.includes(lastPart)))
+                return true;
+        }
+        if (identity.length >= 3 && pat.includes(identity))
+            return true;
+        return false;
+    }
+
+    function findPriorityPlayer(): MprisPlayer {
+        const prios = SettingsData.mediaPriorityPlayers || [];
+        for (let i = 0; i < prios.length; i++) {
+            const match = availablePlayers.find(p => !isIdle(p) && playerMatchesPattern(p, String(prios[i])));
+            if (match)
+                return match;
+        }
+        return null;
+    }
+
     function _resolveActivePlayer(): void {
+        // A priority player wins while available, even over a playing one
+        const priority = findPriorityPlayer();
+        if (priority) {
+            if (activePlayer !== priority) {
+                activePlayer = priority;
+                _persistIdentity(priority.identity);
+            }
+            return;
+        }
         // A playing player always wins; otherwise keep the selection stable w/idle
         const playing = availablePlayers.find(p => p.isPlaying);
         if (playing) {

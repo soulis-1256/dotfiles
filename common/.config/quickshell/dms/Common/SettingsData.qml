@@ -470,6 +470,7 @@ Singleton {
     property int audioWheelScrollAmount: 5
     property bool audioDeviceScrollVolumeEnabled: false
     property var mediaExcludePlayers: []
+    property var mediaPriorityPlayers: []
     property bool clockCompactMode: false
     property int focusedWindowSize: 1
     property bool focusedWindowCompactMode: false
@@ -3208,6 +3209,32 @@ Singleton {
             return;
         list.splice(index, 1);
         mediaExcludePlayers = list;
+        saveSettings();
+    }
+
+    function addMediaPriorityPlayer(identity) {
+        if (identity === undefined || identity === null)
+            return;
+        var normalizedIdentity = identity.toString().trim().toLowerCase();
+        if (!normalizedIdentity)
+            return;
+        var list = mediaPriorityPlayers ? mediaPriorityPlayers.slice() : [];
+        var normalizedList = list.map(function (id) {
+            return id ? id.toString().trim().toLowerCase() : "";
+        });
+        if (normalizedList.indexOf(normalizedIdentity) >= 0)
+            return;
+        list.push(normalizedIdentity);
+        mediaPriorityPlayers = list;
+        saveSettings();
+    }
+
+    function removeMediaPriorityPlayer(index) {
+        var list = mediaPriorityPlayers ? mediaPriorityPlayers.slice() : [];
+        if (index < 0 || index >= list.length)
+            return;
+        list.splice(index, 1);
+        mediaPriorityPlayers = list;
         saveSettings();
     }
 

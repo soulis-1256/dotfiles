@@ -9,6 +9,7 @@ Item {
 
     property var desktopApps: []
     property var parentModal: null
+    property string popupTarget: "exclude"
 
     Component.onCompleted: {
         desktopApps = AppSearchService.getVisibleApplications() || [];
@@ -214,7 +215,10 @@ Item {
                             iconSize: 20
                             backgroundColor: Theme.surfaceContainer
                             iconColor: Theme.primary
-                            onClicked: appBrowserPopup.show()
+                            onClicked: {
+                                root.popupTarget = "exclude";
+                                appBrowserPopup.show();
+                            }
                         }
                     }
 
@@ -284,6 +288,139 @@ Item {
                     }
                 }
             }
+
+            SettingsCard {
+                width: parent.width
+                iconName: "star"
+                title: I18n.tr("Priority Media Players")
+                settingKey: "mediaPriorityPlayers"
+                tags: ["media", "music", "priority", "prefer", "player", "mpris"]
+
+                Column {
+                    width: parent.width
+                    spacing: Theme.spacingM
+
+                    StyledText {
+                        text: I18n.tr("Always prefer these players in the media controllers, even when another player is playing (e.g., keep Spotify while a browser video plays). First match wins. Matches player identity or desktop file name case-insensitively.")
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceVariantText
+                        wrapMode: Text.WordWrap
+                        width: parent.width
+                    }
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+
+                        DankTextField {
+                            id: newPriorityPlayerField
+                            width: parent.width - addPriorityBtn.width - selectPriorityAppBtn.width - Theme.spacingS * 2
+                            height: 36
+                            placeholderText: I18n.tr("App name or identity (e.g., spotify)")
+                            font.pixelSize: Theme.fontSizeSmall
+                            onAccepted: {
+                                if (text.trim() !== "") {
+                                    SettingsData.addMediaPriorityPlayer(text.trim());
+                                    text = "";
+                                }
+                            }
+                        }
+
+                        DankActionButton {
+                            id: addPriorityBtn
+                            buttonSize: 36
+                            iconName: "add"
+                            iconSize: 20
+                            backgroundColor: Theme.primary
+                            iconColor: Theme.onPrimary
+                            onClicked: {
+                                if (newPriorityPlayerField.text.trim() !== "") {
+                                    SettingsData.addMediaPriorityPlayer(newPriorityPlayerField.text.trim());
+                                    newPriorityPlayerField.text = "";
+                                }
+                            }
+                        }
+
+                        DankActionButton {
+                            id: selectPriorityAppBtn
+                            buttonSize: 36
+                            iconName: "apps"
+                            iconSize: 20
+                            backgroundColor: Theme.surfaceContainer
+                            iconColor: Theme.primary
+                            onClicked: {
+                                root.popupTarget = "priority";
+                                appBrowserPopup.show();
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: Theme.spacingS
+
+                        Repeater {
+                            model: SettingsData.mediaPriorityPlayers
+
+                            delegate: Rectangle {
+                                width: parent.width
+                                height: 48
+                                radius: Theme.cornerRadius
+                                color: Theme.withAlpha(Theme.surfaceContainer, 0.5)
+
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.spacingM
+                                    anchors.rightMargin: Theme.spacingS
+                                    spacing: Theme.spacingM
+
+                                    Row {
+                                        width: parent.width - deletePriorityBtn.width - Theme.spacingS
+                                        height: parent.height
+                                        spacing: Theme.spacingS
+
+                                        DankIcon {
+                                            name: "star"
+                                            size: 20
+                                            color: Theme.surfaceVariantText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        StyledText {
+                                            text: modelData
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+
+                                    DankActionButton {
+                                        id: deletePriorityBtn
+                                        buttonSize: 32
+                                        iconName: "delete"
+                                        iconSize: 18
+                                        iconColor: Theme.error
+                                        backgroundColor: "transparent"
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        onClicked: SettingsData.removeMediaPriorityPlayer(index)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        visible: !SettingsData.mediaPriorityPlayers || SettingsData.mediaPriorityPlayers.length === 0
+                        text: I18n.tr("No priority players configured")
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.italic: true
+                        color: Theme.surfaceVariantText
+                        horizontalAlignment: Text.AlignHCenter
+                        width: parent.width
+                        topPadding: Theme.spacingS
+                    }
+                }
+            }
         }
     }
 
@@ -296,7 +433,11 @@ Item {
             if (name.endsWith(".desktop")) {
                 name = name.slice(0, -8);
             }
-            SettingsData.addMediaExcludePlayer(name);
+            if (root.popupTarget === "priority") {
+                SettingsData.addMediaPriorityPlayer(name);
+            } else {
+                SettingsData.addMediaExcludePlayer(name);
+            }
         }
     }
 }
