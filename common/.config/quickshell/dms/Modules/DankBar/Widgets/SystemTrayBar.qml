@@ -517,7 +517,7 @@ BasePill {
                         radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : Theme.cornerRadius)
                         color: {
                             if (root.isFullHeight && Theme.barHoverInset)
-                                return Theme.barHoverFill(trayItemArea.pressed, trayItemArea.containsMouse);
+                                return "transparent";
                             if (root.isFullHeight) {
                                 if (trayItemArea.pressed) return "#1a1a1a";
                                 if (trayItemArea.containsMouse) return "#323232";
@@ -527,6 +527,7 @@ BasePill {
                         }
 
                         Behavior on color {
+                            enabled: !(root.isFullHeight && Theme.barHoverInset)
                             ColorAnimation {
                                 duration: root.isFullHeight ? 100 : 0
                             }
@@ -534,6 +535,19 @@ BasePill {
                         border.width: dragHandler.dragging ? 2 : 0
                         border.color: Theme.primary
                         opacity: dragHandler.dragging ? 0.8 : 1.0
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            color: Theme.barHoverFill(trayItemArea.pressed, true)
+                            opacity: Theme.barHoverInset && (trayItemArea.pressed || trayItemArea.containsMouse) ? 1 : 0
+                            Behavior on opacity {
+                                enabled: Theme.barHoverInset
+                                NumberAnimation {
+                                    duration: 100
+                                }
+                            }
+                        }
 
                         transform: Translate {
                             x: dragHandler.dragging ? dragHandler.dragAxisOffset : 0
@@ -669,7 +683,7 @@ BasePill {
                     radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : Theme.cornerRadius)
                     color: {
                         if (root.isFullHeight && Theme.barHoverInset)
-                            return Theme.barHoverFill(caretArea.pressed, caretArea.containsMouse);
+                            return "transparent";
                         if (root.isFullHeight) {
                             if (caretArea.pressed) return "#1a1a1a";
                             if (caretArea.containsMouse) return "#323232";
@@ -679,8 +693,22 @@ BasePill {
                     }
 
                     Behavior on color {
+                        enabled: !(root.isFullHeight && Theme.barHoverInset)
                         ColorAnimation {
                             duration: root.isFullHeight ? 100 : 0
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: parent.radius
+                        color: Theme.barHoverFill(caretArea.pressed, true)
+                        opacity: Theme.barHoverInset && (caretArea.pressed || caretArea.containsMouse) ? 1 : 0
+                        Behavior on opacity {
+                            enabled: Theme.barHoverInset
+                            NumberAnimation {
+                                duration: 100
+                            }
                         }
                     }
 

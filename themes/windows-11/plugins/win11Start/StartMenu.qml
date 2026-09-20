@@ -17,14 +17,16 @@ Item {
     property var parentPopout: null
     readonly property color winBg: Theme.popupLayerColor(Theme.surfaceContainer)
     readonly property color winPanel: Theme.surfaceContainer
-    readonly property color winHover: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+    readonly property color winHover: Qt.rgba(1, 1, 1, 0.10)
+    readonly property color winHoverActive: Qt.rgba(1, 1, 1, 0.08)
     readonly property color winAccent: Theme.primary
     readonly property color winText: Theme.surfaceText
     readonly property color winMuted: Theme.surfaceVariantText
     readonly property color winRail: "transparent"
     readonly property color winBorder: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
     readonly property color winTileBg: "transparent"
-    readonly property color winTileHoverBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+    readonly property color winTileHoverBg: Qt.rgba(1, 1, 1, 0.10)
+    readonly property bool fluentMenus: true
     readonly property real winRadius: 8
     readonly property real winRadiusSmall: 4
     readonly property real winRadiusLarge: 12
@@ -2692,7 +2694,7 @@ Item {
                                             width: parent.width
                                             height: 52
                                             radius: 8
-                                            color: isSelected ? Qt.rgba(255, 255, 255, 0.10) : (bestMatchHover.containsMouse ? Qt.rgba(255, 255, 255, 0.07) : Qt.rgba(255, 255, 255, 0.04))
+                                            color: isSelected ? root.winHoverActive : (bestMatchHover.containsMouse ? Qt.rgba(255, 255, 255, 0.07) : Qt.rgba(255, 255, 255, 0.04))
                                             border.width: 0
                                             clip: true
 
@@ -2809,7 +2811,7 @@ Item {
                                                 Rectangle {
                                                     anchors.fill: parent
                                                     radius: 6
-                                                    color: isSelected ? Qt.rgba(255, 255, 255, 0.09) : (searchRowHover.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent")
+                                                    color: isSelected ? root.winHoverActive : (searchRowHover.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent")
                                                     border.width: 0
 
                                                     Rectangle {

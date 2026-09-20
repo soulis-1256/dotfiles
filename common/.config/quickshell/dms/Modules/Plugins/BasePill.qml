@@ -110,6 +110,13 @@ Item {
             anchors.fill: parent
             anchors.margins: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverMargin : 0
             radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : ((barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius))
+            readonly property bool hoverShown: {
+                if (barConfig?.noBackground ?? false)
+                    return false;
+                if (!root.enableBackgroundHover)
+                    return false;
+                return mouseArea.containsMouse || (root.isHovered || false) || mouseArea.pressed;
+            }
             color: {
                 if (barConfig?.noBackground ?? false) {
                     return "transparent";
@@ -118,6 +125,8 @@ Item {
                 const isHovered = root.enableBackgroundHover && (mouseArea.containsMouse || (root.isHovered || false));
 
                 if (root.isFullHeight) {
+                    if (Theme.barHoverInset)
+                        return Theme.barHoverFill(mouseArea.pressed, true);
                     if (isHovered || mouseArea.pressed)
                         return "#323232";
                     return "transparent";
@@ -132,8 +141,17 @@ Item {
                 }
                 return Theme.withAlpha(baseColor, transparency);
             }
+            opacity: (root.isFullHeight && Theme.barHoverInset) ? (hoverShown ? 1 : 0) : 1
+
+            Behavior on opacity {
+                enabled: root.isFullHeight && Theme.barHoverInset
+                NumberAnimation {
+                    duration: 100
+                }
+            }
 
             Behavior on color {
+                enabled: !(root.isFullHeight && Theme.barHoverInset)
                 ColorAnimation {
                     duration: root.isFullHeight ? 100 : 0
                 }

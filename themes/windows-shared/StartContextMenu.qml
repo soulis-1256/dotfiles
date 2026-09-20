@@ -35,6 +35,9 @@ Rectangle {
     readonly property color winMuted: host && host.winMuted !== undefined ? host.winMuted : Theme.surfaceVariantText
     readonly property color winBorder: host && host.winBorder !== undefined ? host.winBorder : Qt.rgba(1, 1, 1, 0.08)
     property real menuRadius: 8
+    property bool open: !!(host && host.contextMenuVisible)
+    readonly property bool animateMenu: !!(host && host.fluentMenus)
+    property real yOffset: animateMenu ? 8 : 0
 
     function dismiss() {
         if (host)
@@ -50,7 +53,8 @@ Rectangle {
         return null;
     }
 
-    visible: !!(host && host.contextMenuVisible)
+    visible: open || (animateMenu && opacity > 0.01)
+    enabled: open
     width: 220
     height: menuCol.implicitHeight + 8
     x: host ? Math.max(8, Math.min(host.contextMenuX, parent.width - width - 8)) : 8
@@ -61,6 +65,38 @@ Rectangle {
     border.width: 1
     z: 70
     clip: true
+    opacity: animateMenu ? 0 : 1
+    scale: animateMenu ? 0.88 : 1
+    transformOrigin: Item.TopLeft
+    transform: Translate {
+        y: menu.yOffset
+    }
+
+    ParallelAnimation {
+        id: openAnim
+        NumberAnimation { target: menu; property: "opacity"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+        NumberAnimation { target: menu; property: "scale"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+        NumberAnimation { target: menu; property: "yOffset"; to: 0; duration: 220; easing.type: Easing.OutCubic }
+    }
+
+    ParallelAnimation {
+        id: closeAnim
+        NumberAnimation { target: menu; property: "opacity"; to: 0; duration: 120; easing.type: Easing.InCubic }
+        NumberAnimation { target: menu; property: "scale"; to: 0.88; duration: 120; easing.type: Easing.InCubic }
+        NumberAnimation { target: menu; property: "yOffset"; to: 8; duration: 120; easing.type: Easing.InCubic }
+    }
+
+    onOpenChanged: {
+        if (!animateMenu)
+            return;
+        if (open) {
+            closeAnim.stop();
+            openAnim.restart();
+        } else {
+            openAnim.stop();
+            closeAnim.restart();
+        }
+    }
 
     Column {
         id: menuCol

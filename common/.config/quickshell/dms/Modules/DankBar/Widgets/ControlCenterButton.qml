@@ -132,11 +132,7 @@ BasePill {
     }
 
     function getNetworkIconColor() {
-        if (NetworkService.wifiToggling)
-            return Theme.primary;
-        if (NetworkService.isConnecting && !NetworkService.ethernetConnected)
-            return Theme.primary;
-        return NetworkService.networkStatus !== "disconnected" ? Theme.primary : Theme.surfaceText;
+        return Theme.widgetIconColor;
     }
 
     function getIconBlinking(id) {
@@ -537,24 +533,10 @@ BasePill {
                             size: root.vIconSize
                             color: {
                                 switch (verticalGroupItem.modelData.id) {
-                                case "screenSharing":
-                                    return NiriService.hasActiveCast ? Theme.primary : Theme.surfaceText;
                                 case "network":
                                     return root.getNetworkIconColor();
-                                case "vpn":
-                                    return NetworkService.vpnConnected ? Theme.primary : Theme.surfaceText;
-                                case "bluetooth":
-                                    return (BluetoothService.connected || BluetoothService.connecting) ? Theme.primary : Theme.surfaceText;
-                                case "floatingMode":
-                                    return HyprlandService.currentLayoutMode !== "tiled" ? Theme.primary : Theme.widgetIconColor;
                                 case "battery":
                                     return root.getBatteryIconColor();
-                                case "printer":
-                                    return Theme.primary;
-                                case "idleInhibitor":
-                                    return Theme.primary;
-                                case "doNotDisturb":
-                                    return Theme.primary;
                                 default:
                                     return Theme.widgetIconColor;
                                 }
@@ -726,24 +708,10 @@ BasePill {
                             size: root.getControlCenterIconSize()
                             color: {
                                 switch (horizontalGroupItem.modelData.id) {
-                                case "screenSharing":
-                                    return NiriService.hasActiveCast ? Theme.primary : Theme.surfaceText;
                                 case "network":
                                     return root.getNetworkIconColor();
-                                case "vpn":
-                                    return NetworkService.vpnConnected ? Theme.primary : Theme.surfaceText;
-                                case "bluetooth":
-                                    return (BluetoothService.connected || BluetoothService.connecting) ? Theme.primary : Theme.surfaceText;
-                                case "floatingMode":
-                                    return HyprlandService.currentLayoutMode !== "tiled" ? Theme.primary : Theme.widgetIconColor;
                                 case "battery":
                                     return root.getBatteryIconColor();
-                                case "printer":
-                                    return Theme.primary;
-                                case "idleInhibitor":
-                                    return Theme.primary;
-                                case "doNotDisturb":
-                                    return Theme.primary;
                                 default:
                                     return Theme.widgetIconColor;
                                 }

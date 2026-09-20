@@ -2007,10 +2007,20 @@ Singleton {
     readonly property bool barHoverInset: typeof SettingsData !== "undefined" && SettingsData.barHoverStyle === "inset"
     readonly property int barHoverMargin: barHoverInset ? 4 : 0
     readonly property int barHoverRadius: barHoverInset ? 4 : 0
-    function barHoverFill(pressed, hovered) {
-        if (pressed || hovered)
-            return "#323232";
-        return "transparent";
+    // Translucent white wash over the already-blurred bar. Never return
+    // transparent here: animate the plate's opacity instead, or Qt will
+    // interpolate transparent as black.
+    readonly property color barHoverWash: Qt.rgba(1, 1, 1, 0.10)
+    readonly property color barHoverWashPressed: Qt.rgba(1, 1, 1, 0.16)
+    readonly property color barHoverWashActive: Qt.rgba(1, 1, 1, 0.08)
+    function barHoverFill(pressed, hovered, active) {
+        if (pressed)
+            return barHoverWashPressed;
+        if (hovered)
+            return barHoverWash;
+        if (active)
+            return barHoverWashActive;
+        return barHoverWash;
     }
 
     function popupLayerColor(baseColor) {

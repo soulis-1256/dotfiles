@@ -54,6 +54,9 @@ PanelWindow {
     }
     readonly property bool hasCloseItems: showCloseWindowItem || showCloseAllItem
 
+    property bool shown: false
+    readonly property bool animateMenu: Theme.barHoverInset
+
     function showAt(x, y, vertical, barEdge, data, hidePinOption, entry, targetScreen) {
         if (targetScreen) {
             root.screen = targetScreen;
@@ -67,7 +70,9 @@ PanelWindow {
         hidePin = hidePinOption || false;
         desktopEntry = entry || null;
 
+        closeHideTimer.stop();
         visible = true;
+        shown = true;
 
         if (targetScreen) {
             TrayMenuManager.registerMenu(targetScreen.name, root);
@@ -75,10 +80,30 @@ PanelWindow {
     }
 
     function close() {
-        visible = false;
+        shown = false;
+        if (!root.animateMenu) {
+            hideNow();
+            return;
+        }
+        closeHideTimer.restart();
+    }
 
+    function hideNow() {
+        closeHideTimer.stop();
+        visible = false;
+        shown = false;
         if (root.screen) {
             TrayMenuManager.unregisterMenu(root.screen.name);
+        }
+    }
+
+    Timer {
+        id: closeHideTimer
+        interval: 160
+        repeat: false
+        onTriggered: {
+            if (!root.shown)
+                root.hideNow();
         }
     }
 
@@ -228,13 +253,27 @@ PanelWindow {
         border.color: BlurService.borderColor
         border.width: BlurService.borderWidth
 
-        opacity: root.visible ? 1 : 0
+        opacity: root.shown ? 1 : 0
+        scale: root.animateMenu ? (root.shown ? 1 : 0.92) : 1
+        transformOrigin: {
+            if (root.isVertical)
+                return root.edge === "left" ? Item.Left : Item.Right;
+            return root.edge === "top" ? Item.Top : Item.Bottom;
+        }
         visible: opacity > 0
 
         Behavior on opacity {
             NumberAnimation {
-                duration: Theme.shortDuration
-                easing.type: Theme.emphasizedEasing
+                duration: root.animateMenu ? 180 : Theme.shortDuration
+                easing.type: root.animateMenu ? Easing.OutCubic : Theme.emphasizedEasing
+            }
+        }
+
+        Behavior on scale {
+            enabled: root.animateMenu
+            NumberAnimation {
+                duration: root.shown ? 220 : 120
+                easing.type: root.shown ? Easing.OutCubic : Easing.InCubic
             }
         }
 

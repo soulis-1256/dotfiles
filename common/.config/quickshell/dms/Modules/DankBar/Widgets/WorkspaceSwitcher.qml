@@ -322,7 +322,7 @@ Item {
         const moddedId = Paths.moddedAppId(modelData.appId || modelData.fallbackText || "");
         const iconWindows = root.contextMenuAllWindows(modelData);
         const windowId = modelData.windowId || iconWindows[0]?.address || "";
-        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
             const current = appContextMenuLoader.item.appData;
             if (current?.appId === moddedId && (current?.windowId || "") === windowId) {
                 appContextMenuLoader.item.close();
@@ -383,10 +383,13 @@ Item {
     function workspacePreviewsEnabled(workspace) {
         HyprlandService.floatingModeActive;
         HyprlandService.floatingWorkspaces;
+        HyprlandService.windowStateRevision;
         if (!CompositorService.isHyprland)
             return false;
         const id = workspace?.id !== undefined ? workspace.id : root.currentWorkspace;
-        return HyprlandService.isWorkspaceFloating(id);
+        if (HyprlandService.isWorkspaceFloating(id))
+            return true;
+        return HyprlandService.workspaceHasMixedFloatingAndTiled(id);
     }
 
     function hideAppPreview() {
@@ -406,7 +409,7 @@ Item {
             root.hideAppPreview();
             return;
         }
-        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
             root.hideAppPreview();
             return;
         }
@@ -424,7 +427,7 @@ Item {
     function showAppPreview(item, modelData, workspace) {
         if (!item || !modelData || !root.workspacePreviewsEnabled(workspace))
             return;
-        if (appContextMenuLoader.item && appContextMenuLoader.item.visible)
+        if (appContextMenuLoader.item && appContextMenuLoader.item.shown)
             return;
 
         appPreviewLoader.active = true;
@@ -1193,7 +1196,7 @@ Item {
         }
 
         onClicked: mouse => {
-            if (appContextMenuLoader.item && appContextMenuLoader.item.visible)
+            if (appContextMenuLoader.item && appContextMenuLoader.item.shown)
                 appContextMenuLoader.item.close();
             const rootPos = edgeMouseArea.mapToItem(root, mouse.x, mouse.y);
             if (mouse.button === Qt.LeftButton) {
@@ -1762,7 +1765,7 @@ Item {
                         if (wasDragging || isPlaceholder)
                             return;
 
-                        if (appContextMenuLoader.item && appContextMenuLoader.item.visible)
+                        if (appContextMenuLoader.item && appContextMenuLoader.item.shown)
                             appContextMenuLoader.item.close();
 
                         if (mouse.button === Qt.LeftButton) {
@@ -1928,11 +1931,7 @@ Item {
                         color: {
                             if (isUrgent)
                                 return isHovered ? Qt.lighter(urgentColor, 1.15) : Theme.withAlpha(urgentColor, 0.35);
-                            if (isActive)
-                                return "#2a2a2a";
-                            if (isHovered || mouseArea.pressed)
-                                return "#323232";
-                            return "#2a2a2a";
+                            return Theme.barHoverFill(mouseArea.pressed, isHovered, isActive);
                         }
                         opacity: shown ? 1 : 0
                         // Animate opacity, never color→transparent. Qt interpolates
@@ -2265,7 +2264,7 @@ Item {
                                                     if (mouse.button === Qt.RightButton) {
                                                         root.showAppContextMenu(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
                                                     } else if (mouse.button === Qt.LeftButton) {
-                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
                                                             appContextMenuLoader.item.close();
                                                             return;
                                                         }
@@ -2459,7 +2458,7 @@ Item {
                                                     if (mouse.button === Qt.RightButton) {
                                                         root.showAppContextMenu(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
                                                     } else if (mouse.button === Qt.LeftButton) {
-                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.visible) {
+                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
                                                             appContextMenuLoader.item.close();
                                                             return;
                                                         }
@@ -2648,6 +2647,10 @@ Item {
                 root.hideAppPreview();
         }
         function onFloatingWorkspacesChanged() {
+            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
+                root.hideAppPreview();
+        }
+        function onWindowStateRevisionChanged() {
             if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
                 root.hideAppPreview();
         }

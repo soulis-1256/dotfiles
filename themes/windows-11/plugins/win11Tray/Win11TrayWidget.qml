@@ -20,6 +20,23 @@ BasePill {
     horizontalPadding: 0
     readonly property int itemHoverRadius: Theme.barHoverInset ? Theme.barHoverRadius : Theme.cornerRadius
 
+    component HoverPlate: Rectangle {
+        property bool platePressed: false
+        property bool plateHovered: false
+
+        anchors.fill: parent
+        radius: parent.radius
+        color: Theme.barHoverFill(platePressed, true)
+        opacity: Theme.barHoverInset && (platePressed || plateHovered) ? 1 : 0
+
+        Behavior on opacity {
+            enabled: Theme.barHoverInset
+            NumberAnimation {
+                duration: 100
+            }
+        }
+    }
+
     property var parentWindow: null
     property var widgetData: null
     property string section: "right"
@@ -514,10 +531,15 @@ BasePill {
                         anchors.fill: parent
                         anchors.margins: Theme.barHoverMargin
                         radius: root.itemHoverRadius
-                        color: Theme.barHoverInset ? Theme.barHoverFill(trayItemArea.pressed, trayItemArea.containsMouse) : (trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+                        color: Theme.barHoverInset ? "transparent" : (trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
                         border.width: dragHandler.dragging ? 2 : 0
                         border.color: Theme.primary
                         opacity: dragHandler.dragging ? 0.8 : 1.0
+
+                        HoverPlate {
+                            platePressed: trayItemArea.pressed
+                            plateHovered: trayItemArea.containsMouse
+                        }
 
                         transform: Translate {
                             x: dragHandler.dragging ? dragHandler.dragAxisOffset : 0
@@ -631,7 +653,12 @@ BasePill {
                     anchors.fill: parent
                     anchors.margins: Theme.barHoverMargin
                     radius: root.itemHoverRadius
-                    color: Theme.barHoverInset ? Theme.barHoverFill(caretArea.pressed, caretArea.containsMouse) : (caretArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+                    color: Theme.barHoverInset ? "transparent" : (caretArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+
+                    HoverPlate {
+                        platePressed: caretArea.pressed
+                        plateHovered: caretArea.containsMouse
+                    }
 
                     DankIcon {
                         anchors.centerIn: parent
@@ -702,7 +729,12 @@ BasePill {
                 anchors.fill: parent
                 anchors.margins: Theme.barHoverMargin
                 radius: root.itemHoverRadius
-                color: Theme.barHoverInset ? Theme.barHoverFill(inlineTrayItemArea.pressed, inlineTrayItemArea.containsMouse) : (inlineTrayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+                color: Theme.barHoverInset ? "transparent" : (inlineTrayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+
+                HoverPlate {
+                    platePressed: inlineTrayItemArea.pressed
+                    plateHovered: inlineTrayItemArea.containsMouse
+                }
                 opacity: root.inlineExpanded ? 1 : 0
 
                 Behavior on opacity {
@@ -821,10 +853,15 @@ BasePill {
                 anchors.fill: parent
                 anchors.margins: Theme.barHoverMargin
                 radius: root.itemHoverRadius
-                color: Theme.barHoverInset ? Theme.barHoverFill(trayItemArea.pressed, trayItemArea.containsMouse) : (trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+                color: Theme.barHoverInset ? "transparent" : (trayItemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
                 border.width: dragHandler.dragging ? 2 : 0
                 border.color: Theme.primary
                 opacity: dragHandler.dragging ? 0.8 : 1.0
+
+                HoverPlate {
+                    platePressed: trayItemArea.pressed
+                    plateHovered: trayItemArea.containsMouse
+                }
 
                 transform: Translate {
                     y: dragHandler.dragging ? dragHandler.dragAxisOffset : 0
@@ -962,7 +999,12 @@ BasePill {
                     anchors.fill: parent
                     anchors.margins: Theme.barHoverMargin
                     radius: root.itemHoverRadius
-                    color: Theme.barHoverInset ? Theme.barHoverFill(caretAreaVert.pressed, caretAreaVert.containsMouse) : (caretAreaVert.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+                    color: Theme.barHoverInset ? "transparent" : (caretAreaVert.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0))
+
+                    HoverPlate {
+                        platePressed: caretAreaVert.pressed
+                        plateHovered: caretAreaVert.containsMouse
+                    }
 
                     DankIcon {
                         anchors.centerIn: parent

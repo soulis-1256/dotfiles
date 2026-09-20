@@ -644,6 +644,7 @@ hl.layer_rule({
 
     property bool floatingModeActive: false
     property var floatingWorkspaces: ({})
+    property int windowStateRevision: 0
 
     function isWorkspaceFloating(id) {
         if (id === undefined || id === null)
@@ -657,6 +658,36 @@ hl.layer_rule({
         if (override === false)
             return false;
         return root.floatingModeActive;
+    }
+
+    function workspaceHasMixedFloatingAndTiled(id) {
+        root.windowStateRevision;
+        if (id === undefined || id === null)
+            return false;
+        const want = Number(id);
+        if (!Number.isFinite(want))
+            return false;
+        const values = Hyprland.toplevels?.values || [];
+        let hasFloating = false;
+        let hasTiled = false;
+        for (let i = 0; i < values.length; i++) {
+            const t = values[i];
+            if (!t)
+                continue;
+            const ipc = t.lastIpcObject || {};
+            if (ipc.mapped === false || ipc.hidden)
+                continue;
+            const wsId = ipc.workspace?.id ?? t.workspace?.id;
+            if (Number(wsId) !== want)
+                continue;
+            if (ipc.floating)
+                hasFloating = true;
+            else
+                hasTiled = true;
+            if (hasFloating && hasTiled)
+                return true;
+        }
+        return false;
     }
 
     FileView {
@@ -713,6 +744,18 @@ hl.layer_rule({
         function onFocusedWorkspaceChanged() {
             layoutModeFile.reload();
             floatingModeFile.reload();
+        }
+        function onRawEvent(event) {
+            switch (event.name) {
+            case "changefloatingmode":
+            case "openwindow":
+            case "closewindow":
+            case "movewindow":
+            case "movewindowv2":
+            case "fullscreen":
+                root.windowStateRevision++;
+                break;
+            }
         }
     }
 
