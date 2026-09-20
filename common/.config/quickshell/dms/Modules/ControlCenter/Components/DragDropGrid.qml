@@ -831,7 +831,7 @@ Column {
             iconName: {
                 switch (HyprlandService.currentLayoutMode) {
                 case "mosaic":
-                    return "dashboard";
+                    return "view_quilt";
                 case "floating":
                     return "layers";
                 default:
@@ -876,7 +876,7 @@ Column {
             iconName: {
                 switch (HyprlandService.currentLayoutMode) {
                 case "mosaic":
-                    return "dashboard";
+                    return "view_quilt";
                 case "floating":
                     return "layers";
                 default:

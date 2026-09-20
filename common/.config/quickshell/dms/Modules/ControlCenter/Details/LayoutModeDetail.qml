@@ -48,7 +48,7 @@ Rectangle {
                         mode: "mosaic",
                         title: I18n.tr("Mosaic"),
                         description: I18n.tr("Smart content-aware masonry layout"),
-                        icon: "dashboard"
+                        icon: "view_quilt"
                     }
                 ]
                 delegate: Rectangle {

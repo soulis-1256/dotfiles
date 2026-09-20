@@ -373,11 +373,13 @@ BasePill {
     }
 
     function getControlCenterRenderModel() {
-        return root.effectiveControlCenterGroupOrder.map(groupId => ({
+        const model = root.effectiveControlCenterGroupOrder.map(groupId => ({
                     "id": groupId,
                     "visible": root.isGroupVisible(groupId),
                     "composite": root.isCompositeGroup(groupId)
                 }));
+        // Pin the layout-mode indicator first so the active mode reads leftmost.
+        return model.filter(entry => entry.id === "floatingMode").concat(model.filter(entry => entry.id !== "floatingMode"));
     }
 
     function clearInteractionRefs() {
@@ -519,7 +521,7 @@ BasePill {
                                 case "bluetooth":
                                     return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
                                 case "floatingMode":
-                                    return HyprlandService.currentLayoutMode === "mosaic" ? "dashboard" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
+                                    return HyprlandService.currentLayoutMode === "mosaic" ? "view_quilt" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
@@ -708,7 +710,7 @@ BasePill {
                                 case "bluetooth":
                                     return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
                                 case "floatingMode":
-                                    return HyprlandService.currentLayoutMode === "mosaic" ? "dashboard" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
+                                    return HyprlandService.currentLayoutMode === "mosaic" ? "view_quilt" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
