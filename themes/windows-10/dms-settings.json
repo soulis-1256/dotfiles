@@ -1,7 +1,7 @@
 {
-  "currentThemeName": "purple",
-  "currentThemeCategory": "generic",
-  "customThemeFile": "",
+  "currentThemeName": "custom",
+  "currentThemeCategory": "registry",
+  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/steamDeck/theme.json",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -15,7 +15,7 @@
         "accent": "red"
       }
     },
-    "peaceAndQuiet": "pink",
+    "peaceAndQuiet": "lavender",
     "astralJourney": {
       "dark": {
         "flavor": "blackhole",
@@ -681,7 +681,7 @@
           "id": "keyboard_layout_name",
           "enabled": true,
           "keyboardLayoutNameCompactMode": true,
-          "keyboardLayoutNameShowIcon": true
+          "keyboardLayoutNameShowIcon": false
         },
         {
           "id": "cpuUsage",
@@ -767,32 +767,17 @@
       "showOnLastDisplay": false,
       "leftWidgets": [
         {
+          "id": "win10Start",
+          "enabled": true
+        }
+      ],
+      "centerWidgets": [
+        {
           "id": "weather",
           "enabled": true
         }
       ],
-      "centerWidgets": [],
       "rightWidgets": [
-        {
-          "id": "win10Tray",
-          "enabled": true
-        },
-        {
-          "id": "network_speed_monitor",
-          "enabled": true
-        },
-        {
-          "id": "cpuUsage",
-          "enabled": true,
-          "minimumWidth": true
-        },
-        {
-          "id": "memUsage",
-          "enabled": true,
-          "minimumWidth": true,
-          "showSwap": false,
-          "showInGb": true
-        },
         {
           "id": "controlCenterButton",
           "enabled": true,
