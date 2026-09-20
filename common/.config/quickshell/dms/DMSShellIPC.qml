@@ -49,7 +49,7 @@ Item {
                     currentBar = bar;
 
                     if (onFocusedScreen)
-                        break;
+                        return currentBar;
                 }
             }
         }

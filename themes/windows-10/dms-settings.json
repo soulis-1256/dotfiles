@@ -1,7 +1,7 @@
 {
   "currentThemeName": "custom",
   "currentThemeCategory": "registry",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/steamDeck/theme.json",
+  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/amoledBlack/theme.json",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -12,7 +12,7 @@
     "amoledBlack": {
       "dark": {
         "flavor": "black",
-        "accent": "red"
+        "accent": "orange"
       }
     },
     "peaceAndQuiet": "lavender",
