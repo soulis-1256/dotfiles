@@ -2014,8 +2014,6 @@ Singleton {
     readonly property color barHoverWashPressed: Qt.rgba(1, 1, 1, 0.16)
     readonly property color barHoverWashActive: Qt.rgba(1, 1, 1, 0.08)
     function barHoverFill(pressed, hovered, active) {
-        if (pressed)
-            return barHoverWashPressed;
         if (hovered)
             return barHoverWash;
         if (active)
