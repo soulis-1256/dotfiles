@@ -4,7 +4,7 @@ import qs.Widgets
 import "PinGrid.js" as PinGrid
 
 // Shared Start folder overlay. Both win10Start and win11Start instantiate this.
-// Open/close animation and slot math live here so a future pack can inherit them.
+// Open/close animation and slot math live here so a future theme can inherit them.
 // Theme attributes: panelRadius, tileRadius, panelBorderWidth, panelBorderColor,
 // centeredTiles, alignToGroup, pinIconSize, pinIconGap, pinLabelSize,
 // tileColor, tileHoverColor, tileBorderHover, openDuration, closeDuration.

@@ -8,7 +8,8 @@ set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 DOTFILES_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/../../.." && pwd)"
-THEMES_DIR="${DOTFILES_DIR}/themes"
+# Overridable for tests via THEME_SWITCHER_THEMES_DIR.
+THEMES_DIR="${THEME_SWITCHER_THEMES_DIR:-${DOTFILES_DIR}/themes}"
 
 CURRENT_THEME_FILE="${HOME}/.config/.current_theme"
 HYPR_THEME_SYMLINK="${HOME}/.config/hypr/theme.lua"
@@ -37,7 +38,7 @@ list_themes() {
 
     for theme_dir in "${THEMES_DIR}"/*; do
         [[ -d "$theme_dir" ]] || continue
-        # Skip shared/lib directories that are not switchable packs.
+        # Skip shared/lib directories that are not switchable themes.
         [[ -f "${theme_dir}/metadata.json" || -f "${theme_dir}/theme.lua" ]] || continue
         local theme_id name desc
         theme_id="$(basename "$theme_dir")"
@@ -106,9 +107,9 @@ if not isinstance(existing, dict):
 if not isinstance(incoming, dict):
     incoming = {}
 
-# Pack files seed first-run defaults. User pin/folder/grid state lives in
+# Theme files seed first-run defaults. User pin/folder/grid state lives in
 # the live file and must survive reapply / theme switches.
-# `enabled` is theme-owned so plugins turn on/off with the pack.
+# `enabled` is theme-owned so plugins turn on/off with the theme.
 THEME_OWNED_KEYS = {"enabled"}
 
 for plugin, pdata in incoming.items():
@@ -145,7 +146,7 @@ current = sys.argv[5]
 target = sys.argv[6]
 reset = sys.argv[7] == "1"
 
-# Theme packs control layout/chrome, not the user's DMS color theme
+# Theme files control layout/chrome, not the user's DMS color theme
 # or greeter/autologin state. Those always follow the live config.
 PRESERVE_PREFIXES = ("greeter",)
 PRESERVE_KEYS = {
@@ -206,24 +207,24 @@ def walk_widgets(obj, fn):
             walk_widgets(value, fn)
 
 
-def pack_pill_order(pack):
+def theme_pill_order(theme):
     found = []
 
     def grab(widget):
         if widget.get("id") == "controlCenterButton" and widget.get("controlCenterGroupOrder") and not found:
             found.append(list(widget["controlCenterGroupOrder"]))
 
-    walk_widgets(pack, grab)
+    walk_widgets(theme, grab)
     return found[0] if found else None
 
 
-def apply_pack_control_center(base, pack):
+def apply_theme_control_center(base, theme):
     """Stale theme-state snapshots predate the pill reorder and still
-    ship a darkMode tile. Pack chrome owns both of those."""
-    if not isinstance(base, dict) or not isinstance(pack, dict):
+    ship a darkMode tile. Theme chrome owns both of those."""
+    if not isinstance(base, dict) or not isinstance(theme, dict):
         return base
 
-    order = pack_pill_order(pack)
+    order = theme_pill_order(theme)
     if order:
         def fill_order(widget):
             if widget.get("id") == "controlCenterButton":
@@ -231,11 +232,11 @@ def apply_pack_control_center(base, pack):
 
         walk_widgets(base, fill_order)
 
-    pack_tiles = pack.get("controlCenterWidgets")
+    theme_tiles = theme.get("controlCenterWidgets")
     base_tiles = base.get("controlCenterWidgets")
-    if isinstance(pack_tiles, list) and isinstance(base_tiles, list):
-        pack_ids = {tile.get("id") for tile in pack_tiles if isinstance(tile, dict)}
-        if "floatingMode" in pack_ids:
+    if isinstance(theme_tiles, list) and isinstance(base_tiles, list):
+        theme_ids = {tile.get("id") for tile in theme_tiles if isinstance(tile, dict)}
+        if "floatingMode" in theme_ids:
             for tile in base_tiles:
                 if isinstance(tile, dict) and tile.get("id") == "darkMode":
                     tile["id"] = "floatingMode"
@@ -243,9 +244,9 @@ def apply_pack_control_center(base, pack):
 
 
 live = load_obj(dest_path)
-pack = json.loads(theme_path.read_text().replace("/home/soulis", home))
-if not isinstance(pack, dict):
-    pack = {}
+theme = json.loads(theme_path.read_text().replace("/home/soulis", home))
+if not isinstance(theme, dict):
+    theme = {}
 
 state_dir.mkdir(parents=True, exist_ok=True)
 current_state = state_dir / f"{current}.json"
@@ -256,22 +257,22 @@ if current != target and live:
     current_state.write_text(json.dumps(live, indent=2) + "\n")
 
 if reset:
-    base = pack
+    base = theme
     if target_state.exists():
         target_state.unlink()
 elif current == target and live:
     # Reapply: keep the live config the user has been editing.
-    base = fill_missing(live, pack)
+    base = fill_missing(live, theme)
 elif target_state.exists():
-    # Returning to a theme: restore last snapshot, pick up new pack keys.
-    base = fill_missing(load_obj(target_state), pack)
+    # Returning to a theme: restore last snapshot, pick up new theme keys.
+    base = fill_missing(load_obj(target_state), theme)
 else:
-    base = pack
+    base = theme
 
 base = overlay_preserved(base, live)
-base = apply_pack_control_center(base, pack)
-# Pack files must stay pack-owned. A leftover settings.json symlink would
-# write the merged live config back into themes/<pack>/dms-settings.json.
+base = apply_theme_control_center(base, theme)
+# Theme files must stay theme-owned. A leftover settings.json symlink would
+# write the merged live config back into themes/<theme>/dms-settings.json.
 if dest_path.is_symlink():
     dest_path.unlink()
 dest_path.write_text(json.dumps(base, indent=2) + "\n")
@@ -331,7 +332,7 @@ apply_theme() {
         mkdir -p "${DMS_CONFIG_DIR}"
         apply_dms_settings "${theme_path}/dms-settings.json" "$target" "$reset_flag"
         if [[ "$reset_flag" == "1" ]]; then
-            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings (reset to pack defaults)"
+            echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings (reset to theme defaults)"
         else
             echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings"
         fi
@@ -380,23 +381,132 @@ apply_theme() {
     echo -e "${BOLD}${GREEN}Successfully activated theme: ${target}${NC}"
 }
 
+# Promote curated live DMS settings back into a theme's dms-settings.json
+# so GUI tweaks get versioned. Dry run by default; --apply writes.
+# Only SYNC_BACK_KEYS travel (taste/layout owned by the theme); machine
+# state, histories, outputs and paths never leave the live file.
+sync_back() {
+    local apply="0" theme="" keys=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --apply) apply="1"; shift ;;
+            --theme) theme="${2:-}"; shift 2 ;;
+            --theme=*) theme="${1#--theme=}"; shift ;;
+            --keys) keys="${2:-}"; shift 2 ;;
+            --keys=*) keys="${1#--keys=}"; shift ;;
+            -h|--help) usage; return 0 ;;
+            *) echo -e "${RED}Error: Unknown sync-back flag: $1${NC}"; return 2 ;;
+        esac
+    done
+    theme="${theme:-$(get_current_theme)}"
+    local theme_file="${THEMES_DIR}/${theme}/dms-settings.json"
+    if [[ ! -f "$theme_file" ]]; then
+        echo -e "${RED}Error: No dms-settings.json for theme '${theme}'.${NC}"
+        return 2
+    fi
+    python3 - "$theme_file" "${DMS_CONFIG_DIR}/settings.json" "$keys" "$apply" <<'PY'
+import difflib
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+SYNC_BACK_KEYS = ["barConfigs"]
+
+theme_file = Path(sys.argv[1])
+live_file = Path(sys.argv[2])
+only = sys.argv[3].split(",") if sys.argv[3] else list(SYNC_BACK_KEYS)
+apply = sys.argv[4] == "1"
+
+
+def load_obj(path):
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text() or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+live = load_obj(live_file)
+if not live:
+    print("sync-back: live settings.json is missing or empty, aborting.", file=sys.stderr)
+    sys.exit(2)
+theme = load_obj(theme_file)
+
+changes = {}
+for key in only:
+    if key in live and live.get(key) != theme.get(key):
+        changes[key] = live[key]
+
+if not changes:
+    print(f"sync-back: {theme_file.parent.name} already in sync ({', '.join(only)}).")
+    sys.exit(0)
+
+merged = dict(theme)
+merged.update(changes)
+new_text = json.dumps(merged, indent=2) + "\n"
+old_text = theme_file.read_text() if theme_file.exists() else ""
+
+if old_text:
+    try:
+        canonical = json.dumps(json.loads(old_text), indent=2) + "\n"
+    except json.JSONDecodeError:
+        canonical = None
+    if canonical is not None and canonical.strip() != old_text.strip():
+        print("sync-back: warning: theme file is not canonical indent-2 JSON; diff may include formatting.", file=sys.stderr)
+
+diff = "".join(difflib.unified_diff(
+    old_text.splitlines(keepends=True),
+    new_text.splitlines(keepends=True),
+    fromfile=str(theme_file),
+    tofile=str(theme_file) + " (synced)",
+))
+sys.stdout.write(diff)
+if diff and not diff.endswith("\n"):
+    print()
+if not apply:
+    print("sync-back: dry run, re-run with --apply to write.")
+    sys.exit(0)
+
+tmp_fd, tmp_path = tempfile.mkstemp(dir=str(theme_file.parent), prefix=".dms-settings.", suffix=".tmp")
+try:
+    with os.fdopen(tmp_fd, "w") as fh:
+        fh.write(new_text)
+    os.replace(tmp_path, theme_file)
+except BaseException:
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+    raise
+print(f"sync-back: wrote {', '.join(changes)} to {theme_file}.")
+PY
+}
+
 usage() {
     echo -e "${BOLD}Usage: theme-switcher <command> [theme_name]${NC}"
     echo ""
     echo "Commands:"
     echo "  list, -l              List available themes"
     echo "  apply <theme>         Apply a theme (default, windows-10, windows-11)"
-    echo "  apply <theme> --reset Apply pack defaults, discarding saved bar/layout tweaks"
+    echo "  apply <theme> --reset Apply theme defaults, discarding saved bar/layout tweaks"
+    echo "  sync-back             Preview promoting live GUI tweaks (barConfigs) into the active theme (dry run)"
+    echo "  sync-back --apply     Write the promoted tweaks into the theme's dms-settings.json"
+    echo "  sync-back --theme NAME Sync a non-active theme instead of the current one"
+    echo "  sync-back --keys a,b   Sync an explicit key list instead of the curated default"
     echo "  current, status       Show the active theme"
     echo "  help, -h              Show this message"
     echo ""
     echo "Reapplying the active theme keeps live DankMaterialShell settings (bar"
     echo "layout, widgets, etc.) and Start pin/folder layout. Switching away"
     echo "and back restores that theme's last snapshot. Plugin pin state is never"
-    echo "replaced by pack defaults once it exists."
+    echo "replaced by theme defaults once it exists."
     echo ""
     echo "DankMaterialShell color themes (and greeter state) are global: visual"
-    echo "packs never overwrite them. Floating mode is also kept across applies."
+    echo "themes never overwrite them. Floating mode is also kept across applies."
     echo ""
     echo "Examples:"
     echo "  theme-switcher list"
@@ -431,6 +541,9 @@ case "${1:-}" in
         ;;
     current|status)
         echo -e "Active theme: ${BOLD}${GREEN}$(get_current_theme)${NC}"
+        ;;
+    sync-back)
+        sync_back "${@:2}"
         ;;
     help|-h|--help)
         usage
