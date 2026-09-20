@@ -19,8 +19,8 @@ Snap layouts (drag-to-edge and the top-of-screen flyout) live in `shared/plugins
 
 User state is not reset on reapply:
 
-- DankMaterialShell bar layout and other live settings stay as you left them. Switching away snapshots them under `~/.config/DankMaterialShell/theme-state/` and restores that snapshot when you come back.
-- DankMaterialShell color themes are global. Visual themes never overwrite the live color scheme.
+- DankMaterialShell bar layout and other live settings stay as you left them. Switching away snapshots them under `~/.config/DankMaterialShell/theme-state/` and restores that snapshot when you come back. Theme files in git are not rewritten by a switch; GUI tweaks are live-synced to the *active* theme only.
+- Each visual theme stores its own color scheme. Apply regenerates Ghostty and other matugen templates from that scheme.
 - Floating mode (Super+Z / Super+X) is kept across theme applies.
 - Start menu pin folders and grid positions live in `plugin_settings.json` and are never replaced by the theme's first-run defaults once they exist.
 

@@ -2,6 +2,8 @@
 Description=Sync live DMS settings back to active theme
 PartOf=graphical-session.target
 After=graphical-session.target
+# Apply rewrites settings.json; skip until theme-switcher clears this lock.
+ConditionPathExists=!%h/.config/.theme-switcher-applying
 
 [Service]
 Type=oneshot

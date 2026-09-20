@@ -12,6 +12,7 @@ DOTFILES_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/../../.." && pwd)"
 THEMES_DIR="${THEME_SWITCHER_THEMES_DIR:-${DOTFILES_DIR}/themes}"
 
 CURRENT_THEME_FILE="${HOME}/.config/.current_theme"
+APPLY_LOCK="${HOME}/.config/.theme-switcher-applying"
 HYPR_THEME_SYMLINK="${HOME}/.config/hypr/theme.lua"
 DMS_CONFIG_DIR="${HOME}/.config/DankMaterialShell"
 MANAGED_PLUGINS=(win10Start win10Clock win10Media win10Tray win11Start win11Clock win11Media win11Tray win11Snap)
@@ -28,6 +29,29 @@ get_current_theme() {
         cat "$CURRENT_THEME_FILE"
     else
         echo "default"
+    fi
+}
+
+# Tests override THEMES_DIR and must not touch the real session.
+is_live_run() {
+    [[ -z "${THEME_SWITCHER_THEMES_DIR:-}" ]]
+}
+
+# Live-sync watches settings.json. Apply rewrites that file, so pause the
+# watcher until current_theme and live settings point at the same theme.
+pause_live_sync() {
+    mkdir -p "$(dirname "$APPLY_LOCK")"
+    touch "$APPLY_LOCK"
+    if is_live_run && command -v systemctl >/dev/null; then
+        systemctl --user stop dms-theme-sync.service 2>/dev/null || true
+        systemctl --user stop dms-theme-sync.path 2>/dev/null || true
+    fi
+}
+
+resume_live_sync() {
+    rm -f "$APPLY_LOCK"
+    if is_live_run && command -v systemctl >/dev/null; then
+        systemctl --user start dms-theme-sync.path 2>/dev/null || true
     fi
 }
 
@@ -128,10 +152,9 @@ PY
 
 apply_dms_settings() {
     local theme_settings="$1"
-    local target="$2"
-    local reset_flag="${3:-0}"
-    local current
-    current="$(get_current_theme)"
+    local current="$2"
+    local target="$3"
+    local reset_flag="${4:-0}"
     local state_dir="${DMS_CONFIG_DIR}/theme-state"
     mkdir -p "$state_dir"
     python3 - "$theme_settings" "${DMS_CONFIG_DIR}/settings.json" "$HOME" "$state_dir" "$current" "$target" "$reset_flag" <<'PY'
@@ -240,6 +263,7 @@ current_state = state_dir / f"{current}.json"
 target_state = state_dir / f"{target}.json"
 
 # Snapshot the theme we are leaving so bar/layout tweaks come back later.
+# This is runtime state only; it must not write into themes/*/dms-settings.json.
 if current != target and live:
     current_state.write_text(json.dumps(live, indent=2) + "\n")
 
@@ -266,9 +290,158 @@ dest_path.write_text(json.dumps(base, indent=2) + "\n")
 PY
 }
 
+# DMS skips matugen on cold start for custom themes (FileView is async).
+# Dank settings works because the shell stays up. Apply kills it, so generate
+# templates here from the settings we just wrote, then poke Ghostty.
+refresh_generated_colors() {
+    is_live_run || return 0
+    command -v dms >/dev/null || return 0
+
+    local settings="${DMS_CONFIG_DIR}/settings.json"
+    [[ -f "$settings" ]] || return 0
+
+    local shell_dir="${HOME}/.config/quickshell/dms"
+    [[ -d "${shell_dir}/matugen/configs" ]] || shell_dir="/usr/share/quickshell/dms"
+    [[ -d "${shell_dir}/matugen/configs" ]] || return 0
+
+    local state_dir="${HOME}/.local/state/DankMaterialShell"
+    mkdir -p "$state_dir"
+
+    local rc=0
+    python3 - "$settings" "${HOME}/.local/state/DankMaterialShell/session.json" \
+        "$shell_dir" "${HOME}/.config" "$state_dir" <<'PY' || rc=$?
+import json, subprocess, sys
+from pathlib import Path
+
+settings = json.loads(Path(sys.argv[1]).read_text())
+session = {}
+session_path = Path(sys.argv[2])
+if session_path.exists():
+    try:
+        session = json.loads(session_path.read_text())
+    except Exception:
+        session = {}
+shell_dir, config_dir, state_dir = sys.argv[3], sys.argv[4], sys.argv[5]
+
+is_light = bool(session.get("isLightMode"))
+mode = "light" if is_light else "dark"
+scheme = settings.get("matugenScheme") or "scheme-tonal-spot"
+icon = settings.get("iconTheme") or settings.get("iconThemeDark") or "System Default"
+contrast = settings.get("matugenContrast") or 0
+name = settings.get("currentThemeName") or ""
+custom_file = settings.get("customThemeFile") or ""
+
+def add_color(out, key, dark_val, light_val):
+    if not dark_val and not light_val:
+        return
+    dark_val = dark_val or light_val
+    light_val = light_val or dark_val
+    default = light_val if is_light else dark_val
+    out[key] = {
+        "dark": {"color": str(dark_val)},
+        "light": {"color": str(light_val)},
+        "default": {"color": str(default)},
+    }
+
+def merge(base, extra):
+    if not extra:
+        return base
+    out = dict(base)
+    out.update(extra)
+    return out
+
+def find_variant(options, vid):
+    for item in options or []:
+        if item.get("id") == vid:
+            return item
+    return None
+
+dark = light = None
+if name == "custom" and custom_file and Path(custom_file).exists():
+    theme_data = json.loads(Path(custom_file).read_text())
+    dark = theme_data.get("dark") or theme_data.get("light") or {}
+    light = theme_data.get("light") or theme_data.get("dark") or {}
+    variants = theme_data.get("variants") or {}
+    theme_id = theme_data.get("id") or ""
+    stored = (settings.get("registryThemeVariants") or {}).get(theme_id)
+    if variants.get("type") == "multi" and variants.get("flavors"):
+        defaults = variants.get("defaults") or {}
+        dark_def = defaults.get("dark") or {}
+        light_def = defaults.get("light") or defaults.get("dark") or {}
+        stored_dark = stored.get("dark") if isinstance(stored, dict) else dark_def
+        stored_light = stored.get("light") if isinstance(stored, dict) else light_def
+        stored_dark = stored_dark or dark_def
+        stored_light = stored_light or light_def
+        dark_flavor = find_variant(variants.get("flavors"), stored_dark.get("flavor") or dark_def.get("flavor"))
+        light_flavor = find_variant(variants.get("flavors"), stored_light.get("flavor") or light_def.get("flavor"))
+        if dark_flavor:
+            dark = merge(dark, dark_flavor.get("dark") or {})
+        if light_flavor:
+            light = merge(light, light_flavor.get("light") or {})
+    elif variants.get("options"):
+        vid = stored if isinstance(stored, str) else variants.get("default")
+        variant = find_variant(variants.get("options"), vid)
+        if variant:
+            dark = merge(dark, variant.get("dark") or {})
+            light = merge(light, variant.get("light") or {})
+
+cmd = ["dms", "matugen", "generate",
+       "--shell-dir", shell_dir, "--config-dir", config_dir, "--state-dir", state_dir,
+       "--mode", mode, "--matugen-type", str(scheme), "--icon-theme", str(icon),
+       "--contrast", str(contrast)]
+
+if dark and dark.get("primary"):
+    stock = {}
+    add_color(stock, "primary", dark.get("primary"), light.get("primary"))
+    add_color(stock, "on_primary", dark.get("primaryText"), light.get("primaryText"))
+    add_color(stock, "primary_container", dark.get("primaryContainer"), light.get("primaryContainer"))
+    add_color(stock, "on_primary_container", dark.get("primaryContainerText") or dark.get("surfaceText"), light.get("primaryContainerText") or light.get("surfaceText"))
+    add_color(stock, "secondary", dark.get("secondary"), light.get("secondary"))
+    add_color(stock, "on_secondary", dark.get("secondaryText") or dark.get("primaryText"), light.get("secondaryText") or light.get("primaryText"))
+    add_color(stock, "surface", dark.get("surface"), light.get("surface"))
+    add_color(stock, "on_surface", dark.get("surfaceText"), light.get("surfaceText"))
+    add_color(stock, "surface_variant", dark.get("surfaceVariant"), light.get("surfaceVariant"))
+    add_color(stock, "on_surface_variant", dark.get("surfaceVariantText"), light.get("surfaceVariantText"))
+    add_color(stock, "surface_tint", dark.get("surfaceTint"), light.get("surfaceTint"))
+    add_color(stock, "background", dark.get("background"), light.get("background"))
+    add_color(stock, "on_background", dark.get("backgroundText"), light.get("backgroundText"))
+    add_color(stock, "outline", dark.get("outline"), light.get("outline"))
+    add_color(stock, "surface_container", dark.get("surfaceContainer"), light.get("surfaceContainer"))
+    add_color(stock, "surface_container_high", dark.get("surfaceContainerHigh"), light.get("surfaceContainerHigh"))
+    add_color(stock, "error", dark.get("error"), light.get("error"))
+    primary = (light if is_light else dark).get("primary")
+    matugen_type = (light if is_light else dark).get("matugen_type") or scheme
+    cmd += ["--kind", "hex", "--value", str(primary), "--matugen-type", str(matugen_type),
+            "--stock-colors", json.dumps(stock)]
+else:
+    wallpaper = session.get("wallpaperPath") or ""
+    if not wallpaper:
+        sys.exit(0)
+    kind = "hex" if wallpaper.startswith("#") else "image"
+    cmd += ["--kind", kind, "--value", wallpaper]
+
+rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+sys.exit(0 if rc in (0, 2) else rc)
+PY
+    if [[ "$rc" -eq 0 ]]; then
+        echo -e "  ${GREEN}✓${NC} Regenerated terminal / system colors"
+    else
+        echo -e "  ${RED}!${NC} matugen generate failed (colors may stay stale)"
+    fi
+
+    if command -v pgrep >/dev/null; then
+        local pid
+        while read -r pid; do
+            [[ -n "$pid" ]] && kill -USR2 "$pid" 2>/dev/null || true
+        done < <(pgrep -x ghostty || true)
+    fi
+}
+
 apply_theme() {
     local target="$1"
     local reset_flag="${2:-0}"
+    local from_theme
+    from_theme="$(get_current_theme)"
     local theme_path="${THEMES_DIR}/${target}"
 
     if [[ ! -d "$theme_path" || ( ! -f "${theme_path}/metadata.json" && ! -f "${theme_path}/theme.lua" ) ]]; then
@@ -279,6 +452,9 @@ apply_theme() {
     fi
 
     echo -e "${BOLD}${CYAN}Switching theme to: ${BOLD}${target}...${NC}"
+
+    pause_live_sync
+    trap 'resume_live_sync' EXIT
 
     local saved_float=""
     local saved_ws=""
@@ -305,7 +481,7 @@ apply_theme() {
 
     # Stop DMS first so it does not hot-reload a partial settings write
     # (that retriggers greeter auto-login sync).
-    if command -v dms &>/dev/null; then
+    if is_live_run && command -v dms &>/dev/null; then
         dms kill &>/dev/null || systemctl --user stop dms.service &>/dev/null || true
     fi
 
@@ -317,16 +493,20 @@ apply_theme() {
 
     if [[ -f "${theme_path}/dms-settings.json" ]]; then
         mkdir -p "${DMS_CONFIG_DIR}"
-        apply_dms_settings "${theme_path}/dms-settings.json" "$target" "$reset_flag"
+        apply_dms_settings "${theme_path}/dms-settings.json" "$from_theme" "$target" "$reset_flag"
         if [[ "$reset_flag" == "1" ]]; then
             echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings (reset to theme defaults)"
         else
             echo -e "  ${GREEN}✓${NC} Applied DankMaterialShell settings"
         fi
+        refresh_generated_colors
     fi
 
+    # Identity must match live settings before live-sync is allowed to run.
+    echo "$target" > "$CURRENT_THEME_FILE"
+
     # Snap bridge is shared by every theme.
-    if [[ ! -f "${HOME}/.local/lib/hyprland/hypr-snap-bridge-v3.so" ]]; then
+    if is_live_run && [[ ! -f "${HOME}/.local/lib/hyprland/hypr-snap-bridge-v3.so" ]]; then
         local plugin_src="${DOTFILES_DIR}/common/.config/hypr/plugins/hypr-snap-bridge"
         if [[ -d "$plugin_src" ]] && command -v pkg-config &>/dev/null && pkg-config --exists hyprland 2>/dev/null; then
             echo -e "  ${CYAN}Building Hyprland snap plugin...${NC}"
@@ -336,13 +516,13 @@ apply_theme() {
 
     sync_plugins "$theme_path"
 
-    if command -v dms &>/dev/null; then
+    if is_live_run && command -v dms &>/dev/null; then
         systemctl --user start dms.service &>/dev/null || dms restart &>/dev/null || true
         echo -e "  ${GREEN}✓${NC} Restarted DankMaterialShell"
     fi
 
     # Reload Hypr after DMS so generated layout.lua / colors.lua are picked up.
-    if command -v hyprctl &>/dev/null && hyprctl activewindow &>/dev/null; then
+    if is_live_run && command -v hyprctl &>/dev/null && hyprctl activewindow &>/dev/null; then
         hyprctl reload &>/dev/null || true
         echo -e "  ${GREEN}✓${NC} Reloaded Hyprland configuration"
         # Theme chrome must not clobber layout state or Super+Z / Super+X floating state.
@@ -364,7 +544,8 @@ apply_theme() {
         hyprctl eval "_G.floating_mode_restore_from_cache()" &>/dev/null || true
     fi
 
-    echo "$target" > "$CURRENT_THEME_FILE"
+    resume_live_sync
+    trap - EXIT
     echo -e "${BOLD}${GREEN}Successfully activated theme: ${target}${NC}"
 }
 
@@ -373,6 +554,9 @@ apply_theme() {
 # Only SYNC_BACK_KEYS travel (taste/layout owned by the theme); machine
 # state, histories, outputs and paths never leave the live file.
 sync_back() {
+    if [[ -f "$APPLY_LOCK" ]]; then
+        return 0
+    fi
     local apply="0" theme="" keys=""
     while [[ $# -gt 0 ]]; do
         case "$1" in

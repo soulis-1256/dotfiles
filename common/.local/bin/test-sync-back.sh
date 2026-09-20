@@ -102,4 +102,15 @@ if grep -n -i "pack" "$SWITCHER" | grep -v -i "pdata\|plugin" | grep -q .; then
 fi
 echo "PASS: no theme-pack pack remnants"
 
+# 8. Apply lock suppresses sync-back so a mid-switch live file cannot
+# overwrite the theme we are leaving.
+LIVE_DRIFT='{"barConfigs":[{"id":"default","name":"Hijacked"}]}'
+printf '%s\n' "$LIVE_DRIFT" > "$LIVE"
+touch "${HOME}/.config/.theme-switcher-applying"
+SUM_LOCKED="$(sha256sum "$PACK" | cut -d' ' -f1)"
+bash "$SWITCHER" sync-back --apply >/dev/null
+[ "$(sha256sum "$PACK" | cut -d' ' -f1)" == "$SUM_LOCKED" ] || fail "sync-back wrote through the apply lock"
+rm -f "${HOME}/.config/.theme-switcher-applying"
+echo "PASS: apply lock suppresses sync-back"
+
 echo "ALL TESTS PASSED"
