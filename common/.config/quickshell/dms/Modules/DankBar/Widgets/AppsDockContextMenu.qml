@@ -56,6 +56,9 @@ PanelWindow {
 
     property bool shown: false
     readonly property bool animateMenu: Theme.barHoverInset
+    // Solid blend on opaque popups; neutral wash on blurred/translucent ones
+    // where the blend is nearly invisible (e.g. Win11 acrylic).
+    readonly property color rowHover: BlurService.enabled ? Theme.withAlpha(Theme.surfaceText, 0.14) : BlurService.hoverColor(Theme.widgetBaseHoverColor)
 
     function showAt(x, y, vertical, barEdge, data, hidePinOption, entry, targetScreen) {
         if (targetScreen) {
@@ -309,7 +312,7 @@ PanelWindow {
                     width: parent.width
                     height: 28
                     radius: Theme.cornerRadius
-                    color: windowArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                    color: windowArea.containsMouse ? root.rowHover : "transparent"
 
                     StyledText {
                         id: windowTitle
@@ -399,7 +402,7 @@ PanelWindow {
                     width: parent.width
                     height: 28
                     radius: Theme.cornerRadius
-                    color: actionArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                    color: actionArea.containsMouse ? root.rowHover : "transparent"
 
                     Item {
                         id: actionIcon
@@ -474,7 +477,7 @@ PanelWindow {
                 width: parent.width
                 height: 28
                 radius: Theme.cornerRadius
-                color: pinArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                color: pinArea.containsMouse ? root.rowHover : "transparent"
 
                 StyledText {
                     id: pinLabel
@@ -536,7 +539,7 @@ PanelWindow {
                 width: parent.width
                 height: 28
                 radius: Theme.cornerRadius
-                color: nvidiaArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
+                color: nvidiaArea.containsMouse ? root.rowHover : "transparent"
 
                 StyledText {
                     id: nvidiaLabel
