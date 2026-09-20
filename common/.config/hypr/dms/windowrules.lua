@@ -121,25 +121,27 @@ _G.hyprbars_blacklist = {
 }
 
 -- Register hyprbars:no_bar window rules dynamically with +nobar tag
-hl.window_rule({
-	match = { class = "^(" .. table.concat(_G.hyprbars_blacklist.classes, "|") .. ")$" },
-	["hyprbars:no_bar"] = true,
-	tag = "+nobar",
-})
-
-for _, t_pat in ipairs(_G.hyprbars_blacklist.titles) do
+pcall(function()
 	hl.window_rule({
-		match = { title = t_pat },
+		match = { class = "^(" .. table.concat(_G.hyprbars_blacklist.classes, "|") .. ")$" },
 		["hyprbars:no_bar"] = true,
 		tag = "+nobar",
 	})
-end
 
-hl.window_rule({
-	match = { class = "^([sS]team.*)$", title = "^(notificationtoasts.*)$" },
-	["hyprbars:no_bar"] = true,
-	tag = "+nobar",
-})
+	for _, t_pat in ipairs(_G.hyprbars_blacklist.titles) do
+		hl.window_rule({
+			match = { title = t_pat },
+			["hyprbars:no_bar"] = true,
+			tag = "+nobar",
+		})
+	end
+
+	hl.window_rule({
+		match = { class = "^([sS]team.*)$", title = "^(notificationtoasts.*)$" },
+		["hyprbars:no_bar"] = true,
+		tag = "+nobar",
+	})
+end)
 
 -- Centralized helper used by maximize and snap geometry calculations
 _G.window_has_hyprbar = function(w)

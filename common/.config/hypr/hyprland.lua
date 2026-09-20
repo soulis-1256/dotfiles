@@ -146,13 +146,12 @@ if not pcall(require, "dms.outputs") then
 	hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 end
 require("dms.layout")
-require("dms.cursor")
+pcall(require, "dms.cursor")
 require("dms.floating-mode")
 require("dms.mosaic")
 require("dms.layout-manager")
 require("dms.binds")
 require("dms.binds-user")
-require("dms.windowrules")
 require("dms.steam-toasts")
 
 -- Inactive color is fully transparent; border is drawn outside the window.
@@ -380,4 +379,7 @@ if _G.setup_hyprbars_buttons then
 	end
 	_G.setup_hyprbars_buttons(cur_theme)
 end
+
+require("dms.windowrules")
+
 
