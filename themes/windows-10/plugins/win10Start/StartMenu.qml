@@ -19,12 +19,12 @@ Item {
     property var parentPopout: null
     readonly property color winBg: Theme.surfaceContainer
     readonly property color winPanel: Theme.surfaceContainer
-    readonly property color winHover: Theme.surfaceContainerHigh
+    readonly property color winHover: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.12)
     readonly property color winAccent: Theme.primary
     readonly property color winText: Theme.surfaceText
     readonly property color winMuted: Theme.surfaceVariantText
     readonly property color winRail: Theme.surfaceContainer
-    readonly property color winBorder: Theme.outline
+    readonly property color winBorder: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.16)
     readonly property color winTileBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.10)
     readonly property color winTileHoverBg: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.18)
     readonly property var pinGridOpts: ({ "cols": 6 })
@@ -1757,6 +1757,7 @@ Item {
                     anchors.margins: 4
                     anchors.topMargin: 8
                     anchors.rightMargin: 0
+                    anchors.bottomMargin: 0
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     boundsMovement: Flickable.StopAtBounds
@@ -3320,6 +3321,7 @@ Item {
             host: root
             showResize: true
             showMoveToGroup: true
+            menuRadius: 0
         }
 
         // Click-away catcher for inline rename (Enter commits; Escape / click away dismisses)

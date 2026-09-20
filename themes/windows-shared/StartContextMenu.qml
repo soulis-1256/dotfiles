@@ -35,6 +35,7 @@ Rectangle {
     readonly property color winMuted: host && host.winMuted !== undefined ? host.winMuted : Theme.surfaceVariantText
     readonly property color winBorder: host && host.winBorder !== undefined ? host.winBorder : Qt.rgba(1, 1, 1, 0.08)
     property real menuRadius: 8
+    readonly property real rowRadius: menuRadius > 0 ? 4 : 0
     property bool open: !!(host && host.contextMenuVisible)
     readonly property bool animateMenu: !!(host && host.fluentMenus)
     property real yOffset: animateMenu ? 8 : 0
@@ -176,7 +177,7 @@ Rectangle {
 
                             width: 36
                             height: 28
-                            radius: 4
+                            radius: menu.rowRadius
                             color: isCurrent ? menu.winAccent : (wsHover.containsMouse ? menu.winHover : "transparent")
                             border.width: wsExists && !isCurrent ? 1 : 0
                             border.color: Qt.rgba(menu.winAccent.r, menu.winAccent.g, menu.winAccent.b, 0.45)
@@ -225,13 +226,14 @@ Rectangle {
         Item {
             visible: menu.showResize && menuType === "tile"
             width: parent.width
-            height: visible ? 50 : 0
+            height: visible ? 56 : 0
 
             Column {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                anchors.topMargin: 6
+                spacing: 6
 
                 StyledText {
                     text: "Resize"
@@ -240,7 +242,7 @@ Rectangle {
                 }
 
                 Row {
-                    spacing: 4
+                    spacing: 6
                     width: parent.width
 
                     Repeater {
@@ -255,18 +257,18 @@ Rectangle {
                             required property var modelData
                             readonly property bool isCurrent: menu.menuItem && (menu.menuItem.size === modelData.id || (!menu.menuItem.size && modelData.id === (menu.menuItem.wide ? "wide" : "medium")))
 
-                            width: 42
+                            width: (parent.width - 18) / 4
                             height: 24
-                            radius: 4
-                            color: isCurrent ? menu.winAccent : (rBtnHover.containsMouse ? menu.winHover : Qt.rgba(255, 255, 255, 0.05))
-                            border.color: isCurrent ? Qt.lighter(menu.winAccent, 1.2) : Qt.rgba(255, 255, 255, 0.15)
+                            radius: menu.rowRadius
+                            color: isCurrent ? menu.winAccent : (rBtnHover.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : Qt.rgba(255, 255, 255, 0.09))
+                            border.color: isCurrent ? Qt.lighter(menu.winAccent, 1.2) : (rBtnHover.containsMouse ? Qt.rgba(255, 255, 255, 0.35) : Qt.rgba(255, 255, 255, 0.28))
                             border.width: 1
 
                             StyledText {
                                 anchors.centerIn: parent
                                 text: parent.modelData.label
-                                font.pixelSize: 10
-                                font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
+                                font.pixelSize: 11
+                                font.weight: Font.Normal
                                 color: parent.isCurrent ? Theme.primaryText : menu.winText
                             }
 
@@ -353,13 +355,14 @@ Rectangle {
         Item {
             visible: menu.showResize && menuType === "folder"
             width: parent.width
-            height: visible ? 50 : 0
+            height: visible ? 56 : 0
 
             Column {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                anchors.topMargin: 6
+                spacing: 6
 
                 StyledText {
                     text: "Resize"
@@ -368,7 +371,7 @@ Rectangle {
                 }
 
                 Row {
-                    spacing: 4
+                    spacing: 6
                     width: parent.width
 
                     Repeater {
@@ -381,18 +384,18 @@ Rectangle {
                             required property var modelData
                             readonly property bool isCurrent: menu.menuItem && (menu.menuItem.size === modelData.id || (!menu.menuItem.size && modelData.id === (menu.menuItem.wide ? "wide" : "medium")))
 
-                            width: 88
+                            width: (parent.width - 6) / 2
                             height: 24
-                            radius: 4
-                            color: isCurrent ? menu.winAccent : (fRBtnHover.containsMouse ? menu.winHover : Qt.rgba(255, 255, 255, 0.05))
-                            border.color: isCurrent ? Qt.lighter(menu.winAccent, 1.2) : Qt.rgba(255, 255, 255, 0.15)
+                            radius: menu.rowRadius
+                            color: isCurrent ? menu.winAccent : (fRBtnHover.containsMouse ? Qt.rgba(255, 255, 255, 0.16) : Qt.rgba(255, 255, 255, 0.09))
+                            border.color: isCurrent ? Qt.lighter(menu.winAccent, 1.2) : (fRBtnHover.containsMouse ? Qt.rgba(255, 255, 255, 0.35) : Qt.rgba(255, 255, 255, 0.28))
                             border.width: 1
 
                             StyledText {
                                 anchors.centerIn: parent
                                 text: parent.modelData.label
-                                font.pixelSize: 10
-                                font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
+                                font.pixelSize: 11
+                                font.weight: Font.Normal
                                 color: parent.isCurrent ? Theme.primaryText : menu.winText
                             }
 
@@ -496,7 +499,7 @@ Rectangle {
 
         Rectangle {
             anchors.fill: parent
-            radius: 4
+            radius: menu.rowRadius
             color: prHover.containsMouse ? menu.winHover : "transparent"
         }
 
