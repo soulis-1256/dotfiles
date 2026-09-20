@@ -89,7 +89,7 @@ body {
     --reply: linear-gradient(to right, color-mix(in hsl, var(--text-3), transparent 90%) 40%, transparent);
     --reply-hover: linear-gradient(to right, color-mix(in hsl, var(--text-3), transparent 95%) 40%, transparent);
 
-    --online: {{colors.inverse_primary.default.hex}};
+    --online: #23a55a; /* Discord online green; keep fixed so it can't be confused with idle amber */
     --dnd: {{colors.error.default.hex}};
     --idle: #f0b232; /* Discord idle amber; tertiary_container is too dark */
     --streaming: {{colors.on_primary.default.hex}};
@@ -106,11 +106,11 @@ body {
     --red-4: {{colors.error.default.hex}};
     --red-5: {{colors.error.default.hex}};
 
-    --green-1: {{colors.inverse_primary.default.hex}};
-    --green-2: {{colors.inverse_primary.default.hex}};
-    --green-3: {{colors.inverse_primary.default.hex}};
-    --green-4: {{colors.inverse_primary.default.hex}};
-    --green-5: {{colors.inverse_primary.default.hex}};
+    --green-1: #23a55a;
+    --green-2: #23a55a;
+    --green-3: #23a55a;
+    --green-4: #23a55a;
+    --green-5: #23a55a;
 
     --blue-1: {{colors.primary.default.hex}};
     --blue-2: {{colors.primary.default.hex}};
