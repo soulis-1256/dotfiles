@@ -111,6 +111,10 @@ bool CHyprBar::inputIsValid() {
     if (!PMONITOR)
         return false;
 
+    // Same occlusion rule as hover: never act through a covering float/layer.
+    if (cursorOccludedByOverlay(MOUSE))
+        return false;
+
     Desktop::CViewHitTester hitTester{*Desktop::viewState()};
 
     const auto              WINDOWATCURSOR = hitTester.windowAt(MOUSE, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
@@ -971,6 +975,30 @@ void CHyprBar::updateRules() {
         m_bTitleColorChanged = true;
 }
 
+bool CHyprBar::cursorOccludedByOverlay(const Vector2D& mouse) {
+    Desktop::CViewHitTester hitTester{*Desktop::viewState()};
+
+    // A different floating window at the cursor sits above our bar.
+    if (const auto top = hitTester.windowAt(mouse, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+        top && top != m_pWindow && top->m_isFloating)
+        return true;
+
+    // Top/overlay layer surfaces (menus, popouts, notifications) above us.
+    const auto PWIN = m_pWindow.lock();
+    const auto PMONITOR = PWIN ? PWIN->m_monitor.lock() : nullptr;
+    if (!PMONITOR)
+        return false;
+
+    PHLLS    foundSurface = nullptr;
+    Vector2D surfaceCoords;
+    if (hitTester.layerSurfaceAt(mouse, &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &surfaceCoords, &foundSurface) && foundSurface)
+        return true;
+    if (hitTester.layerSurfaceAt(mouse, &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &surfaceCoords, &foundSurface) && foundSurface)
+        return true;
+
+    return false;
+}
+
 void CHyprBar::damageOnButtonHover() {
     if (!validMapped(m_pWindow) || m_hidden)
         return;
@@ -978,7 +1006,15 @@ void CHyprBar::damageOnButtonHover() {
     unsigned int newState = 0;
     const auto   barBox   = assignedBoxGlobal();
     const auto   mouse    = g_pInputManager->getMouseCoordsInternal();
-    const bool   overBar  = barBox.w > 0 && barBox.h > 0 && VECINRECT(mouse, barBox.x, barBox.y, barBox.x + barBox.w, barBox.y + barBox.h);
+    bool         overBar  = barBox.w > 0 && barBox.h > 0 && VECINRECT(mouse, barBox.x, barBox.y, barBox.x + barBox.w, barBox.y + barBox.h);
+
+    // Another floating window (or top/overlay layer surface) covers the
+    // cursor: our buttons must not light up underneath it. This only ever
+    // suppresses hover, never grants it: windowAt() misreports small floats
+    // (it can return the maxed window beneath one), so occlusion needs proof
+    // of a covering float, while the geometric test above keeps floats working.
+    if (overBar && cursorOccludedByOverlay(mouse))
+        overBar = false;
 
     // Hit-test this bar's box, not windowAt(). Fullscreen / XWayland stacking
     // makes windowAt return the maxed window under a small float, so hover

@@ -84,6 +84,7 @@ class CHyprBar : public IHyprWindowDecoration {
     void renderBarButtons(CBox* barBox, const float scale, const float a, const CBox& chromeBox, int chromeRound, float chromeRoundPower, const CBox& barClip);
     void renderBarButtonsText(CBox* barBox, const float scale, const float a);
     void damageOnButtonHover();
+    bool cursorOccludedByOverlay(const Vector2D& mouse);
 
     bool inputIsValid();
     void onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent e);

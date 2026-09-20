@@ -99,6 +99,14 @@ Rectangle {
         }
     }
 
+    // Eat all pointer input over the menu so tiles beneath never hover
+    // or click through gaps (separators, margins, grid spacing).
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+    }
+
     Column {
         id: menuCol
 
