@@ -759,10 +759,18 @@
         {
           "id": "win11Start",
           "enabled": true
+        },
+        {
+          "id": "workspaceSwitcher",
+          "enabled": true
         }
       ],
       "centerWidgets": [],
       "rightWidgets": [
+        {
+          "id": "weather",
+          "enabled": true
+        },
         {
           "id": "win11Tray",
           "enabled": true
@@ -782,6 +790,11 @@
           "minimumWidth": true,
           "showSwap": false,
           "showInGb": true
+        },
+        {
+          "id": "keyboard_layout_name",
+          "enabled": true,
+          "keyboardLayoutNameCompactMode": true
         },
         {
           "id": "controlCenterButton",
