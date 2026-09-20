@@ -146,24 +146,11 @@ current = sys.argv[5]
 target = sys.argv[6]
 reset = sys.argv[7] == "1"
 
-# Theme files control layout/chrome, not the user's DMS color theme
-# or greeter/autologin state. Those always follow the live config.
+# Machine/greeter settings that follow the live machine config across themes
 PRESERVE_PREFIXES = ("greeter",)
 PRESERVE_KEYS = {
-    "currentThemeName",
-    "currentThemeCategory",
-    "customThemeFile",
-    "registryThemeVariants",
-    "matugenScheme",
-    "matugenContrast",
     "runUserMatugenTemplates",
     "matugenTargetMonitor",
-    "widgetBackgroundColor",
-    "widgetBackgroundCustomColor",
-    "widgetBackgroundCustomStrength",
-    "widgetColorMode",
-    "controlCenterTileColorMode",
-    "buttonColorMode",
 }
 
 
@@ -412,7 +399,21 @@ import sys
 import tempfile
 from pathlib import Path
 
-SYNC_BACK_KEYS = ["barConfigs"]
+SYNC_BACK_KEYS = [
+    "barConfigs",
+    "currentThemeName",
+    "currentThemeCategory",
+    "customThemeFile",
+    "registryThemeVariants",
+    "matugenScheme",
+    "matugenContrast",
+    "widgetBackgroundColor",
+    "widgetBackgroundCustomColor",
+    "widgetBackgroundCustomStrength",
+    "widgetColorMode",
+    "controlCenterTileColorMode",
+    "buttonColorMode",
+]
 
 theme_file = Path(sys.argv[1])
 live_file = Path(sys.argv[2])

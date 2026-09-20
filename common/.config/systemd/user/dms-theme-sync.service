@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync live DMS settings back to active theme
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/sleep 0.5
+ExecStart=/home/soulis/.local/bin/theme-switcher sync-back --apply

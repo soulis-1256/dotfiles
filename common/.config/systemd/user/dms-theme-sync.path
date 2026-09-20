@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch DMS settings for automatic theme sync-back
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Path]
+PathModified=%h/.config/DankMaterialShell/settings.json
+Unit=dms-theme-sync.service
+
+[Install]
+WantedBy=graphical-session.target
