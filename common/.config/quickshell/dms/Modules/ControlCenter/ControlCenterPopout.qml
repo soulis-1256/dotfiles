@@ -112,6 +112,11 @@ DankPopout {
     // the compositor-side attempt to drop that constraint without focus-hopping.
     readonly property bool stealPointerFromFullscreen: shouldBeVisible && !anyModalOpen && CompositorService.hasFullscreenToplevelOnScreen(triggerScreen ?? screen)
 
+    onStealPointerFromFullscreenChanged: {
+        if (typeof PopoutManager !== "undefined")
+            PopoutManager.popoutChanged();
+    }
+
     customKeyboardFocus: anyModalOpen ? WlrKeyboardFocus.None : (stealPointerFromFullscreen ? WlrKeyboardFocus.Exclusive : null)
     backgroundKeyboardFocus: stealPointerFromFullscreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 

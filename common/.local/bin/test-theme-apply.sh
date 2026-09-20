@@ -165,4 +165,58 @@ bash "$SWITCHER" apply windows-11 --reset >/dev/null
 [ -f "${HOME}/.config/DankMaterialShell/theme-state/windows-11.json" ] && fail "--reset left the snapshot"
 echo "PASS: --reset restores theme defaults"
 
+# 6. Multi-variant custom themes resolve primary from flavor+accent (Ghostty).
+python3 - <<'PY'
+import json, sys
+
+def merge(base, extra):
+    if not extra:
+        return base
+    out = dict(base)
+    out.update(extra)
+    return out
+
+def find_variant(options, vid):
+    for item in options or []:
+        if item.get("id") == vid:
+            return item
+    return None
+
+def find_accent(accents, aid):
+    for item in accents or []:
+        if item.get("id") == aid:
+            return item
+    return None
+
+theme = {
+    "id": "astralJourney",
+    "dark": {"surfaceText": "#ebe8d2"},
+    "variants": {
+        "type": "multi",
+        "defaults": {"dark": {"accent": "amber", "flavor": "blackhole"}},
+        "flavors": [{"id": "blackhole", "dark": {"background": "#0d0f1e"}}],
+        "accents": [{"id": "amber", "blackhole": {"primary": "#ffcc66"}}],
+    },
+}
+stored = {"dark": {"flavor": "blackhole", "accent": "amber"}}
+dark = theme.get("dark") or {}
+variants = theme["variants"]
+defaults = variants["defaults"]
+dark_def = defaults["dark"]
+stored_dark = stored["dark"]
+dark_flavor = find_variant(variants["flavors"], stored_dark.get("flavor") or dark_def.get("flavor"))
+dark_accent = find_accent(variants["accents"], stored_dark.get("accent") or dark_def.get("accent"))
+if dark_flavor:
+    dark = merge(dark, dark_flavor.get("dark") or {})
+    if dark_accent:
+        dark = merge(dark, dark_accent.get(dark_flavor.get("id")) or {})
+assert dark.get("primary") == "#ffcc66", dark
+assert dark.get("background") == "#0d0f1e", dark
+print("PASS: multi-variant accent merge resolves primary")
+PY
+
+grep -q "find_accent" "$SWITCHER" || fail "theme-switcher lost multi-variant accent merge"
+grep -q "StartLimitIntervalSec=0" "${BIN_DIR}/../../.config/systemd/user/dms-theme-sync.service" \
+    || fail "dms-theme-sync.service must disable start limiting"
+
 echo "ALL TESTS PASSED"

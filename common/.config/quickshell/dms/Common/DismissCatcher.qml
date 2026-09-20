@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import qs.Common
 
 // Other-monitor input surfaces so click-outside can dismiss when the
@@ -14,6 +15,11 @@ Singleton {
     property bool active: false
     property var occupiedScreenNames: []
     property bool _dismissing: false
+    // Hyprland routes all pointer motion to an Exclusive layer, including
+    // when the cursor is on another output. Catchers on those outputs must
+    // also be Exclusive or clicks never land (control center over a
+    // fullscreen game is the usual case).
+    property bool exclusiveKeyboard: false
 
     function isOccupied(screenName) {
         if (!screenName)
@@ -34,6 +40,7 @@ Singleton {
     function _refresh() {
         const occupied = [];
         let dismissible = false;
+        let wantsExclusive = false;
 
         const modals = ModalManager.currentModalsByScreen || {};
         for (const screenName in modals) {
@@ -44,6 +51,8 @@ Singleton {
                 occupied.push(screenName);
             if (_isDismissibleModal(modal))
                 dismissible = true;
+            if (_wantsExclusiveKeyboard(modal))
+                wantsExclusive = true;
         }
 
         const popouts = PopoutManager.currentPopoutsByScreen || {};
@@ -54,10 +63,25 @@ Singleton {
             if (screenName && screenName !== "unknown" && occupied.indexOf(screenName) === -1)
                 occupied.push(screenName);
             dismissible = true;
+            if (_wantsExclusiveKeyboard(popout))
+                wantsExclusive = true;
         }
 
         occupiedScreenNames = occupied;
+        exclusiveKeyboard = wantsExclusive;
         active = dismissible && Quickshell.screens.length > 1;
+    }
+
+    function _wantsExclusiveKeyboard(surface) {
+        if (!surface)
+            return false;
+        try {
+            if (surface.stealPointerFromFullscreen)
+                return true;
+            return surface.customKeyboardFocus === WlrKeyboardFocus.Exclusive;
+        } catch (e) {
+            return false;
+        }
     }
 
     function _isPresentedModal(modal) {

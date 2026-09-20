@@ -22,7 +22,7 @@ PanelWindow {
     WlrLayershell.namespace: "dms:dismiss-catcher"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.exclusiveZone: -1
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: DismissCatcher.exclusiveKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     anchors {
         top: true

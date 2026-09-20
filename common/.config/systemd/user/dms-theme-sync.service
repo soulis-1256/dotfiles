@@ -2,10 +2,14 @@
 Description=Sync live DMS settings back to active theme
 PartOf=graphical-session.target
 After=graphical-session.target
+# Color-theme clicks rewrite settings.json many times in a few seconds.
+# systemd's default start limit (5/10s) then fails this unit AND the
+# path watcher, which silently stops live-sync until a session restart.
+StartLimitIntervalSec=0
 # Apply rewrites settings.json; skip until theme-switcher clears this lock.
 ConditionPathExists=!%h/.config/.theme-switcher-applying
 
 [Service]
 Type=oneshot
-ExecStartPre=/usr/bin/sleep 0.5
+ExecStartPre=/usr/bin/sleep 1
 ExecStart=/home/soulis/.local/bin/theme-switcher sync-back --apply

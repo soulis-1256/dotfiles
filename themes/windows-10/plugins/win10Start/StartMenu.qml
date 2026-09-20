@@ -377,20 +377,39 @@ Item {
             return null;
 
         return {
-            "id": entry.id || "",
+            "id": entry.id || entry.builtInPluginId || "",
             "name": entry.name || "",
             "icon": entry.icon || "",
             "comment": entry.comment || "",
-            "exec": entry.exec || ""
+            "exec": entry.exec || "",
+            "isCore": !!entry.isCore,
+            "action": entry.action || "",
+            "builtInPluginId": entry.builtInPluginId || ""
         };
     }
 
+    function getCoreApps() {
+        if (typeof AppSearchService === "undefined" || !AppSearchService.coreApps)
+            return [];
+        return AppSearchService.coreApps;
+    }
+
+    function launchCoreApp(item) {
+        if (!item || typeof AppSearchService === "undefined" || !AppSearchService.executeCoreApp)
+            return false;
+        if (!AppSearchService.executeCoreApp(item))
+            return false;
+        root.closeMenu();
+        return true;
+    }
+
     function getAvailableApps() {
+        const core = getCoreApps();
         let apps = AppSearchService.getVisibleApplications() || [];
         if (apps.length === 0 && typeof DesktopEntries !== "undefined" && DesktopEntries.applications)
             apps = DesktopEntries.applications.values || [];
 
-        return apps;
+        return core.concat(apps);
     }
 
     function resolveApp(queryText) {
@@ -1288,13 +1307,32 @@ Item {
             return;
         }
 
-        // Apps mode (default)
+        // Apps mode (default). Include DMS core apps (Settings, Notepad, …)
+        // which live in AppSearchService.coreApps, not desktop files.
+        const coreHits = (typeof AppSearchService !== "undefined" && AppSearchService.getCoreApps)
+            ? (AppSearchService.getCoreApps(q) || []) : [];
         const hits = AppSearchService.searchApplications(q) || [];
         const out = [];
+        const seen = {};
+        for (let i = 0; i < coreHits.length; i++) {
+            const row = toRow(coreHits[i]);
+            if (!row || !row.name)
+                continue;
+            const k = row.id || row.name;
+            if (seen[k])
+                continue;
+            seen[k] = true;
+            out.push(row);
+        }
         for (let i = 0; i < hits.length; i++) {
             const row = toRow(hits[i]);
-            if (row && row.name)
-                out.push(row);
+            if (!row || !row.name)
+                continue;
+            const k = row.id || row.name;
+            if (seen[k])
+                continue;
+            seen[k] = true;
+            out.push(row);
         }
 
         const webRow = {
@@ -1319,6 +1357,15 @@ Item {
     }
 
     function launchById(id) {
+        const cores = getCoreApps();
+        for (let i = 0; i < cores.length; i++) {
+            const app = cores[i];
+            if (app && (app.builtInPluginId === id || app.id === id || app.action === id)) {
+                launchCoreApp(app);
+                return;
+            }
+        }
+
         const entry = lookupEntry(id);
         if (!entry)
             return;
@@ -1411,6 +1458,11 @@ Item {
 
         root.contextMenuVisible = false;
 
+        if (item.isCore) {
+            launchCoreApp(item);
+            return;
+        }
+
         const appId = item.id || "";
         const entry = appId ? lookupEntry(appId) : null;
 
@@ -1492,6 +1544,10 @@ Item {
     function launchItem(item) {
         if (!item)
             return;
+        if (item.isCore) {
+            launchCoreApp(item);
+            return;
+        }
         if (item.isWeb && item.url) {
             Quickshell.execDetached(["xdg-open", item.url]);
             root.closeMenu();

@@ -51,8 +51,25 @@ pause_live_sync() {
 resume_live_sync() {
     rm -f "$APPLY_LOCK"
     if is_live_run && command -v systemctl >/dev/null; then
+        # A previous start-limit-hit leaves both units failed; start alone
+        # will not revive the path watcher.
+        systemctl --user reset-failed dms-theme-sync.service dms-theme-sync.path 2>/dev/null || true
         systemctl --user start dms-theme-sync.path 2>/dev/null || true
     fi
+}
+
+# DMS writes settings.json several times on startup. Hold the apply lock
+# until that burst is over so the path unit does not stampede.
+schedule_resume_live_sync() {
+    if ! is_live_run; then
+        resume_live_sync
+        return
+    fi
+    (
+        sleep 2
+        resume_live_sync
+    ) &
+    disown
 }
 
 list_themes() {
@@ -356,6 +373,12 @@ def find_variant(options, vid):
             return item
     return None
 
+def find_accent(accents, aid):
+    for item in accents or []:
+        if item.get("id") == aid:
+            return item
+    return None
+
 dark = light = None
 if name == "custom" and custom_file and Path(custom_file).exists():
     theme_data = json.loads(Path(custom_file).read_text())
@@ -374,10 +397,16 @@ if name == "custom" and custom_file and Path(custom_file).exists():
         stored_light = stored_light or light_def
         dark_flavor = find_variant(variants.get("flavors"), stored_dark.get("flavor") or dark_def.get("flavor"))
         light_flavor = find_variant(variants.get("flavors"), stored_light.get("flavor") or light_def.get("flavor"))
+        dark_accent = find_accent(variants.get("accents"), stored_dark.get("accent") or dark_def.get("accent"))
+        light_accent = find_accent(variants.get("accents"), stored_light.get("accent") or light_def.get("accent"))
         if dark_flavor:
             dark = merge(dark, dark_flavor.get("dark") or {})
+            if dark_accent:
+                dark = merge(dark, dark_accent.get(dark_flavor.get("id")) or {})
         if light_flavor:
             light = merge(light, light_flavor.get("light") or {})
+            if light_accent:
+                light = merge(light, light_accent.get(light_flavor.get("id")) or {})
     elif variants.get("options"):
         vid = stored if isinstance(stored, str) else variants.get("default")
         variant = find_variant(variants.get("options"), vid)
@@ -413,6 +442,11 @@ if dark and dark.get("primary"):
     matugen_type = (light if is_light else dark).get("matugen_type") or scheme
     cmd += ["--kind", "hex", "--value", str(primary), "--matugen-type", str(matugen_type),
             "--stock-colors", json.dumps(stock)]
+elif name == "custom" and custom_file:
+    # Multi-flavor themes store primary on the accent, not the base object.
+    # Falling back to wallpaper here is what made Ghostty look "random"
+    # after a windows-11 <-> windows-10 switch.
+    sys.exit(0)
 else:
     wallpaper = session.get("wallpaperPath") or ""
     if not wallpaper:
@@ -429,12 +463,16 @@ PY
         echo -e "  ${RED}!${NC} matugen generate failed (colors may stay stale)"
     fi
 
-    if command -v pgrep >/dev/null; then
-        local pid
-        while read -r pid; do
-            [[ -n "$pid" ]] && kill -USR2 "$pid" 2>/dev/null || true
-        done < <(pgrep -x ghostty || true)
-    fi
+    reload_ghostty
+}
+
+reload_ghostty() {
+    is_live_run || return 0
+    command -v pgrep >/dev/null || return 0
+    local pid
+    while read -r pid; do
+        [[ -n "$pid" ]] && kill -USR2 "$pid" 2>/dev/null || true
+    done < <(pgrep -x ghostty || true)
 }
 
 apply_theme() {
@@ -544,8 +582,18 @@ apply_theme() {
         hyprctl eval "_G.floating_mode_restore_from_cache()" &>/dev/null || true
     fi
 
-    resume_live_sync
+    # FileView loads custom themes asynchronously after DMS starts, so
+    # poke Ghostty again once templates have had a chance to rewrite.
+    if is_live_run; then
+        (
+            sleep 2
+            reload_ghostty
+        ) &
+        disown
+    fi
+
     trap - EXIT
+    schedule_resume_live_sync
     echo -e "${BOLD}${GREEN}Successfully activated theme: ${target}${NC}"
 }
 
