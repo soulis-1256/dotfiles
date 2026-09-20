@@ -393,7 +393,7 @@ var MATERIAL_TO_LUCIDE = {
     "report": "octagon-alert",
     "resize": "scaling",
     "responsive_layout": "smartphone",
-    "restart_alt": "circle",
+    "restart_alt": "rotate-ccw",
     "restore": "undo-2",
     "rewind": "rewind",
     "rounded_corner": "square",

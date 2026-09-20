@@ -171,6 +171,7 @@ Item {
     readonly property real dragSlowLeaveSpeed: startDrag.slowLeave
     readonly property int dragSlowHoldMs: startDrag.slowHoldMs
     readonly property real dragFolderSpeedMin: startDrag.folderSpeedMin
+    readonly property int dragStartThreshold: startDrag.startThreshold
     property real dragPointerSpeed: 0
     property real dragLastMouseX: 0
     property real dragLastMouseY: 0
@@ -3989,7 +3990,7 @@ Item {
                                     onPositionChanged: function(mouse) {
                                         if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                            if (!root.isDraggingTile && !draggingStarted && dist > 3) {
+                                            if (!root.isDraggingTile && !draggingStarted && dist > root.dragStartThreshold) {
                                                 draggingStarted = true;
                                                 preventStealing = true;
                                                 var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
@@ -4190,7 +4191,7 @@ Item {
                                     onPositionChanged: function(mouse) {
                                         if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                            if (!root.isDraggingTile && !draggingStarted && dist > 3) {
+                                            if (!root.isDraggingTile && !draggingStarted && dist > root.dragStartThreshold) {
                                                 draggingStarted = true;
                                                 preventStealing = true;
                                                 var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);

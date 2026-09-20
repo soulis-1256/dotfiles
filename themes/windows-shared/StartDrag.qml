@@ -7,6 +7,9 @@ QtObject {
     readonly property real slowLeave: 480
     readonly property int slowHoldMs: 80
     readonly property real folderSpeedMin: 360
+    // Minimum pointer travel (px) before a press becomes a tile drag.
+    // Gives headroom for slightly shaky clicks so a 1px slip never starts a drag.
+    readonly property int startThreshold: 10
     readonly property real folderHitRatio: 0.34
     readonly property int folderHitMin: 18
     readonly property int stickyPad: 10

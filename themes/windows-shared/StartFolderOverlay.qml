@@ -765,7 +765,7 @@ Item {
                                         return;
                                     if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                         var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                        if (!host.isDraggingTile && !draggingStarted && dist > 3) {
+                                        if (!host.isDraggingTile && !draggingStarted && dist > host.dragStartThreshold) {
                                             draggingStarted = true;
                                             preventStealing = true;
                                             var gp = mapToItem(overlay.coordinateItem, mouse.x, mouse.y);

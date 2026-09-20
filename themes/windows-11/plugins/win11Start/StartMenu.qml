@@ -191,6 +191,7 @@ Item {
     readonly property real dragSlowLeaveSpeed: startDrag.slowLeave
     readonly property int dragSlowHoldMs: startDrag.slowHoldMs
     readonly property real dragFolderSpeedMin: startDrag.folderSpeedMin
+    readonly property int dragStartThreshold: startDrag.startThreshold
     property real dragPointerSpeed: 0
     property real dragLastMouseX: 0
     property real dragLastMouseY: 0
@@ -2432,6 +2433,33 @@ Item {
                         }
                     }
 
+                    // Back to main menu button (always visible, like win10)
+                    Item {
+                        width: 32
+                        height: 32
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 4
+                            color: searchBackHover.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+                        }
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "arrow_back"
+                            size: 16
+                            color: searchBackHover.containsMouse ? root.winText : root.winMuted
+                        }
+
+                        MouseArea {
+                            id: searchBackHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.exitSearchMode()
+                        }
+                    }
+
                 }
             }
 
@@ -3005,15 +3033,15 @@ Item {
 
                 Rectangle {
                     id: settingsActionRow
-                    width: 40
-                    height: 40
+                    width: 42
+                    height: 42
                     radius: 8
                     color: settingsHover.containsMouse ? root.winHover : "transparent"
 
                     DankIcon {
                         anchors.centerIn: parent
                         name: "settings"
-                        size: 18
+                        size: 20
                         color: root.winText
                     }
 
@@ -3031,15 +3059,15 @@ Item {
 
                 Rectangle {
                     id: powerActionRow
-                    width: 40
-                    height: 40
+                    width: 42
+                    height: 42
                     radius: 8
                     color: powerHover.containsMouse || root.powerMenuOpen ? root.winHover : "transparent"
 
                     DankIcon {
                         anchors.centerIn: parent
                         name: "power_settings_new"
-                        size: 18
+                        size: 20
                         color: root.winText
                     }
 
@@ -3063,7 +3091,7 @@ Item {
         Item {
             id: powerFlyout
 
-            width: 220
+            width: Math.max(powerSleepRow.implicitWidth, powerRestartRow.implicitWidth, powerShutdownRow.implicitWidth, powerLockRow.implicitWidth) + 8
             height: powerCol.implicitHeight + 8
             x: parent.width - width - 12
             y: footerBar.y - height - 6
@@ -3099,24 +3127,28 @@ Item {
                     spacing: 0
 
                     PowerRow {
+                        id: powerSleepRow
                         iconName: "bedtime"
                         label: "Sleep"
                         onClicked: root.doPower("suspend")
                     }
 
                     PowerRow {
+                        id: powerRestartRow
                         iconName: "restart_alt"
                         label: "Restart"
                         onClicked: root.doPower("reboot")
                     }
 
                     PowerRow {
+                        id: powerShutdownRow
                         iconName: "power_settings_new"
                         label: "Shut down"
                         onClicked: root.doPower("poweroff")
                     }
 
                     PowerRow {
+                        id: powerLockRow
                         iconName: "lock"
                         label: "Lock"
                         onClicked: root.doPower("lock")
@@ -3158,7 +3190,7 @@ Item {
         Item {
             id: userFlyout
 
-            width: 220
+            width: Math.max(userAccountRow.implicitWidth, userLockRow.implicitWidth, userSignOutRow.implicitWidth) + 8
             height: userCol.implicitHeight + 8
             x: 16
             y: footerBar.y - height - 6
@@ -3194,6 +3226,7 @@ Item {
                     spacing: 0
 
                     PowerRow {
+                        id: userAccountRow
                         iconName: "manage_accounts"
                         label: "Account settings"
                         onClicked: {
@@ -3203,12 +3236,14 @@ Item {
                     }
 
                     PowerRow {
+                        id: userLockRow
                         iconName: "lock"
                         label: "Lock"
                         onClicked: root.doPower("lock")
                     }
 
                     PowerRow {
+                        id: userSignOutRow
                         iconName: "logout"
                         label: "Sign out"
                         onClicked: root.doPower("logout")
@@ -3472,7 +3507,8 @@ Item {
         signal clicked()
 
         width: parent.width
-        height: 34
+        height: 38
+        implicitWidth: 12 + prIcon.implicitWidth + 10 + prLabel.implicitWidth + 12
 
         Rectangle {
             anchors.fill: parent
@@ -3487,19 +3523,20 @@ Item {
             anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             name: pr.iconName
-            size: 16
+            size: 18
             color: root.winText
         }
 
         StyledText {
+            id: prLabel
             anchors.left: prIcon.right
             anchors.leftMargin: 10
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             text: pr.label
             color: root.winText
-            font.pixelSize: 12
+            font.pixelSize: 13
             elide: Text.ElideRight
         }
 
@@ -3988,7 +4025,7 @@ Item {
                                     onPositionChanged: function(mouse) {
                                         if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                            if (!root.isDraggingTile && !draggingStarted && dist > 3) {
+                                            if (!root.isDraggingTile && !draggingStarted && dist > root.dragStartThreshold) {
                                                 draggingStarted = true;
                                                 preventStealing = true;
                                                 var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);
@@ -4188,7 +4225,7 @@ Item {
                                     onPositionChanged: function(mouse) {
                                         if (pressed && (mouse.buttons & Qt.LeftButton)) {
                                             var dist = Math.hypot(mouse.x - pressPos.x, mouse.y - pressPos.y);
-                                            if (!root.isDraggingTile && !draggingStarted && dist > 3) {
+                                            if (!root.isDraggingTile && !draggingStarted && dist > root.dragStartThreshold) {
                                                 draggingStarted = true;
                                                 preventStealing = true;
                                                 var globalPos = mapToItem(menuBackground, mouse.x, mouse.y);

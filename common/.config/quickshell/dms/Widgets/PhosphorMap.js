@@ -395,7 +395,7 @@ var MATERIAL_TO_PHOSPHOR = {
     "report": "warning-octagon",
     "resize": "arrows-out-simple",
     "responsive_layout": "device-mobile",
-    "restart_alt": "circle",
+    "restart_alt": "arrow-clockwise",
     "restore": "arrow-counter-clockwise",
     "rewind": "rewind",
     "rounded_corner": "square",
