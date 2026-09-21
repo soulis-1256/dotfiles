@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Rebuild Nero-Matugen cursor theme from live matugen primary (or $1 hex).
+# Usage: nero-matugen-build [#rrggbb] [size]
+set -euo pipefail
+
+COLOR="${1:-}"
+
+if [[ -n "${2:-}" ]]; then
+  SIZE="$2"
+else
+  BASE_SIZE=$(python3 -c "
+import json
+try:
+    d = json.load(open('$HOME/.config/DankMaterialShell/settings.json'))
+    cs = d.get('cursorSettings', {})
+    val = cs.get('size') if isinstance(cs, dict) else None
+    print(val or d.get('cursorSize') or 24)
+except Exception:
+    print(24)
+" 2>/dev/null || echo 24)
+  # Nero diamond geometry reads smaller than traditional pointers,
+  # so apply +12 offset specifically for Nero.
+  SIZE=$(( BASE_SIZE + 12 ))
+fi
+
+if [[ -n "$COLOR" ]]; then
+  python3 ~/.local/share/nero-matugen/build.py \
+    ~/.local/share/nero-matugen/frames ~/.icons/Nero-Matugen "$COLOR"
+else
+  python3 ~/.local/share/nero-matugen/build.py \
+    ~/.local/share/nero-matugen/frames ~/.icons/Nero-Matugen
+fi
+
+# Hyprland caches cursor textures: same name+size won't refresh from disk,
+# so bounce through another theme to force a reload.
+hyprctl setcursor default "$SIZE" >/dev/null 2>&1 || true
+hyprctl setcursor Nero-Matugen "$SIZE" 2>/dev/null || true
+echo "Nero-Matugen rebuilt (size ${SIZE} = default + 12). Pick Nero-Matugen in DMS Settings > Cursor to persist."
