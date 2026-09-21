@@ -205,9 +205,6 @@ def main():
     theme_dir = Path(sys.argv[2])
     color = sys.argv[3] if len(sys.argv) > 3 else live_primary()
     th, ts, tv = hex_to_hsv(color)
-    if ts < 0.15:
-        print('primary %s is near-gray, keeping cyan' % color)
-        return
     print('target %s (h=%.1f s=%.2f v=%.2f)' % (color, th * 360, ts, tv))
     cursors_dir = theme_dir / 'cursors'
     if theme_dir.exists():
