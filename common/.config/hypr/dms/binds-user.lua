@@ -117,15 +117,24 @@ local function toggle_floating()
 
 		if not was_floating then
 			-- Tiling -> Floating
-			if addr and _G.mosaic_explicit_floats then
+			_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
+			_G.mosaic_user_tiled = _G.mosaic_user_tiled or {}
+			if addr then
 				_G.mosaic_explicit_floats[addr] = true
+				_G.mosaic_user_tiled[addr] = nil
 			end
 			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
 			if _G.mosaic_enforce_float_geometry then
 				_G.mosaic_enforce_float_geometry(w)
 				hl.timer(function()
-					if _G.mosaic_enforce_float_geometry then
-						_G.mosaic_enforce_float_geometry(w)
+					if not addr or not _G.mosaic_enforce_float_geometry then
+						return
+					end
+					local ok, live = pcall(function()
+						return hl.get_window("address:" .. addr)
+					end)
+					if ok and live then
+						_G.mosaic_enforce_float_geometry(live)
 					end
 				end, { timeout = 50, type = "oneshot" })
 			end
@@ -138,9 +147,14 @@ local function toggle_floating()
 				end
 			end, { timeout = 30, type = "oneshot" })
 		else
-			-- Floating -> Tiling
-			if addr and _G.mosaic_explicit_floats then
-				_G.mosaic_explicit_floats[addr] = nil
+			-- Floating -> Tiling. Remember this so the layout does not
+			-- immediately pull a utility back out of the grid.
+			_G.mosaic_user_tiled = _G.mosaic_user_tiled or {}
+			if addr then
+				_G.mosaic_user_tiled[addr] = true
+				if _G.mosaic_explicit_floats then
+					_G.mosaic_explicit_floats[addr] = nil
+				end
 			end
 			hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
 			-- Poke mosaic to retile with the newly tiled window

@@ -174,6 +174,13 @@ local function live_window_by_addr(addr)
 	return nil
 end
 
+-- Assigned further down. Forward-declared so the layout pass can float a
+-- utility that reached recalculate, and so timers can re-resolve by address
+-- instead of holding a window object that expires when the client dies.
+local is_live_window
+local fresh_window
+local enforce_float_geometry
+
 local function get_work_area(mon)
 	local is_rotated = (mon.transform and (mon.transform % 2 == 1))
 	local scale = (mon.scale and mon.scale > 0) and mon.scale or 1
@@ -252,8 +259,10 @@ end
 --
 -- Registers mosaic as a first-class Hyprland layout (hl.layout.register,
 -- used as `lua:mosaic`). Windows stay TILED: the compositor calls recalculate
--- and owns geometry/animations/gaps. Floating windows (dialogs, file
--- managers via window rules, user Super+F floats) never reach recalculate.
+-- and owns geometry/animations/gaps. Floating windows should never reach
+-- recalculate. A utility that still shows up tiled (second launch of a
+-- single-instance app, no float rule yet) is floated and left out of the
+-- grid, unless the user tiled it with Super+F.
 -- When registration is unavailable, the legacy floating engine further below
 -- takes over automatically (guarded by M.real_available()).
 --------------------------------------------------------------------------------
@@ -772,10 +781,10 @@ local function place_returner(working, rid, by_id, cells, area, stacked)
 	return "append", #working, nil, nil
 end
 
--- Bucket order for layout targets (persistent, see above). Float archetypes
--- only appear here if the user manually untiled them, so they place as
--- neutral canvas. `stacked` selects the drop axis (y when portrait/narrow
--- rows, x otherwise) and must match mosaic_recalculate_inner's decision.
+-- Bucket order for layout targets (persistent, see above). A utility the
+-- user tiled with Super+F is the only float archetype that reaches here;
+-- it places as neutral canvas. `stacked` selects the drop axis (y when
+-- portrait/narrow rows, x otherwise) and must match mosaic_recalculate_inner.
 local function sort_layout_targets(targets, area, stacked)
 	layout_swap_pair = nil
 	layout_returner_ids = nil
@@ -2139,8 +2148,139 @@ local function arm_configure_settle_all()
 	end, { timeout = CONFIGURE_SETTLE_MS, type = "oneshot" })
 end
 
+-- Address -> os.clock of the last pull out of the grid. If it is still tiled
+-- on the next pass, give up: a tile rule put it back, and retrying every
+-- recalculate would loop. Cleared when the window closes.
+local eject_attempt = {}
+local eject_gave_up = {}
+
+_G.mosaic_user_tiled = _G.mosaic_user_tiled or {}
+
+local function user_wants_tiled(w)
+	local addr = spill_addr(w)
+	return addr and _G.mosaic_user_tiled[addr] == true
+end
+
+local function target_is_natural_float(w)
+	if not w or user_wants_tiled(w) then
+		return false
+	end
+	if is_ignorable(w) or has_fixed_size_rule(w) then
+		return true
+	end
+	local arch = classify_layout_window(w)
+	return arch and arch.float and true or false
+end
+
+local function note_explicit_float(w)
+	local addr = spill_addr(w)
+	if not addr then
+		return nil
+	end
+	_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
+	_G.mosaic_explicit_floats[addr] = true
+	local wid = nil
+	pcall(function()
+		wid = window_layout_id(w)
+	end)
+	if wid then
+		_G.mosaic_explicit_floats[wid] = true
+	end
+	return addr
+end
+
+local function release_natural_float(addr, fallback)
+	local live = fresh_window(addr)
+	if not live and is_live_window(fallback) then
+		live = fallback
+	end
+	if not live then
+		return false
+	end
+	local floating = false
+	pcall(function()
+		floating = live.floating and true or false
+	end)
+	if floating then
+		return true
+	end
+	local again = fresh_window(addr)
+	if not again and is_live_window(fallback) then
+		again = fallback
+	end
+	if not again then
+		return false
+	end
+	local ok = pcall(function()
+		hl.dispatch(hl.dsp.window.float({ window = again, action = "set" }))
+	end)
+	return ok
+end
+
+-- Drop utilities (and anything else that should float) out of this pass and
+-- float them. Super+F tiles stay. If floating does not stick, the next pass
+-- within 300ms places the window instead of looping.
+local function take_natural_floats(targets)
+	-- Register runs before these closures are assigned. That first
+	-- recalculate still has to place tiles; ejection starts on the next one.
+	if not fresh_window or not enforce_float_geometry or not is_live_window then
+		return targets or {}
+	end
+	local keep = {}
+	for _, t in ipairs(targets or {}) do
+		local w = nil
+		pcall(function()
+			w = t.window
+		end)
+		local eject = false
+		if w then
+			local ok, natural = pcall(target_is_natural_float, w)
+			eject = ok and natural or false
+		end
+		if not eject then
+			table.insert(keep, t)
+		else
+			local addr = note_explicit_float(w)
+			local now = os.clock()
+			local prev = addr and eject_attempt[addr]
+			if addr and eject_gave_up[addr] then
+				table.insert(keep, t)
+			elseif addr and prev and (now - prev) < 0.3 then
+				eject_gave_up[addr] = true
+				table.insert(keep, t)
+			else
+				local sent = release_natural_float(addr, w)
+				if not sent then
+					table.insert(keep, t)
+				else
+					if addr then
+						eject_attempt[addr] = now
+					end
+					local cls = "?"
+					pcall(function()
+						cls = tostring(w.class or w.initial_class or "?")
+					end)
+					log(string.format(">>> FLOAT-EJECT: %s addr=%s", cls, tostring(addr)))
+					if addr then
+						hl.timer(function()
+							if not from_this_load() then
+								return
+							end
+							local live = fresh_window(addr)
+							if live then
+								enforce_float_geometry(live)
+							end
+						end, { timeout = 30, type = "oneshot" })
+					end
+				end
+			end
+		end
+	end
+	return keep
+end
+
 local function mosaic_recalculate_inner(ctx)
-	local targets = (ctx and ctx.targets) or {}
+	local targets = take_natural_floats((ctx and ctx.targets) or {})
 	if #targets == 0 then
 		return
 	end
@@ -2923,19 +3063,64 @@ end
 -- geometric solver directly.
 M.solve_for_test = solve_mosaic
 
--- False only when the client is provably gone (mid-close). Unknown (nil)
--- counts as live so odd clients never get skipped by accident.
-local function is_live_window(w)
+-- False when the client is gone or the userdata has expired. A failed
+-- property read used to count as live, and the float enforcer then fired
+-- a burst of dispatches. Each one is a Hyprland notification:
+-- "window selector: window object is expired".
+is_live_window = function(w)
 	if not w then
 		return false
 	end
 	local ok, mapped = pcall(function()
 		return w.mapped
 	end)
-	if ok and mapped == false then
+	if not ok or mapped == false then
+		return false
+	end
+	local ok_addr, addr = pcall(function()
+		return w.address
+	end)
+	if not ok_addr or addr == nil then
 		return false
 	end
 	return true
+end
+
+-- Fresh userdata for this address. Never hand an expired object to a
+-- dispatcher, and never fall back to the active window: a selector that
+-- misses silently resizes whatever is focused.
+fresh_window = function(w_or_addr)
+	local addr = w_or_addr
+	if type(w_or_addr) ~= "string" then
+		addr = spill_addr(w_or_addr)
+	end
+	if not addr or addr == "" then
+		return nil
+	end
+	local ok, win = pcall(function()
+		return hl.get_window("address:" .. addr)
+	end)
+	if ok and is_live_window(win) and spill_addr(win) == addr then
+		return win
+	end
+	local scanned = live_window_by_addr(addr)
+	if is_live_window(scanned) and spill_addr(scanned) == addr then
+		return scanned
+	end
+	return nil
+end
+
+local function dispatch_on(addr, build, fallback)
+	local live = fresh_window(addr)
+	if not live and is_live_window(fallback) and (not addr or spill_addr(fallback) == addr) then
+		live = fallback
+	end
+	if not live then
+		return false
+	end
+	return pcall(function()
+		hl.dispatch(build(live))
+	end)
 end
 
 -- True when the workspace is in the loose cascade zone (landscape N>5):
@@ -2964,63 +3149,114 @@ local function in_cascade_zone(ws_id)
 end
 
 local function force_unmaximize(w)
-	pcall(function()
-		hl.dispatch(hl.dsp.window.fullscreen({
-			window = w, mode = "maximized", action = "unset", layout_aware = false,
-		}))
-		hl.dispatch(hl.dsp.window.fullscreen({
-			window = w, mode = "fullscreen", action = "unset", layout_aware = false,
-		}))
-		hl.dispatch(hl.dsp.window.fullscreen_state({
-			window = w, internal = 0, client = 0, action = "set", layout_aware = false,
-		}))
-		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "border_size", value = "unset" }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "rounding", value = "unset" }))
-	end)
+	local addr = spill_addr(w)
+	if not addr then
+		return
+	end
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.fullscreen({
+			window = live, mode = "maximized", action = "unset", layout_aware = false,
+		})
+	end, w)
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.fullscreen({
+			window = live, mode = "fullscreen", action = "unset", layout_aware = false,
+		})
+	end, w)
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.fullscreen_state({
+			window = live, internal = 0, client = 0, action = "set", layout_aware = false,
+		})
+	end, w)
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.set_prop({ window = live, prop = "border_size", value = "unset" })
+	end, w)
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.set_prop({ window = live, prop = "rounding", value = "unset" })
+	end, w)
 end
 
-local function enforce_float_geometry(w)
+enforce_float_geometry = function(w)
 	local addr = spill_addr(w)
 	if addr then
-		_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
-		_G.mosaic_explicit_floats[addr] = true
-		local fresh = live_window_by_addr(addr)
-		if fresh then w = fresh end
-	elseif not w then
-		w = hl.get_active_window()
-	end
-	if not w or not is_live_window(w) then
-		return
-	end
-	local wid = window_layout_id(w)
-	if wid then
-		_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
-		_G.mosaic_explicit_floats[wid] = true
-	end
-	if is_ignorable(w) then
-		return
-	end
-	if w.fullscreen == 2 then
-		return
-	end
-	if w.size then
-		local sx = w.size.x or 0
-		local sy = w.size.y or 0
-		if sx > 0 and sy > 0 and sx < 450 and sy < 350 then
+		local fresh = fresh_window(addr)
+		if fresh then
+			w = fresh
+		elseif not is_live_window(w) then
 			return
 		end
-	end
-	local cls = (w.class or w.initial_class or w.initialClass or ""):lower()
-	if cls:match("calc") then
+	elseif not is_live_window(w) then
 		return
 	end
+	addr = spill_addr(w)
+	if not addr then
+		return
+	end
+	_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
+	_G.mosaic_explicit_floats[addr] = true
+	local wid = nil
+	pcall(function()
+		wid = window_layout_id(w)
+	end)
+	if wid then
+		_G.mosaic_explicit_floats[wid] = true
+	end
 
-	local ws_id = w.workspace and w.workspace.id
+	local ws_id = nil
+	pcall(function()
+		ws_id = w.workspace and w.workspace.id
+	end)
 	if not ws_id then
 		local aws = hl.get_active_workspace()
 		ws_id = aws and aws.id
 	end
 	if not (ws_id and M.is_active(ws_id)) then
+		return
+	end
+
+	local floating = false
+	pcall(function()
+		floating = w.floating and true or false
+	end)
+	local maximized = false
+	pcall(function()
+		maximized = w.fullscreen == 2
+	end)
+	-- Already a maximized float: leave its size alone. A maximized tile
+	-- still has to leave the grid.
+	if maximized and floating then
+		return
+	end
+	if not floating then
+		dispatch_on(addr, function(live)
+			return hl.dsp.window.float({ window = live, action = "set" })
+		end, w)
+	end
+
+	local ignorable = false
+	pcall(function()
+		ignorable = is_ignorable(w)
+	end)
+	if ignorable then
+		return
+	end
+	local tiny = false
+	pcall(function()
+		if w.size then
+			local sx = w.size.x or 0
+			local sy = w.size.y or 0
+			if sx > 0 and sy > 0 and sx < 450 and sy < 350 then
+				tiny = true
+			end
+		end
+	end)
+	local calc = false
+	pcall(function()
+		local cls = (w.class or w.initial_class or w.initialClass or ""):lower()
+		calc = cls:match("calc") and true or false
+	end)
+	-- Dialogs keep the size the client asked for. They still must not tile.
+	if tiny or calc then
 		return
 	end
 
@@ -3037,26 +3273,46 @@ local function enforce_float_geometry(w)
 	local fx = wa.x + math.floor((wa.w - fw) / 2)
 	local fy = wa.y + math.floor((wa.h - fh) / 2) + th
 
-	pcall(function()
-		force_unmaximize(w)
-		if not w.floating then
-			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
-		end
-		hl.dispatch(hl.dsp.window.resize({
-			window = w,
+	force_unmaximize(w)
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.resize({
+			window = live,
 			x = fw,
 			y = ch,
 			relative = false,
-		}))
-		hl.dispatch(hl.dsp.window.move({
-			window = w,
+		})
+	end, w)
+	dispatch_on(addr, function(live)
+		return hl.dsp.window.move({
+			window = live,
 			x = fx,
 			y = fy,
-		}))
-	end)
+		})
+	end, w)
 end
 
 _G.mosaic_enforce_float_geometry = enforce_float_geometry
+
+-- Center now, and once more after map. The timer holds an address: the
+-- window object from window.open expires when a single-instance app
+-- destroys the duplicate it just mapped.
+local function arm_float_enforce(w)
+	local addr = spill_addr(w)
+	enforce_float_geometry(w)
+	if not addr then
+		return
+	end
+	hl.timer(function()
+		if not from_this_load() then
+			return
+		end
+		local live = fresh_window(addr)
+		if not live then
+			return
+		end
+		enforce_float_geometry(live)
+	end, { timeout = 80, type = "oneshot" })
+end
 
 -- Apply positions smoothly via Hyprland dispatcher
 function M.apply_workspace(ws_id)
@@ -4005,11 +4261,7 @@ hl.on("window.open", function(w)
 		end
 	end)
 	if is_float then
-		enforce_float_geometry(w)
-		hl.timer(function()
-			if not from_this_load() then return end
-			enforce_float_geometry(w)
-		end, { timeout = 80, type = "oneshot" })
+		arm_float_enforce(w)
 		return
 	end
 	spill_begin(w, num, ws_id, spill_addr(w), false)
@@ -4120,11 +4372,7 @@ hl.on("window.open", function(w)
 			end
 		end)
 		if is_float then
-			enforce_float_geometry(w)
-			hl.timer(function()
-				if not from_this_load() then return end
-				enforce_float_geometry(w)
-			end, { timeout = 80, type = "oneshot" })
+			arm_float_enforce(w)
 			return
 		end
 		schedule_recalculate(30)
@@ -4142,6 +4390,17 @@ end)
 hl.on("window.close", function(w)
 	if not from_this_load() then
 		return
+	end
+	local addr = spill_addr(w)
+	if addr then
+		eject_attempt[addr] = nil
+		eject_gave_up[addr] = nil
+		if _G.mosaic_user_tiled then
+			_G.mosaic_user_tiled[addr] = nil
+		end
+		if _G.mosaic_explicit_floats then
+			_G.mosaic_explicit_floats[addr] = nil
+		end
 	end
 	if real_layout_ok then
 		hl.timer(function()
