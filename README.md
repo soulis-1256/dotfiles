@@ -167,7 +167,7 @@ Without that, every rice that wants Windows-style reopen has to reverse-engineer
 
 ## Future Roadmap: Dynamic Cursor Theming & Hyprcursor Engine
 
-Currently, dynamic cursor theming (such as `Nero-Matugen`) operates by recoloring and compiling multi-size XCursor binaries (24px, 32px, 48px) via a Matugen post-hook whenever DMS generates a new palette, reading the active cursor size directly from DMS `settings.json`.
+Currently, dynamic cursor theming (such as `Nero-Matugen`) operates by recoloring and compiling multi-size XCursor binaries (24px, 32px, 48px) via a Matugen post-hook whenever DMS generates a new palette. The hook reads `cursorSettings.size` from DMS `settings.json` and adds 8px, so the Dank default of 24 uses Nero's 32px bitmap. Hyprland's generated `cursor.lua` applies that same size at login.
 
 ### Planned Exploration: Native Hyprcursor Vector Engine
 Because Wayland compositors require pre-rasterized ARGB pixel buffers for hardware cursors, color tokens cannot be evaluated at the cursor file level in real time. A more robust, first-class theming approach to explore in the future:

@@ -473,7 +473,8 @@ hl.layer_rule({
         }
 
         const themeName = settings.theme === "System Default" ? (SettingsData.systemDefaultCursorTheme || "") : settings.theme;
-        const size = settings.size || 24;
+        const baseSize = settings.size || 24;
+        const size = typeof SettingsData.effectiveCursorSize === "function" ? SettingsData.effectiveCursorSize(themeName, baseSize) : baseSize;
         const hideOnKeyPress = settings.hyprland?.hideOnKeyPress || false;
         const hideOnTouch = settings.hyprland?.hideOnTouch || false;
         const inactiveTimeout = settings.hyprland?.inactiveTimeout || 0;

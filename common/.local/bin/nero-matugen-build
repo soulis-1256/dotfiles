@@ -18,9 +18,10 @@ try:
 except Exception:
     print(24)
 " 2>/dev/null || echo 24)
-  # Nero diamond geometry reads smaller than traditional pointers,
-  # so apply +12 offset specifically for Nero.
-  SIZE=$(( BASE_SIZE + 12 ))
+  # Nero's diamond reads smaller than a normal pointer. +8 selects the
+  # 32px bitmap when Dank's size is 24. Keep this in sync with
+  # SettingsData.effectiveCursorSize.
+  SIZE=$(( BASE_SIZE + 8 ))
 fi
 
 if [[ -n "$COLOR" ]]; then
@@ -35,4 +36,4 @@ fi
 # so bounce through another theme to force a reload.
 hyprctl setcursor default "$SIZE" >/dev/null 2>&1 || true
 hyprctl setcursor Nero-Matugen "$SIZE" 2>/dev/null || true
-echo "Nero-Matugen rebuilt (size ${SIZE} = default + 12). Pick Nero-Matugen in DMS Settings > Cursor to persist."
+echo "Nero-Matugen rebuilt (size ${SIZE} = default + 8). Pick Nero-Matugen in DMS Settings > Cursor to persist."

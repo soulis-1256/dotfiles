@@ -2911,11 +2911,21 @@ Singleton {
         }
     }
 
+    // Nero's diamond reads small at Dank's nominal size. +8 selects the 32px
+    // bitmap when the setting is 24. The Ghostty matugen hook in
+    // nero-matugen-build uses the same offset.
+    function effectiveCursorSize(themeName, size) {
+        const base = size || 24;
+        if (themeName === "Nero-Matugen")
+            return base + 8;
+        return base;
+    }
+
     function updateXResources() {
         const homeDir = Paths.strip(StandardPaths.writableLocation(StandardPaths.HomeLocation));
         const xresourcesPath = homeDir + "/.Xresources";
         const themeName = cursorSettings.theme === "System Default" ? systemDefaultCursorTheme : cursorSettings.theme;
-        const size = cursorSettings.size || 24;
+        const size = effectiveCursorSize(themeName, cursorSettings.size || 24);
 
         if (!themeName)
             return;
@@ -2957,12 +2967,14 @@ Singleton {
 
     function getCursorEnvironment() {
         const isSystemDefault = cursorSettings.theme === "System Default";
-        const isDefaultSize = !cursorSettings.size || cursorSettings.size === 24;
+        const resolvedTheme = isSystemDefault ? (systemDefaultCursorTheme || "") : (cursorSettings.theme || "");
+        const sizeNum = effectiveCursorSize(resolvedTheme, cursorSettings.size || 24);
+        const isDefaultSize = sizeNum === 24;
         if (isSystemDefault && isDefaultSize)
             return {};
 
         const themeName = isSystemDefault ? "" : cursorSettings.theme;
-        const size = String(cursorSettings.size || 24);
+        const size = String(sizeNum);
         const env = {};
 
         if (!isDefaultSize) {
