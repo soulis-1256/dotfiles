@@ -287,20 +287,14 @@ end
 
 -- Arrangement vs compositor list.
 --
--- lua:mosaic cannot positional-reorder on drop. Hyprland's tiled drag
--- floats the window, then newTarget() re-appends it at the end of m_targets.
--- Keyboard movewindow DOES swap m_targets in place. So compositor order is
--- the truth for swaps/opens/closes, and a lie for mouse drops.
+-- Drag floats the window, then newTarget() re-appends it. Keyboard
+-- movewindow swaps two targets in place. Visual order lives in _G.
 --
--- During drag (shrink): Hyprland owns the floating window. Survivors hold
--- their last mosaic cells — no N-1 recast, no solo-fill jump.
--- After drop (returner): cursor slot (dwindle addTarget rule), persist that
--- order, recast mosaic. Quiet recalculates keep the persisted order even
--- though Hyprland still has the window appended, so the drop does not yank
--- back. A real compositor reorder (keyboard swap) is incoming != last
--- compositor list and is adopted.
--- Opens still rank-insert (zen left of ghostty). State lives in _G so a
--- reload does not snap everyone back to archetype order.
+-- Shrink (possible drag): hold the last cells. Close: the sibling takes
+-- that leaf. A new window on an already-duo workspace splits one leaf;
+-- the others stay put. 1→2 still uses the archetype duo.
+-- A compositor-list change is adopted only as a pairwise swap. Reloads,
+-- re-appends, and default-grid rebuilds keep the visual order.
 _G.mosaic_layout_order = _G.mosaic_layout_order or {} -- ws_key -> visual id order
 _G.mosaic_layout_compositor = _G.mosaic_layout_compositor or {} -- ws_key -> last incoming ids
 _G.mosaic_layout_prev_present = _G.mosaic_layout_prev_present or {} -- ws_key -> {id -> true}
@@ -308,6 +302,7 @@ _G.mosaic_layout_last_seen = _G.mosaic_layout_last_seen or {} -- ws_key -> {id -
 _G.mosaic_last_cells = _G.mosaic_last_cells or {} -- ws_key -> last FULL mosaic cells
 _G.mosaic_last_area = _G.mosaic_last_area or {} -- ws_key -> {x,y,w,h} of last place
 _G.mosaic_user_cells = _G.mosaic_user_cells or {} -- ws_key -> user-resized cells
+_G.mosaic_bsp = _G.mosaic_bsp or {} -- ws_key -> ratio tree (stable splits)
 local layout_order = _G.mosaic_layout_order
 local layout_compositor = _G.mosaic_layout_compositor
 local layout_prev_present = _G.mosaic_layout_prev_present
@@ -315,6 +310,9 @@ local layout_last_seen = _G.mosaic_layout_last_seen
 local layout_last_cells = _G.mosaic_last_cells
 local layout_last_area = _G.mosaic_last_area
 local layout_user_cells = _G.mosaic_user_cells
+local layout_bsp = _G.mosaic_bsp
+local layout_swap_pair = nil -- {id, id} set by the sorter for this recalc
+local layout_returner_ids = nil
 local LAYOUT_DRAG_GRACE = 2.0 -- s: floated-for-drag returns; closed never does
 
 -- Shrink poke: drag and close both look like n-1 on the first recalculate.
@@ -440,6 +438,53 @@ local function ids_copy(src)
 	local out = {}
 	for _, id in ipairs(src or {}) do
 		table.insert(out, id)
+	end
+	return out
+end
+
+-- Exactly two positions exchanged. Anything else (a full reshuffle, a
+-- re-append) is not a keyboard swap and must not replace visual order.
+local function swapped_pair(before, after)
+	if type(before) ~= "table" or type(after) ~= "table" then
+		return nil, nil
+	end
+	if #before ~= #after or #before < 2 then
+		return nil, nil
+	end
+	local i, j
+	for k = 1, #before do
+		if before[k] ~= after[k] then
+			if not i then
+				i = k
+			elseif not j then
+				j = k
+			else
+				return nil, nil
+			end
+		end
+	end
+	if not i or not j then
+		return nil, nil
+	end
+	if before[i] == after[j] and before[j] == after[i] then
+		return before[i], before[j]
+	end
+	return nil, nil
+end
+
+local function apply_id_swap(ids, a, b)
+	local out = ids_copy(ids)
+	local ia, ib
+	for k, id in ipairs(out) do
+		if id == a then
+			ia = k
+		end
+		if id == b then
+			ib = k
+		end
+	end
+	if ia and ib then
+		out[ia], out[ib] = out[ib], out[ia]
 	end
 	return out
 end
@@ -732,6 +777,8 @@ end
 -- neutral canvas. `stacked` selects the drop axis (y when portrait/narrow
 -- rows, x otherwise) and must match mosaic_recalculate_inner's decision.
 local function sort_layout_targets(targets, area, stacked)
+	layout_swap_pair = nil
+	layout_returner_ids = nil
 	-- Classify once per unique id; dedupe incoming keeping the LAST
 	-- occurrence (a dragged window re-appended at the end: latest = intent;
 	-- also collapses phantom slots so no cell is ever assigned twice).
@@ -828,6 +875,7 @@ local function sort_layout_targets(targets, area, stacked)
 		for _, rid in ipairs(returners) do
 			how, slot, cx, cy = place_returner(working, rid, by_id, cells, area, stacked)
 		end
+		layout_returner_ids = ids_copy(returners)
 		for _, id in ipairs(newcomers) do
 			rank_insert_into(working, id, by_id)
 		end
@@ -899,15 +947,35 @@ local function sort_layout_targets(targets, area, stacked)
 				trace_ids(incoming_ids, by_id), trace_ids(final_ids, by_id)))
 		end
 	else
-		-- Same set. If Hyprland's list did not change, keep the persisted
-		-- visual order (drop correction must survive later recalculates).
-		-- If Hyprland's list DID change, that is a keyboard swap: adopt it.
+		-- Same set. Keep the visual order. Adopt a compositor-list change
+		-- only when it is a pairwise swap, applied to that visual order.
+		-- A reload re-add or a drag re-append must not reshuffle anyone.
 		local last_comp = layout_compositor[key] or {}
-		if #prev == 0 or not ids_equal(incoming_ids, last_comp) then
+		local sa, sb = swapped_pair(last_comp, incoming_ids)
+		if #prev == 0 then
 			kind = "same"
 			shrink_seen[key] = nil
 			final_ids = incoming_ids
 			stored_ids = ids_copy(incoming_ids)
+		elseif sa then
+			kind = "swap"
+			shrink_seen[key] = nil
+			layout_swap_pair = { sa, sb }
+			final_ids = {}
+			for _, id in ipairs(prev) do
+				if present[id] then
+					table.insert(final_ids, id)
+				end
+			end
+			if #final_ids == 0 then
+				final_ids = incoming_ids
+			else
+				final_ids = apply_id_swap(final_ids, sa, sb)
+			end
+			stored_ids = ids_copy(final_ids)
+			trace_drop(string.format(
+				"ws=%s decision=swap incoming=[%s] final=[%s]",
+				tostring(key), trace_ids(incoming_ids, by_id), trace_ids(final_ids, by_id)))
 		else
 			kind = "quiet"
 			final_ids = {}
@@ -1375,6 +1443,702 @@ local function place_cells(ordered, cells)
 	end
 end
 
+-- {{{ mosaic-geom
+-- Ratio tree for n>=3. A new window splits one leaf; a close gives that
+-- leaf to its sibling. Rebuilding a fresh recipe per count is what made
+-- the third window fly across the screen.
+local function geom_clamp(val, min_v, max_v)
+	return math.max(min_v, math.min(max_v, val))
+end
+
+local function bounds_of_ids(cells, ids)
+	local x1, y1, x2, y2
+	for _, id in ipairs(ids) do
+		local b = cells[id]
+		if not b or not tonumber(b.w) or not tonumber(b.h) then
+			return nil
+		end
+		local r = b.x + b.w
+		local bot = b.y + b.h
+		if not x1 or b.x < x1 then x1 = b.x end
+		if not y1 or b.y < y1 then y1 = b.y end
+		if not x2 or r > x2 then x2 = r end
+		if not y2 or bot > y2 then y2 = bot end
+	end
+	if not x1 then
+		return nil
+	end
+	return { x = x1, y = y1, w = x2 - x1, h = y2 - y1 }
+end
+
+local function scale_cells(cells, from, to)
+	if type(cells) ~= "table" or type(from) ~= "table" or type(to) ~= "table" then
+		return
+	end
+	local fw = tonumber(from.w) or tonumber(from.width)
+	local fh = tonumber(from.h) or tonumber(from.height)
+	local tw = tonumber(to.w) or tonumber(to.width)
+	local th = tonumber(to.h) or tonumber(to.height)
+	local fx = tonumber(from.x) or 0
+	local fy = tonumber(from.y) or 0
+	local tx = tonumber(to.x) or 0
+	local ty = tonumber(to.y) or 0
+	if not fw or not fh or not tw or not th or fw == 0 or fh == 0 then
+		return
+	end
+	for _, b in pairs(cells) do
+		if type(b) == "table" and tonumber(b.x) and tonumber(b.w) and tonumber(b.h) then
+			local rx = (b.x - fx) / fw
+			local ry = (b.y - fy) / fh
+			b.x = tx + rx * tw
+			b.y = ty + ry * th
+			b.w = (b.w / fw) * tw
+			b.h = (b.h / fh) * th
+		end
+	end
+end
+
+-- Cluster edges that already agree, pin the outside to the work area, and
+-- round the shared cuts to a pixel so gaps_in sees a real outer edge.
+local SNAP_EDGE = 1.5
+local function snap_cells(cells, ordered, area)
+	if type(area) ~= "table" then
+		return
+	end
+	local ax = tonumber(area.x) or 0
+	local ay = tonumber(area.y) or 0
+	local aw = tonumber(area.w) or tonumber(area.width)
+	local ah = tonumber(area.h) or tonumber(area.height)
+	if not aw or not ah then
+		return
+	end
+	local ar, ab = ax + aw, ay + ah
+	local function canonical(raw, lo_edge, hi_edge)
+		local order = {}
+		for i, v in ipairs(raw) do
+			order[i] = { i = i, v = v }
+		end
+		table.sort(order, function(p, q) return p.v < q.v end)
+		local pos = {}
+		local group = {}
+		local function flush()
+			if #group == 0 then
+				return
+			end
+			local s = 0
+			for _, i in ipairs(group) do
+				s = s + raw[i]
+			end
+			local m = s / #group
+			if math.abs(m - lo_edge) <= SNAP_EDGE then
+				m = lo_edge
+			elseif math.abs(m - hi_edge) <= SNAP_EDGE then
+				m = hi_edge
+			else
+				m = math.floor(m + 0.5)
+			end
+			for _, i in ipairs(group) do
+				pos[i] = m
+			end
+		end
+		local anchor = nil
+		for _, item in ipairs(order) do
+			if anchor and math.abs(item.v - anchor) > SNAP_EDGE then
+				flush()
+				group = {}
+				anchor = nil
+			end
+			if not anchor then
+				anchor = item.v
+			end
+			table.insert(group, item.i)
+		end
+		flush()
+		return pos
+	end
+	local xs, ys, refs = {}, {}, {}
+	for _, e in ipairs(ordered or {}) do
+		local b = e and cells[e.id]
+		if b and tonumber(b.w) and tonumber(b.h) then
+			local ix = #xs + 1
+			table.insert(xs, b.x)
+			table.insert(xs, b.x + b.w)
+			local iy = #ys + 1
+			table.insert(ys, b.y)
+			table.insert(ys, b.y + b.h)
+			table.insert(refs, { b = b, xi = ix, yi = iy })
+		end
+	end
+	if #refs == 0 then
+		return
+	end
+	local cx = canonical(xs, ax, ar)
+	local cy = canonical(ys, ay, ab)
+	for _, ref in ipairs(refs) do
+		local x1 = cx[ref.xi]
+		local x2 = cx[ref.xi + 1]
+		local y1 = cy[ref.yi]
+		local y2 = cy[ref.yi + 1]
+		if x2 <= x1 then x2 = x1 + 1 end
+		if y2 <= y1 then y2 = y1 + 1 end
+		ref.b.x, ref.b.w = x1, x2 - x1
+		ref.b.y, ref.b.h = y1, y2 - y1
+	end
+end
+
+local function bsp_copy(node)
+	if not node then
+		return nil
+	end
+	if node.t == "leaf" then
+		return { t = "leaf", id = node.id }
+	end
+	return { t = node.t, r = node.r, a = bsp_copy(node.a), b = bsp_copy(node.b) }
+end
+
+local function bsp_idset(node, out)
+	out = out or {}
+	if not node then
+		return out
+	end
+	if node.t == "leaf" then
+		out[node.id] = true
+		return out
+	end
+	bsp_idset(node.a, out)
+	bsp_idset(node.b, out)
+	return out
+end
+
+local function bsp_matches(node, ordered)
+	local set = bsp_idset(node)
+	local n = 0
+	for _ in pairs(set) do
+		n = n + 1
+	end
+	if n ~= #ordered then
+		return false
+	end
+	for _, e in ipairs(ordered) do
+		local id = (type(e) == "table" and e.id) or e
+		if not set[id] then
+			return false
+		end
+	end
+	return true
+end
+
+local function bsp_ratio(node)
+	local r = node and tonumber(node.r) or 0.5
+	if r ~= r or r <= 0.02 or r >= 0.98 then
+		return 0.5
+	end
+	return r
+end
+
+local function bsp_cells(node, box, out)
+	out = out or {}
+	if not node or type(box) ~= "table" then
+		return out
+	end
+	if node.t == "leaf" then
+		out[node.id] = { x = box.x, y = box.y, w = box.w, h = box.h }
+		return out
+	end
+	local r = bsp_ratio(node)
+	if node.t == "v" then
+		local lw = box.w * r
+		bsp_cells(node.a, { x = box.x, y = box.y, w = lw, h = box.h }, out)
+		bsp_cells(node.b, { x = box.x + lw, y = box.y, w = box.w - lw, h = box.h }, out)
+	else
+		local th = box.h * r
+		bsp_cells(node.a, { x = box.x, y = box.y, w = box.w, h = th }, out)
+		bsp_cells(node.b, { x = box.x, y = box.y + th, w = box.w, h = box.h - th }, out)
+	end
+	return out
+end
+
+local function bsp_remove(node, id)
+	if not node then
+		return nil
+	end
+	if node.t == "leaf" then
+		if node.id == id then
+			return nil
+		end
+		return node
+	end
+	node.a = bsp_remove(node.a, id)
+	node.b = bsp_remove(node.b, id)
+	if not node.a then
+		return node.b
+	end
+	if not node.b then
+		return node.a
+	end
+	return node
+end
+
+local function bsp_split(node, host_id, new_id, dir, ratio, new_on_a)
+	if not node then
+		return nil
+	end
+	if node.t == "leaf" then
+		if node.id ~= host_id then
+			return node
+		end
+		local neu = { t = "leaf", id = new_id }
+		local old = { t = "leaf", id = host_id }
+		if new_on_a then
+			return { t = dir, r = ratio, a = neu, b = old }
+		end
+		return { t = dir, r = ratio, a = old, b = neu }
+	end
+	node.a = bsp_split(node.a, host_id, new_id, dir, ratio, new_on_a)
+	node.b = bsp_split(node.b, host_id, new_id, dir, ratio, new_on_a)
+	return node
+end
+
+local function bsp_swap(node, a, b)
+	if not node or a == nil or b == nil or a == b then
+		return
+	end
+	if node.t == "leaf" then
+		if node.id == a then
+			node.id = b
+		elseif node.id == b then
+			node.id = a
+		end
+		return
+	end
+	bsp_swap(node.a, a, b)
+	bsp_swap(node.b, a, b)
+end
+
+local function best_cut(cells, ids, axis, bounds)
+	local lo = axis == "v" and bounds.x or bounds.y
+	local hi = axis == "v" and (bounds.x + bounds.w) or (bounds.y + bounds.h)
+	local span = hi - lo
+	if span <= 8 then
+		return nil
+	end
+	local cand, seen = {}, {}
+	for _, id in ipairs(ids) do
+		local b = cells[id]
+		local edge = axis == "v" and (b.x + b.w) or (b.y + b.h)
+		local key = math.floor(edge + 0.5)
+		if not seen[key] then
+			seen[key] = true
+			table.insert(cand, edge)
+		end
+	end
+	local best = nil
+	for _, cut in ipairs(cand) do
+		if cut > lo + 4 and cut < hi - 4 then
+			local left, right = {}, {}
+			local ok = true
+			for _, id in ipairs(ids) do
+				local b = cells[id]
+				local a = axis == "v" and b.x or b.y
+				local c = axis == "v" and (b.x + b.w) or (b.y + b.h)
+				if c <= cut + 2 then
+					table.insert(left, id)
+				elseif a >= cut - 2 then
+					table.insert(right, id)
+				else
+					ok = false
+					break
+				end
+			end
+			if ok and #left > 0 and #right > 0 then
+				local dist = math.abs(cut - (lo + hi) / 2)
+				if not best or dist < best.dist then
+					best = { left = left, right = right, ratio = (cut - lo) / span, dist = dist, axis = axis }
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function tree_from_cells(cells, ids)
+	if not ids or #ids == 0 then
+		return nil
+	end
+	local function build(group)
+		if #group == 1 then
+			if not cells[group[1]] then
+				return nil
+			end
+			return { t = "leaf", id = group[1] }
+		end
+		local b = bounds_of_ids(cells, group)
+		if not b then
+			return nil
+		end
+		local order = (b.w >= b.h) and { "v", "h" } or { "h", "v" }
+		for _, axis in ipairs(order) do
+			local cut = best_cut(cells, group, axis, b)
+			if cut then
+				local left = build(cut.left)
+				local right = build(cut.right)
+				if left and right then
+					return { t = axis, r = cut.ratio, a = left, b = right }
+				end
+			end
+		end
+		return nil
+	end
+	return build(ids)
+end
+
+-- Largest leaf, biased toward the right so a tie doesn't slide the left
+-- window. A sidebar newcomer docks into the tallest left-edge leaf.
+local function pick_split_host(cells, entries, area, newcomer_arch)
+	if not area then
+		return nil
+	end
+	local ax = tonumber(area.x) or 0
+	if newcomer_arch and newcomer_arch.name == "sidebar" then
+		local best, best_h = nil, nil
+		for _, e in ipairs(entries or {}) do
+			local b = cells[e.id]
+			if b and math.abs(b.x - ax) <= 2 and (not best_h or b.h > best_h) then
+				best, best_h = e.id, b.h
+			end
+		end
+		if best then
+			return best
+		end
+	end
+	local best, best_score = nil, nil
+	local function consider(allow_sidebar)
+		for _, e in ipairs(entries or {}) do
+			local name = e.archetype and e.archetype.name or ""
+			if allow_sidebar or name ~= "sidebar" then
+				local b = cells[e.id]
+				if b and b.w and b.h and b.w > 0 and b.h > 0 then
+					local score = b.w * b.h + (b.x - ax) * 0.01 + ((b.y - (tonumber(area.y) or 0)) * 0.001)
+					if not best_score or score > best_score then
+						best, best_score = e.id, score
+					end
+				end
+			end
+		end
+	end
+	consider(false)
+	if not best then
+		consider(true)
+	end
+	return best
+end
+
+local function split_params(host_box, arch, area)
+	local name = arch and arch.name or ""
+	if name == "sidebar" and host_box and host_box.w and host_box.w > 1 then
+		local frac = sidebar_frac_for(arch, area and area.w)
+		local want = frac * ((area and area.w) or host_box.w)
+		local ratio = geom_clamp(want / host_box.w, 0.28, 0.72)
+		return "v", ratio, true
+	end
+	if host_box and host_box.w and host_box.h and host_box.w >= host_box.h then
+		return "v", 0.5, false
+	end
+	return "h", 0.5, false
+end
+
+local function returner_split_params(host_box, cx, cy)
+	if not host_box or not host_box.w or not host_box.h then
+		return "v", 0.5, false
+	end
+	if host_box.w >= host_box.h then
+		local on_left = cx and cx < (host_box.x + host_box.w / 2)
+		return "v", 0.5, on_left and true or false
+	end
+	local on_top = cy and cy < (host_box.y + host_box.h / 2)
+	return "h", 0.5, on_top and true or false
+end
+-- }}} mosaic-geom
+
+local pending_bsp = nil
+local active_resized = false
+
+local function area_box(area)
+	if type(area) ~= "table" then
+		return nil
+	end
+	local x = tonumber(area.x) or 0
+	local y = tonumber(area.y) or 0
+	local w = tonumber(area.w) or tonumber(area.width)
+	local h = tonumber(area.h) or tonumber(area.height)
+	if not w or not h or w <= 1 or h <= 1 then
+		return nil
+	end
+	return { x = x, y = y, w = w, h = h }
+end
+
+local function cells_cover(cells, ordered, area)
+	local ids = {}
+	for _, e in ipairs(ordered) do
+		table.insert(ids, e.id)
+	end
+	local b = bounds_of_ids(cells, ids)
+	if not b then
+		return false
+	end
+	return area_same(b, area)
+end
+
+local function commit_tree_place(ordered, tree, box, tag)
+	local cells = bsp_cells(tree, box)
+	snap_cells(cells, ordered, box)
+	for _, e in ipairs(ordered) do
+		local b = cells[e.id]
+		if not b or not tonumber(b.w) or not tonumber(b.h) or b.w < 1 or b.h < 1 then
+			return false
+		end
+	end
+	place_cells(ordered, cells)
+	pending_bsp = tree
+	if tag then
+		trace_drop(tag)
+	end
+	return true
+end
+
+local function tree_for_workspace(wskey)
+	local tree = wskey and layout_bsp[wskey]
+	if tree then
+		return tree
+	end
+	local prev = wskey and layout_last_cells[wskey]
+	if type(prev) ~= "table" then
+		return nil
+	end
+	local ids = {}
+	for id, b in pairs(prev) do
+		if type(b) == "table" and tonumber(b.w) and tonumber(b.h) and b.w > 1 and b.h > 1 then
+			table.insert(ids, id)
+		end
+	end
+	if #ids == 0 then
+		return nil
+	end
+	return tree_from_cells(prev, ids)
+end
+
+local function insert_into_tree(cur, box, ordered, entry, use_cursor)
+	local cells = bsp_cells(cur, box)
+	local leaves = bsp_idset(cur)
+	local subset = {}
+	for _, e in ipairs(ordered) do
+		if leaves[e.id] then
+			table.insert(subset, { id = e.id, archetype = e.archetype })
+		end
+	end
+	local host = nil
+	local cx, cy = nil, nil
+	if use_cursor then
+		cx, cy = layout_cursor_pos()
+		if cx and area_contains(box, cx, cy) then
+			host = find_window_at(cells, subset, cx, cy)
+		end
+	end
+	if not host or not cells[host] then
+		host = pick_split_host(cells, subset, box, entry.archetype)
+	end
+	if not host or not cells[host] then
+		return nil
+	end
+	local dir, ratio, on_a
+	if use_cursor and cx then
+		dir, ratio, on_a = returner_split_params(cells[host], cx, cy)
+	else
+		dir, ratio, on_a = split_params(cells[host], entry.archetype, box)
+	end
+	return bsp_split(cur, host, entry.id, dir, ratio, on_a)
+end
+
+-- Drop leaves that left, reinsert dropped/new ids by splitting one leaf.
+local function refit_tree(tree, ordered, box, drop_ids, use_cursor, allow_insert)
+	local cur = bsp_copy(tree)
+	if not cur then
+		return nil
+	end
+	local want = {}
+	for _, e in ipairs(ordered) do
+		want[e.id] = true
+	end
+	for id in pairs(bsp_idset(cur)) do
+		if not want[id] then
+			cur = bsp_remove(cur, id)
+		end
+	end
+	for _, rid in ipairs(drop_ids or {}) do
+		cur = bsp_remove(cur, rid)
+	end
+	if not cur then
+		return nil
+	end
+	for _, e in ipairs(ordered) do
+		if not bsp_idset(cur)[e.id] then
+			if not allow_insert then
+				return nil
+			end
+			cur = insert_into_tree(cur, box, ordered, e, use_cursor)
+			if not cur then
+				return nil
+			end
+		end
+	end
+	if not bsp_matches(cur, ordered) then
+		return nil
+	end
+	return cur
+end
+
+local function try_stable_place(ordered, decision, wskey, area)
+	if not wskey or decision == "shrink" or decision == "quiet" then
+		return false
+	end
+	local box = area_box(area)
+	if not box then
+		return false
+	end
+	local n = #ordered
+	-- The second window still uses the archetype duo. That jump is expected.
+	if n <= 2 and (decision == "newcomer" or decision == "returner" or decision == "same") then
+		return false
+	end
+	if n < 2 then
+		return false
+	end
+	local tree = tree_for_workspace(wskey)
+	if not tree then
+		return false
+	end
+	local cur
+	if decision == "swap" then
+		if not layout_swap_pair then
+			return false
+		end
+		cur = refit_tree(tree, ordered, box, nil, false, false)
+		if not cur then
+			return false
+		end
+		bsp_swap(cur, layout_swap_pair[1], layout_swap_pair[2])
+	elseif decision == "returner" then
+		cur = refit_tree(tree, ordered, box, layout_returner_ids, true, true)
+	elseif decision == "newcomer" then
+		cur = refit_tree(tree, ordered, box, nil, false, true)
+	elseif decision == "close" or decision == "same" then
+		cur = refit_tree(tree, ordered, box, nil, false, false)
+	else
+		return false
+	end
+	if not cur or not bsp_matches(cur, ordered) then
+		return false
+	end
+	return commit_tree_place(ordered, cur, box, string.format(
+		"ws=%s stable=%s n=%d", tostring(wskey), tostring(decision), n))
+end
+
+local configure_gen = {}
+local CONFIGURE_SETTLE_MS = 280
+
+-- sendWindowSize skips a configure when the reported size is unchanged, so a
+-- client can keep a short buffer inside a correct box (the dms-restart hole).
+-- A 1px change forces a new configure; the following place restores the box.
+local function nudge_configure(wskey)
+	if _G.mosaic_resize_state or not active_boxes or not active_idmap then
+		return
+	end
+	local id_to_target = {}
+	for target, id in pairs(active_idmap) do
+		id_to_target[id] = target
+	end
+	local n = 0
+	for id, b in pairs(active_boxes) do
+		local t = id_to_target[id]
+		local h = b and tonumber(b.h)
+		local w = b and tonumber(b.w)
+		if t and h and w and h > 2 and w > 2 then
+			n = n + 1
+			pcall(function()
+				local win = t.window
+				if win then
+					hl.dispatch(hl.dsp.window.set_prop({ window = win, prop = "no_anim", value = "1" }))
+				end
+			end)
+			pcall(function()
+				t:place({ x = b.x, y = b.y, w = w, h = h - 1 })
+				t:place({ x = b.x, y = b.y, w = w, h = h })
+			end)
+			pcall(function()
+				local win = t.window
+				if win then
+					hl.dispatch(hl.dsp.window.set_prop({ window = win, prop = "no_anim", value = "unset" }))
+				end
+			end)
+		end
+	end
+	if n > 0 then
+		trace_drop(string.format("configure-nudge ws=%s n=%d", tostring(wskey), n))
+	end
+end
+
+local function arm_configure_settle(key)
+	if not key or key == "ws:__shared__" then
+		return
+	end
+	configure_gen[key] = (configure_gen[key] or 0) + 1
+	local gen = configure_gen[key]
+	hl.timer(function()
+		if not from_this_load() then
+			return
+		end
+		if configure_gen[key] ~= gen then
+			return
+		end
+		_G.mosaic_force_configure = _G.mosaic_force_configure or {}
+		_G.mosaic_force_configure[key] = true
+		if M.poke_visible then
+			pcall(M.poke_visible)
+		end
+	end, { timeout = CONFIGURE_SETTLE_MS, type = "oneshot" })
+end
+
+local function arm_configure_settle_all()
+	hl.timer(function()
+		if not from_this_load() then
+			return
+		end
+		_G.mosaic_force_configure = _G.mosaic_force_configure or {}
+		local marked = false
+		pcall(function()
+			for _, m in ipairs(hl.get_monitors() or {}) do
+				local id = m.active_workspace and m.active_workspace.id
+				if id and M.is_active(id) then
+					_G.mosaic_force_configure["ws:" .. tostring(id)] = true
+					marked = true
+				end
+			end
+		end)
+		if not marked then
+			_G.mosaic_force_configure_all = true
+		end
+		if M.poke_visible then
+			pcall(M.poke_visible)
+		end
+		hl.timer(function()
+			if not from_this_load() then
+				return
+			end
+			_G.mosaic_force_configure_all = nil
+		end, { timeout = 400, type = "oneshot" })
+	end, { timeout = CONFIGURE_SETTLE_MS, type = "oneshot" })
+end
+
 local function mosaic_recalculate_inner(ctx)
 	local targets = (ctx and ctx.targets) or {}
 	if #targets == 0 then
@@ -1418,10 +2182,17 @@ local function mosaic_recalculate_inner(ctx)
 
 	-- Transient shrink (drag mid-flight): survivors hold their last mosaic
 	-- cells. Hyprland owns the floating dragged window. Recast happens on
-	-- drop (returner) or once a close is confirmed.
+	-- drop (returner) or once a close is confirmed. An area change (bar
+	-- flicker) scales the held cells so they still cover the work area.
 	if decision == "shrink" then
-		local cells = (wskey and layout_last_cells[wskey]) or {}
+		local cells = copy_cells((wskey and layout_last_cells[wskey]) or {})
 		if cells_complete(cells, ordered) then
+			local box = area_box(area)
+			local from = wskey and layout_last_area[wskey]
+			if box and from and not area_same(from, box) then
+				scale_cells(cells, from, box)
+				snap_cells(cells, ordered, box)
+			end
 			place_cells(ordered, cells)
 			return
 		end
@@ -1438,25 +2209,70 @@ local function mosaic_recalculate_inner(ctx)
 		return
 	end
 
-	-- Quiet: same window set, compositor order unchanged. Keep last/user
-	-- cells so Super+RMB and border-drag persist, and apply live split
-	-- follow while a resize is in progress (or the cursor is on a split).
+	-- Quiet: same set. User resize wins while it still covers this area.
+	-- A work-area change (the bar dropping during dms restart) reflows the
+	-- ratio tree instead of replaying stale boxes or rebuilding a recipe.
 	if decision == "quiet" and wskey then
-		local prev = layout_user_cells[wskey] or layout_last_cells[wskey]
-		if cells_complete(prev, ordered) and area_same(layout_last_area[wskey], area) then
-			local cells = copy_cells(prev)
-			local resized = maybe_resize_cells(cells, ordered, area)
+		local box = area_box(area)
+		local from = layout_last_area[wskey]
+		local user = layout_user_cells[wskey]
+		local last = layout_last_cells[wskey]
+		if box and user and cells_complete(user, ordered) and from
+			and area_same(from, box) and cells_cover(user, ordered, box) then
+			local cells = copy_cells(user)
+			local resized = maybe_resize_cells(cells, ordered, box)
 			place_cells(ordered, cells)
 			if resized or _G.mosaic_resize_state then
 				layout_user_cells[wskey] = cells
+				active_resized = true
 			end
 			return
 		end
+		local tree = tree_for_workspace(wskey)
+		if box and tree and bsp_matches(tree, ordered) then
+			if commit_tree_place(ordered, bsp_copy(tree), box, nil) then
+				if not (from and area_same(from, box)) then
+					layout_user_cells[wskey] = nil
+				end
+				return
+			end
+		end
+		if box and last and cells_complete(last, ordered) then
+			local cells = copy_cells(last)
+			if not (from and area_same(from, box)) then
+				local ids = {}
+				for _, e in ipairs(ordered) do
+					table.insert(ids, e.id)
+				end
+				scale_cells(cells, from or bounds_of_ids(cells, ids), box)
+				snap_cells(cells, ordered, box)
+			end
+			local resized = maybe_resize_cells(cells, ordered, box)
+			place_cells(ordered, cells)
+			if resized or _G.mosaic_resize_state then
+				layout_user_cells[wskey] = cells
+				active_resized = true
+			else
+				layout_user_cells[wskey] = nil
+			end
+			return
+		end
+		layout_user_cells[wskey] = nil
 	end
 
 	-- Any recast (open/close/swap/returner) drops user resize.
 	if wskey and decision ~= "quiet" and decision ~= "shrink" then
 		layout_user_cells[wskey] = nil
+	end
+
+	local stable_ok, stable_placed = pcall(try_stable_place, ordered, decision, wskey, area)
+	if not stable_ok then
+		pending_bsp = nil
+		log_layout_err("stable place failed: " .. tostring(stable_placed))
+	elseif stable_placed then
+		return
+	else
+		pending_bsp = nil
 	end
 
 	-- Portrait/narrow: always stack full-width rows, at any count. Columns
@@ -1589,35 +2405,97 @@ local function mosaic_recalculate_inner(ctx)
 	end
 end
 
+local in_mosaic_recalc = false
 local function mosaic_recalculate(ctx)
+	if in_mosaic_recalc then
+		return
+	end
+	in_mosaic_recalc = true
+	pending_bsp = nil
+	active_resized = false
 	local ok, err = pcall(mosaic_recalculate_inner, ctx)
 	if not ok then
 		log_layout_err("recalculate failed: " .. tostring(err))
 	elseif _G.mosaic_last_recalc then
 		_G.mosaic_last_recalc.placements = active_placements or {}
+		_G.mosaic_last_recalc.stable = pending_bsp ~= nil
 	end
 	-- Persist this run's cells for the next drop lookup. Skip shrink: that
 	-- placement is a hold of the previous mosaic, and overwriting would
 	-- drop the dragged window's old cell.
+	local ws_for_nudge = nil
 	if ok and active_boxes and _G.mosaic_last_decision ~= "shrink" then
 		local kok, k = pcall(layout_ws_key, (ctx and ctx.targets) or {})
 		if kok and k and k ~= "ws:__shared__" then
+			ws_for_nudge = k
 			layout_last_cells[k] = active_boxes
 			local area = ctx and ctx.area
+			local prev_area = layout_last_area[k]
+			local new_area = nil
 			if type(area) == "table" then
-				layout_last_area[k] = {
+				new_area = {
 					x = area.x, y = area.y,
 					w = area.w or area.width,
 					h = area.h or area.height,
 				}
+				layout_last_area[k] = new_area
+			end
+			local ids = {}
+			for id, b in pairs(active_boxes) do
+				if type(b) == "table" then
+					table.insert(ids, id)
+				end
+			end
+			local function tree_ok(node)
+				return node and bsp_matches(node, ids)
+			end
+			if tree_ok(pending_bsp) then
+				layout_bsp[k] = pending_bsp
+			elseif _G.mosaic_last_decision == "quiet" and not active_resized and tree_ok(layout_bsp[k]) then
+				-- keep the ratio tree; quiet didn't reshape it
+			else
+				local built = tree_from_cells(active_boxes, ids)
+				if built then
+					layout_bsp[k] = built
+				elseif _G.mosaic_last_decision ~= "quiet" then
+					layout_bsp[k] = nil
+				end
+			end
+			-- Once per load, even when the work area did not change: a reload can
+			-- leave the box correct while the client buffer is still the
+			-- intermediate size. Later area changes (the bar) re-arm.
+			_G.mosaic_settle_epoch = _G.mosaic_settle_epoch or {}
+			if _G.mosaic_settle_epoch[k] ~= EPOCH then
+				_G.mosaic_settle_epoch[k] = EPOCH
+				arm_configure_settle(k)
+			elseif new_area and not area_same(prev_area, new_area) then
+				arm_configure_settle(k)
 			end
 		end
+	end
+	local force = _G.mosaic_force_configure
+	local nudge_key = ws_for_nudge
+	if not nudge_key then
+		local kok, k = pcall(layout_ws_key, (ctx and ctx.targets) or {})
+		if kok then
+			nudge_key = k
+		end
+	end
+	local want_nudge = _G.mosaic_force_configure_all
+		or (force and nudge_key and force[nudge_key])
+	-- Shrink and an in-progress resize keep the flag for the next real place.
+	-- Consuming it here would configure the temporary box and then go quiet.
+	if ok and want_nudge and _G.mosaic_last_decision ~= "shrink" and not _G.mosaic_resize_state then
+		if force and nudge_key then
+			force[nudge_key] = nil
+		end
+		pcall(nudge_configure, nudge_key)
 	end
 	active_placements = nil
 	active_boxes = nil
 	active_idmap = nil
+	in_mosaic_recalc = false
 end
-
 -- Settle poke target: `hl.dispatch(hl.dsp.layout("mosaic:settle"))` re-runs
 -- recalculate (the compositor calls recalculate() after layout_msg).
 local function mosaic_layout_msg(ctx, msg)
@@ -1644,6 +2522,9 @@ local function register_mosaic_layout()
 	end
 	_G.mosaic_layout_registered = true
 	log("lua:mosaic registered as a real tiling layout")
+	-- Bar exclusive-zone and provider churn settle after a reload. The
+	-- nudge below forces a configure Ghostty will actually ack.
+	arm_configure_settle_all()
 	return true
 end
 
@@ -2575,8 +3456,10 @@ _G.mosaic_apply = function(ws_id)
 end
 
 --------------------------------------------------------------------------------
--- Overflow spill (real-layout path): a mosaic workspace holds at most
--- MAX_MOSAIC_WINDOWS tiled windows. A window opening onto a crowded mosaic
+-- Overflow spill (real-layout path): spill when the next split would put
+-- a leaf under its usable floor (a second window is always allowed).
+-- MAX_MOSAIC_WINDOWS is only the fallback when that prediction can't run.
+-- A window opening onto a crowded mosaic
 -- workspace never paints there: pre-paint (open_early) moves it straight to
 -- the hole and the viewport follows, so first paint reads as "opened there".
 -- Occupied targets shift onward transitively to make space. System-reserved
@@ -2745,6 +3628,203 @@ end
 -- second beat (that delay is what read as open-here-switch-move). pre_paint
 -- skips the liveness check (unmapped is expected before first paint, not
 -- death). Returns true when a flow started.
+-- Fit test for the next split. A second window is always allowed. After that,
+-- spill when the split we would actually do puts any leaf under its floor.
+-- Count is only the fallback when the monitor area can't be estimated.
+local SPILL_FLOOR = {
+	terminal = { w = 480, h = 260 },
+	canvas = { w = 700, h = 380 },
+	editor = { w = 640, h = 360 },
+	sidebar = { w = 480, h = 320 },
+}
+
+local function spill_floor(arch)
+	local name = arch and arch.name
+	if name and SPILL_FLOOR[name] then
+		return SPILL_FLOOR[name]
+	end
+	return { w = 420, h = 260 }
+end
+
+local function arch_for_spawn_cmd(cmd)
+	local c = string.lower(tostring(cmd or ""))
+	if c:find("ghostty", 1, true) or c:find("kitty", 1, true)
+		or c:find("alacritty", 1, true) or c:find("foot", 1, true) then
+		return db.ARCHETYPES.terminal
+	end
+	return db.ARCHETYPES.canvas
+end
+
+local function estimate_layout_area(ws_id)
+	local key = "ws:" .. tostring(ws_id)
+	local saved = layout_last_area[key]
+	if type(saved) == "table" then
+		local w = tonumber(saved.w)
+		local h = tonumber(saved.h)
+		if w and h and w > 100 and h > 100 then
+			return { x = tonumber(saved.x) or 0, y = tonumber(saved.y) or 0, w = w, h = h }
+		end
+	end
+	local mon = resolve_workspace_monitor(ws_id)
+	if not mon then
+		return nil
+	end
+	local rotated = mon.transform and (mon.transform % 2 == 1)
+	local scale = (mon.scale and mon.scale > 0) and mon.scale or 1
+	local raw_w = rotated and mon.height or mon.width
+	local raw_h = rotated and mon.width or mon.height
+	if not raw_w or not raw_h then
+		return nil
+	end
+	local logical_w = math.floor(raw_w / scale + 0.5)
+	local logical_h = math.floor(raw_h / scale + 0.5)
+	local res = mon.reserved or {}
+	local top, bottom, left, right = 0, 0, 0, 0
+	if type(res) == "number" then
+		top, bottom, left, right = res, res, res, res
+	elseif type(res) == "table" then
+		top = tonumber(res.top) or 0
+		bottom = tonumber(res.bottom) or 0
+		left = tonumber(res.left) or 0
+		right = tonumber(res.right) or 0
+	end
+	local gap = 5
+	local w = logical_w - left - right - gap * 2
+	local h = logical_h - top - bottom - gap * 2
+	if w < 100 or h < 100 then
+		return nil
+	end
+	return { x = (mon.x or 0) + left + gap, y = (mon.y or 0) + top + gap, w = w, h = h }
+end
+
+local function spill_entries(ws_id, windows)
+	local by_id = {}
+	local list = {}
+	for _, w in ipairs(windows or {}) do
+		local id = window_layout_id(w)
+		if not id then
+			return nil
+		end
+		local okc, arch = pcall(db.classify, w)
+		local entry = { id = id, archetype = (okc and arch) or db.ARCHETYPES.canvas }
+		by_id[id] = entry
+		table.insert(list, entry)
+	end
+	local key = "ws:" .. tostring(ws_id)
+	local order = layout_order[key]
+	local entries = {}
+	if order then
+		for _, id in ipairs(order) do
+			if by_id[id] then
+				table.insert(entries, by_id[id])
+				by_id[id] = nil
+			end
+		end
+	end
+	for _, e in ipairs(list) do
+		if by_id[e.id] then
+			table.insert(entries, e)
+			by_id[e.id] = nil
+		end
+	end
+	return entries
+end
+
+local function predict_tree(ws_id, windows, area)
+	local entries = spill_entries(ws_id, windows)
+	if not entries or #entries == 0 then
+		return nil
+	end
+	local key = "ws:" .. tostring(ws_id)
+	local tree = layout_bsp[key]
+	if tree and bsp_matches(tree, entries) then
+		return tree, entries
+	end
+	local prev = layout_last_cells[key]
+	if type(prev) == "table" then
+		local ids = {}
+		local ok_ids = true
+		for _, e in ipairs(entries) do
+			local b = prev[e.id]
+			if not (type(b) == "table" and tonumber(b.w)) then
+				ok_ids = false
+				break
+			end
+			table.insert(ids, e.id)
+		end
+		if ok_ids then
+			local built = tree_from_cells(prev, ids)
+			if built and bsp_matches(built, entries) then
+				return built, entries
+			end
+		end
+	end
+	local t = { t = "leaf", id = entries[1].id }
+	for i = 2, #entries do
+		local cells = bsp_cells(t, area)
+		local subset = {}
+		for j = 1, i - 1 do
+			subset[j] = entries[j]
+		end
+		local host = pick_split_host(cells, subset, area, entries[i].archetype)
+		if not host or not cells[host] then
+			return nil
+		end
+		local dir, ratio, on_a = split_params(cells[host], entries[i].archetype, area)
+		t = bsp_split(t, host, entries[i].id, dir, ratio, on_a)
+	end
+	return t, entries
+end
+
+-- true/why when the next window would be too small, false when it fits,
+-- nil when the area isn't known (caller falls back to a count).
+local function predict_crowded(ws_id, windows, newcomer_arch)
+	local area = estimate_layout_area(ws_id)
+	if not area then
+		return nil
+	end
+	local tree, entries = predict_tree(ws_id, windows, area)
+	if not tree or not entries then
+		return nil
+	end
+	local cells = bsp_cells(tree, area)
+	local host = pick_split_host(cells, entries, area, newcomer_arch)
+	if not host or not cells[host] then
+		return nil
+	end
+	local dir, ratio, on_a = split_params(cells[host], newcomer_arch, area)
+	local next_tree = bsp_split(bsp_copy(tree), host, "spill:new", dir, ratio, on_a)
+	local next_cells = bsp_cells(next_tree, area)
+	local arches = { ["spill:new"] = newcomer_arch }
+	for _, e in ipairs(entries) do
+		arches[e.id] = e.archetype
+	end
+	for id, box in pairs(next_cells) do
+		local f = spill_floor(arches[id])
+		if box.w < f.w - 1 or box.h < f.h - 1 then
+			local name = (arches[id] and arches[id].name) or "window"
+			return true, string.format("%s %.0fx%.0f < %dx%d", name, box.w, box.h, f.w, f.h)
+		end
+	end
+	return false
+end
+
+local function spill_is_crowded(ws_id, existing, newcomer_arch)
+	if not existing or #existing <= 1 then
+		return false, nil
+	end
+	local okc, crowded, why = pcall(predict_crowded, ws_id, existing, newcomer_arch)
+	if not okc then
+		log_layout_err("spill predict failed: " .. tostring(crowded))
+		return #existing >= MAX_MOSAIC_WINDOWS, "count"
+	end
+	if crowded == nil then
+		return #existing >= MAX_MOSAIC_WINDOWS, "count"
+	end
+	return crowded and true or false, why
+end
+
+
 local function spill_begin(w, num, ws_id, newcomer_addr, pre_paint)
 	if newcomer_addr and spill_claimed(newcomer_addr) then
 		return false
@@ -2760,14 +3840,15 @@ local function spill_begin(w, num, ws_id, newcomer_addr, pre_paint)
 	if not (okc and arch and not arch.float) then
 		return false -- dialogs/floats never spill
 	end
-	-- Crowded? With a known address the count excludes the newcomer, so
-	-- listing lag can't skew it. Without one, require strictly over max
-	-- (a lagging listing then only delays, never false-spills).
-	local crowded
+	-- Crowded? With a known address the listing excludes the newcomer, so
+	-- we can simulate the split it would get. Without one, a lagging
+	-- listing must not false-spill: fall back to a strict count.
+	local crowded, why = false, nil
 	if newcomer_addr then
-		crowded = #spill_tiled_on(num, newcomer_addr) >= MAX_MOSAIC_WINDOWS
+		crowded, why = spill_is_crowded(num, spill_tiled_on(num, newcomer_addr), arch)
 	else
 		crowded = #spill_tiled_on(num, nil) > MAX_MOSAIC_WINDOWS
+		why = "count"
 	end
 	if not crowded then
 		return false -- room after all
@@ -2805,7 +3886,7 @@ local function spill_begin(w, num, ws_id, newcomer_addr, pre_paint)
 			hl.dispatch(hl.dsp.focus({ workspace = tostring(hole) }))
 		end)
 	end
-	log(string.format(">>> SPILL: WS %d crowded, window opened on WS %d", num, hole))
+	log(string.format(">>> SPILL: WS %d crowded (%s), window opened on WS %d", num, tostring(why or "fit"), hole))
 	return true
 end
 
@@ -2833,7 +3914,9 @@ function M.exec(cmd)
 		spawn()
 		return
 	end
-	if #spill_tiled_on(num, nil) < MAX_MOSAIC_WINDOWS then
+	local existing = spill_tiled_on(num, nil)
+	local crowded, why = spill_is_crowded(num, existing, arch_for_spawn_cmd(cmd))
+	if not crowded then
 		spawn()
 		return
 	end
@@ -2855,7 +3938,7 @@ function M.exec(cmd)
 	pcall(function()
 		hl.dispatch(hl.dsp.focus({ workspace = tostring(hole) }))
 	end)
-	log(string.format(">>> SPILL-EXEC: WS %d crowded, switched to WS %d, spawning in %dms", num, hole, SPILL_SPAWN_WAIT))
+	log(string.format(">>> SPILL-EXEC: WS %d crowded (%s), switched to WS %d, spawning in %dms", num, tostring(why or "fit"), hole, SPILL_SPAWN_WAIT))
 	hl.timer(function()
 		if not from_this_load() then
 			return
