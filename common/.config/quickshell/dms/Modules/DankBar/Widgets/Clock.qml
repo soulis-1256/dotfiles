@@ -123,6 +123,15 @@ BasePill {
                     }
                 }
 
+                StyledText {
+                    visible: !compact
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: systemClock?.date ? systemClock.date.toLocaleDateString(I18n.locale(), "ddd") : ""
+                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                    color: Theme.primary
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
                 Row {
                     spacing: 0
                     anchors.horizontalCenter: parent.horizontalCenter

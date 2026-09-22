@@ -68,7 +68,13 @@ PluginComponent {
                     StyledText {
                         id: dateLabel
                         width: clockTextWidth
-                        text: systemClock.date ? Qt.formatDate(systemClock.date, "dd/MM/yyyy") : ""
+                        text: {
+                            const d = systemClock.date;
+                            if (!d)
+                                return "";
+                            const format = SettingsData.clockDateFormat && SettingsData.clockDateFormat.length > 0 ? SettingsData.clockDateFormat : "ddd dd/MM";
+                            return d.toLocaleDateString(I18n.locale(), format);
+                        }
                         font.pixelSize: clockFontSize
                         color: Theme.widgetTextColor
                         horizontalAlignment: Text.AlignRight
@@ -116,7 +122,7 @@ PluginComponent {
             readonly property var stackedDigits: {
                 const d = vClock.date;
                 if (!d)
-                    return ["00", "00", "00", "00", "00"];
+                    return ["00", "00", "00", "00"];
                 let hours = d.getHours();
                 if (!SettingsData.use24HourClock)
                     hours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
@@ -124,10 +130,11 @@ PluginComponent {
                     twoDigits(hours),
                     twoDigits(d.getMinutes()),
                     twoDigits(d.getDate()),
-                    twoDigits(d.getMonth() + 1),
-                    String(d.getFullYear()).slice(-2)
+                    twoDigits(d.getMonth() + 1)
                 ];
             }
+
+            readonly property string weekdayText: vClock.date ? vClock.date.toLocaleDateString(I18n.locale(), "ddd") : ""
 
             Column {
                 id: vCol
@@ -150,7 +157,7 @@ PluginComponent {
                 }
 
                 Repeater {
-                    model: 5
+                    model: 4
 
                     Column {
                         required property int index
@@ -168,6 +175,15 @@ PluginComponent {
                                 color: Theme.outlineButton
                                 anchors.centerIn: parent
                             }
+                        }
+
+                        StyledText {
+                            visible: index === 2
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: vRoot.weekdayText
+                            font.pixelSize: clockFontSize
+                            color: Theme.widgetTextColor
+                            horizontalAlignment: Text.AlignHCenter
                         }
 
                         Row {
