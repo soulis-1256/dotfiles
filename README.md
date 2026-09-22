@@ -67,6 +67,7 @@ dotfiles/
 
 1. **Install DankMaterialShell**:
    DankMaterialShell is required. Follow the official installation instructions at **[danklinux.com](https://danklinux.com/)**.
+   This repo vendors the 1.5.3 shell. Stay on that package until `dms-greeter` is in extra or CachyOS. The 1.6 upgrade plan is in [DMS-1.6.md](DMS-1.6.md).
 
 2. **Install Core System Packages** (Arch Linux / CachyOS):
    ```bash
