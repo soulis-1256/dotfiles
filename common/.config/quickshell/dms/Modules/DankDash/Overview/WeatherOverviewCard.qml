@@ -58,8 +58,9 @@ Card {
         spacing: Theme.spacingL
         visible: WeatherService.weather.available
 
-        DankIcon {
-            name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
+        WeatherIcon {
+            code: WeatherService.weather.wCode
+            isDay: WeatherService.weather.isDay
             size: 48
             color: Theme.primary
             anchors.verticalCenter: parent.verticalCenter

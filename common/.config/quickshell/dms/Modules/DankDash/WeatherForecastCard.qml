@@ -127,10 +127,12 @@ Rectangle {
             Column {
                 spacing: Theme.spacingXS
 
-                DankIcon {
-                    name: root.forecastData ? WeatherService.getWeatherIcon(root.forecastData.wCode || 0, root.forecastData.isDay ?? true) : "cloud"
+                WeatherIcon {
+                    code: root.forecastData ? (root.forecastData.wCode || 0) : 0
+                    isDay: root.forecastData ? (root.forecastData.isDay ?? true) : true
                     size: Theme.iconSize
                     color: root.isCurrent ? Theme.primary : Theme.withAlpha(Theme.primary, 0.8)
+                    animated: root.isCurrent
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
 

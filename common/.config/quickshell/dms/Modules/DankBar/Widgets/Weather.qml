@@ -29,8 +29,9 @@ BasePill {
                 anchors.centerIn: parent
                 spacing: 1
 
-                DankIcon {
-                    name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
+                WeatherIcon {
+                    code: WeatherService.weather.wCode
+                    isDay: WeatherService.weather.isDay
                     size: Theme.barIconSize(root.barThickness, -6, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
                     color: Theme.widgetIconColor
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -56,8 +57,9 @@ BasePill {
                 anchors.centerIn: parent
                 spacing: Theme.spacingXS
 
-                DankIcon {
-                    name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
+                WeatherIcon {
+                    code: WeatherService.weather.wCode
+                    isDay: WeatherService.weather.isDay
                     size: Theme.barIconSize(root.barThickness, -6, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
                     color: Theme.widgetIconColor
                     anchors.verticalCenter: parent.verticalCenter

@@ -762,9 +762,10 @@ Item {
                             width: weatherIcon.width + tempColumn.width + sunriseColumn.width + Theme.spacingM * 2
                             height: 70
 
-                            DankIcon {
+                            WeatherIcon {
                                 id: weatherIcon
-                                name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
+                                code: WeatherService.weather.wCode
+                                isDay: WeatherService.weather.isDay
                                 size: Theme.iconSize * 1.5
                                 color: Theme.primary
                                 anchors.left: parent.left

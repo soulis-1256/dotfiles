@@ -205,9 +205,10 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.spacingL
 
-                        DankIcon {
+                        WeatherIcon {
                             id: weatherIcon
-                            name: WeatherService.getWeatherIcon(WeatherService.weather.wCode)
+                            code: WeatherService.weather.wCode
+                            isDay: WeatherService.weather.isDay
                             size: Theme.iconSize * 2
                             color: Theme.primary
                             anchors.verticalCenter: parent.verticalCenter
