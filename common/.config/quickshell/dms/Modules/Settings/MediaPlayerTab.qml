@@ -301,7 +301,7 @@ Item {
                     spacing: Theme.spacingM
 
                     StyledText {
-                        text: I18n.tr("Always prefer these players in the media controllers, even when another player is playing (e.g., keep Spotify while a browser video plays). First match wins. Matches player identity or desktop file name case-insensitively.")
+                        text: I18n.tr("Prefer these players while they are playing, and whenever nothing is playing. Another player takes the widget only while it is the one playing. First match wins. Matches player identity or desktop file name case-insensitively.")
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceVariantText
                         wrapMode: Text.WordWrap

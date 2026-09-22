@@ -124,14 +124,23 @@ Singleton {
         }
     }
 
+    // Some players report Stopped with blank metadata between tracks. Wait
+    // briefly before leaving them, and cancel if playback resumes. A real
+    // pause is handled immediately so volume edits are not applied to the
+    // player that just paused.
+    Timer {
+        id: _yieldTimer
+        interval: 500
+        onTriggered: root._resolveActivePlayer()
+    }
+
     Instantiator {
         model: root.availablePlayers
         delegate: Connections {
             required property MprisPlayer modelData
             target: modelData
             function onIsPlayingChanged() {
-                if (modelData.isPlaying)
-                    root._resolveActivePlayer();
+                root._notePlaybackChanged(modelData);
             }
         }
     }
@@ -159,34 +168,77 @@ Singleton {
         return false;
     }
 
-    function findPriorityPlayer(): MprisPlayer {
+    function isRealPlayback(player: MprisPlayer): bool {
+        return !!player && player.isPlaying && !isFirefoxYoutubeHoverPreview(player);
+    }
+
+    // playingOnly: the priority player must be playing. Otherwise any
+    // non-idle match counts, so a paused priority player can still be the
+    // fallback when nothing is playing.
+    function findPriorityPlayer(playingOnly: bool): MprisPlayer {
         const prios = SettingsData.mediaPriorityPlayers || [];
         for (let i = 0; i < prios.length; i++) {
-            const match = availablePlayers.find(p => !isIdle(p) && playerMatchesPattern(p, String(prios[i])));
+            const match = availablePlayers.find(p => {
+                if (!playerMatchesPattern(p, String(prios[i])))
+                    return false;
+                if (playingOnly)
+                    return isRealPlayback(p);
+                return !isIdle(p);
+            });
             if (match)
                 return match;
         }
         return null;
     }
 
-    function _resolveActivePlayer(): void {
-        // A priority player wins while available, even over a playing one
-        const priority = findPriorityPlayer();
-        if (priority) {
-            if (activePlayer !== priority) {
-                activePlayer = priority;
-                _persistIdentity(priority.identity);
-            }
+    function _adopt(player: MprisPlayer): void {
+        if (!player || activePlayer === player)
+            return;
+        activePlayer = player;
+        _persistIdentity(player.identity);
+    }
+
+    function _notePlaybackChanged(player: MprisPlayer): void {
+        if (!player)
+            return;
+        if (player.isPlaying) {
+            _yieldTimer.stop();
+            _resolveActivePlayer();
             return;
         }
-        // A playing player always wins; otherwise keep the selection stable w/idle
-        const playing = availablePlayers.find(p => p.isPlaying);
-        if (playing) {
-            if (activePlayer !== playing) {
-                activePlayer = playing;
-                _persistIdentity(playing.identity);
-            }
+        if (player !== activePlayer)
             return;
+        if (player.playbackState === MprisPlaybackState.Paused) {
+            _yieldTimer.stop();
+            _resolveActivePlayer();
+            return;
+        }
+        _yieldTimer.restart();
+    }
+
+    function _resolveActivePlayer(): void {
+        // A playing priority player wins. If it is paused, a playing player
+        // takes the widget until that player pauses too.
+        const playingPriority = findPriorityPlayer(true);
+        if (playingPriority) {
+            _adopt(playingPriority);
+            return;
+        }
+        const playing = availablePlayers.find(p => isRealPlayback(p));
+        if (playing) {
+            _adopt(playing);
+            return;
+        }
+        // Nothing is playing, so a paused priority player wins over other
+        // paused players. A metadata blip keeps the current player until the
+        // idle grace timer decides it is really gone.
+        const metadataBlip = activePlayer && isIdle(activePlayer) && _idleGraceTimer.running;
+        if (!metadataBlip) {
+            const pausedPriority = findPriorityPlayer(false);
+            if (pausedPriority) {
+                _adopt(pausedPriority);
+                return;
+            }
         }
         if (activePlayer && availablePlayers.indexOf(activePlayer) >= 0 && (!isIdle(activePlayer) || _idleGraceTimer.running))
             return;
