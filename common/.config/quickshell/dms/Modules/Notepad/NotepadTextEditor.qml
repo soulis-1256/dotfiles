@@ -37,6 +37,7 @@ Column {
     property bool externalWatchPaused: false
     property bool inPopout: false
     property bool surfaceVisible: true
+    property var slideout: null
     // Tab ids are Date.now() timestamps (~1.78e12) which overflow a 32-bit `int`,
     // corrupting the value (e.g. -946062153) and breaking buffer keying. `var`
     // holds the full JS-safe integer.
@@ -441,6 +442,13 @@ Column {
                     }
                     event.accepted = true;
                 }
+
+                PointHandler {
+                    onActiveChanged: {
+                        if (active && root.slideout)
+                            root.slideout.holdKeyboard();
+                    }
+                }
             }
 
             // Placeholder text
@@ -594,6 +602,12 @@ Column {
                         inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
                         persistentSelection: true
                         tabStopDistance: 40
+                        // The card's handler can miss a press on this field.
+                        // pressed is the click that must take the seat keyboard.
+                        onPressed: function (mouse) {
+                            if (root.slideout)
+                                root.slideout.holdKeyboard();
+                        }
                         leftPadding: (SettingsData.notepadShowLineNumbers ? lineNumberArea.width + Theme.spacingXS : Theme.spacingM)
                         topPadding: Theme.spacingM
                         rightPadding: Theme.spacingM

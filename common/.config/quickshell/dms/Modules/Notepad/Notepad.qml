@@ -423,6 +423,7 @@ Item {
             id: tabBar
             width: parent.width
             contentLoaded: textEditor.contentLoaded
+            slideout: root.slideout
 
             onTabSwitched: tabIndex => {
                 switchToTab(tabIndex);
@@ -443,6 +444,7 @@ Item {
             height: parent.height - tabBar.height - Theme.spacingM * 2
             inPopout: root.inPopout
             surfaceVisible: root.surfaceVisible
+            slideout: root.slideout
 
             onSaveRequested: {
                 if (currentTab && !currentTab.isTemporary && currentTab.filePath) {

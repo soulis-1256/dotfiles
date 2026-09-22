@@ -8,6 +8,10 @@ HyprlandFocusGrab {
     id: root
 
     property bool wanted: false
+    // The notepad slideout stays open across window clicks, so restoring the
+    // toplevel captured when the grab started would pull focus back off the
+    // window the user just clicked.
+    property bool restoreFocus: true
     property var clientWindows: []
     property bool _held: false
     property bool _compositorCleared: false
@@ -23,7 +27,7 @@ HyprlandFocusGrab {
         onTriggered: {
             root._held = false;
             root.active = false;
-            root._restoreToplevel = root._compositorCleared ? null : KeyboardFocus.restoreToplevel(root._restoreToplevel);
+            root._restoreToplevel = (root.restoreFocus && !root._compositorCleared) ? KeyboardFocus.restoreToplevel(root._restoreToplevel) : null;
         }
     }
 

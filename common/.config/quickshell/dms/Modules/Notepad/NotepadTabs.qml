@@ -14,6 +14,7 @@ Column {
     property int dropTargetIndex: -1
     property bool suppressShiftAnimation: false
     property int editingIndex: -1
+    property var slideout: null
     readonly property real tabItemSize: tabRow.dynamicTabWidth + Theme.spacingXS
 
     signal tabSwitched(int tabIndex)
@@ -210,6 +211,13 @@ Column {
                                                 return;
                                             text = modelData.title || "Untitled";
                                             renameFocusTimer.restart();
+                                        }
+
+                                        PointHandler {
+                                            onActiveChanged: {
+                                                if (active && root.slideout)
+                                                    root.slideout.holdKeyboard();
+                                            }
                                         }
                                     }
 
