@@ -26,18 +26,20 @@ cat > "${TMP}/themes/windows-11/dms-settings.json" <<'EOF'
       "name": "Main Bar"
     }
   ],
-  "iconPack": "lucide"
+  "iconPack": "lucide",
+  "customThemeFile": "/themes/steamDeck/theme.json"
 }
 EOF
 
-# Fixture live: drifted barConfigs + junk that must never travel,
-# plus an iconPack drift outside the curated allowlist.
+# Fixture live: drifted barConfigs + a palette change + junk that must
+# never travel, plus an iconPack drift outside the curated allowlist.
 cat > "${HOME}/.config/DankMaterialShell/settings.json" <<'EOF'
 {
   "barConfigs": [
     {"id": "default", "name": "Main Bar", "extraWidget": true}
   ],
   "iconPack": "phosphor",
+  "customThemeFile": "/themes/peaceAndQuiet/theme.json",
   "hyprlandOutputSettings": {"DP-99": {}},
   "browserUsageHistory": {"firefox": 42}
 }
@@ -53,12 +55,13 @@ fail() {
     exit 1
 }
 
-# 1. Dry run reports drift, touches nothing.
+# 1. Dry run reports layout and palette drift, touches nothing.
 OUT="$(bash "$SWITCHER" sync-back --theme windows-11)"
 echo "$OUT" | grep -q "barConfigs" || fail "dry run should mention barConfigs"
-echo "$OUT" | grep -qi "dry run" || fail "dry run should say it is a dry run"
+echo "$OUT" | grep -q "peaceAndQuiet" || fail "dry run should mention palette drift"
+echo "$OUT" | grep -q "Nothing written" || fail "dry run should say nothing was written"
 [ "$(sha256sum "$PACK" | cut -d' ' -f1)" == "$SUM_BEFORE" ] || fail "dry run modified the theme file"
-echo "PASS: dry run reports drift, theme file untouched"
+echo "PASS: dry run reports layout and palette drift, theme file untouched"
 
 # 2. Curated allowlist holds: junk and non-listed drift stay out of the diff.
 echo "$OUT" | grep -q "DP-99" && fail "machine state leaked into diff"
@@ -71,8 +74,14 @@ OUT_KEYS="$(bash "$SWITCHER" sync-back --theme windows-11 --keys iconPack)"
 echo "$OUT_KEYS" | grep -q "phosphor" || fail "--keys override should include iconPack drift"
 echo "PASS: --keys override works"
 
-# 4. Apply promotes curated keys only.
-bash "$SWITCHER" sync-back --theme windows-11 --apply > /dev/null
+# 3b. The watcher flag previews layout and leaves the palette out.
+OUT_LAYOUT="$(bash "$SWITCHER" sync-back --theme windows-11 --layout-only)"
+echo "$OUT_LAYOUT" | grep -q "extraWidget" || fail "--layout-only should mention layout drift"
+echo "$OUT_LAYOUT" | grep -q "peaceAndQuiet" && fail "--layout-only should ignore palette drift"
+echo "PASS: --layout-only ignores the palette"
+
+# 4. Watcher apply promotes layout and leaves the palette.
+bash "$SWITCHER" sync-back --theme windows-11 --apply --layout-only > /dev/null
 python3 - "$PACK" "$LIVE" <<'PY'
 import json
 import sys
@@ -80,9 +89,23 @@ pack = json.load(open(sys.argv[1]))
 live = json.load(open(sys.argv[2]))
 assert pack["barConfigs"] == live["barConfigs"], "barConfigs not promoted"
 assert pack["iconPack"] == "lucide", "non-listed key must not be overwritten"
+assert pack["customThemeFile"].endswith("steamDeck/theme.json"), "palette must stay out of layout apply"
 assert "hyprlandOutputSettings" not in pack, "machine state must not travel"
 assert "browserUsageHistory" not in pack, "histories must not travel"
-print("PASS: apply promotes curated keys only")
+print("PASS: --layout-only --apply promotes layout keys only")
+PY
+
+# 4b. A plain --apply also promotes the palette.
+bash "$SWITCHER" sync-back --theme windows-11 --apply > /dev/null
+python3 - "$PACK" "$LIVE" <<'PY'
+import json
+import sys
+pack = json.load(open(sys.argv[1]))
+live = json.load(open(sys.argv[2]))
+assert pack["customThemeFile"] == live["customThemeFile"], "palette not promoted"
+assert pack["iconPack"] == "lucide", "non-listed key must not be overwritten"
+assert "hyprlandOutputSettings" not in pack, "machine state must not travel"
+print("PASS: --apply promotes the palette too")
 PY
 
 # 5. Second run is clean (idempotent).

@@ -597,18 +597,20 @@ apply_theme() {
     echo -e "${BOLD}${GREEN}Successfully activated theme: ${target}${NC}"
 }
 
-# Promote curated live DMS settings back into a theme's dms-settings.json
-# so GUI tweaks get versioned. Dry run by default; --apply writes.
-# Only SYNC_BACK_KEYS travel (taste/layout owned by the theme); machine
-# state, histories, outputs and paths never leave the live file.
+# Promote curated live DMS settings back into a theme's dms-settings.json.
+# Dry run by default; --apply writes. The default set includes the palette.
+# The systemd watcher passes --layout-only so a color click does not rewrite
+# the git theme. --keys replaces the set entirely. Machine state, histories,
+# outputs and paths never leave the live file.
 sync_back() {
     if [[ -f "$APPLY_LOCK" ]]; then
         return 0
     fi
-    local apply="0" theme="" keys=""
+    local apply="0" theme="" keys="" layout_only="0"
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --apply) apply="1"; shift ;;
+            --layout-only) layout_only="1"; shift ;;
             --theme) theme="${2:-}"; shift 2 ;;
             --theme=*) theme="${1#--theme=}"; shift ;;
             --keys) keys="${2:-}"; shift 2 ;;
@@ -623,22 +625,16 @@ sync_back() {
         echo -e "${RED}Error: No dms-settings.json for theme '${theme}'.${NC}"
         return 2
     fi
-    python3 - "$theme_file" "${DMS_CONFIG_DIR}/settings.json" "$keys" "$apply" <<'PY'
-import difflib
+    python3 - "$theme_file" "${DMS_CONFIG_DIR}/settings.json" "$keys" "$apply" "$layout_only" <<'PY'
 import json
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-SYNC_BACK_KEYS = [
+# Watcher set. Passed via --layout-only so a palette click stays out of git.
+LAYOUT_KEYS = [
     "barConfigs",
-    "currentThemeName",
-    "currentThemeCategory",
-    "customThemeFile",
-    "registryThemeVariants",
-    "matugenScheme",
-    "matugenContrast",
     "widgetBackgroundColor",
     "widgetBackgroundCustomColor",
     "widgetBackgroundCustomStrength",
@@ -646,11 +642,25 @@ SYNC_BACK_KEYS = [
     "controlCenterTileColorMode",
     "buttonColorMode",
 ]
+COLOR_KEYS = [
+    "currentThemeName",
+    "currentThemeCategory",
+    "customThemeFile",
+    "registryThemeVariants",
+    "matugenScheme",
+    "matugenContrast",
+]
 
 theme_file = Path(sys.argv[1])
 live_file = Path(sys.argv[2])
-only = sys.argv[3].split(",") if sys.argv[3] else list(SYNC_BACK_KEYS)
 apply = sys.argv[4] == "1"
+layout_only = sys.argv[5] == "1"
+if sys.argv[3]:
+    only = sys.argv[3].split(",")
+elif layout_only:
+    only = list(LAYOUT_KEYS)
+else:
+    only = list(LAYOUT_KEYS) + list(COLOR_KEYS)
 
 
 def load_obj(path):
@@ -674,8 +684,9 @@ for key in only:
     if key in live and live.get(key) != theme.get(key):
         changes[key] = live[key]
 
+theme_name = theme_file.parent.name
 if not changes:
-    print(f"sync-back: {theme_file.parent.name} already in sync ({', '.join(only)}).")
+    print(f"sync-back: {theme_name} is already in sync.")
     sys.exit(0)
 
 merged = dict(theme)
@@ -689,19 +700,110 @@ if old_text:
     except json.JSONDecodeError:
         canonical = None
     if canonical is not None and canonical.strip() != old_text.strip():
-        print("sync-back: warning: theme file is not canonical indent-2 JSON; diff may include formatting.", file=sys.stderr)
+        print("sync-back: warning: theme file is not canonical indent-2 JSON; saving may reformat it.", file=sys.stderr)
 
-diff = "".join(difflib.unified_diff(
-    old_text.splitlines(keepends=True),
-    new_text.splitlines(keepends=True),
-    fromfile=str(theme_file),
-    tofile=str(theme_file) + " (synced)",
-))
-sys.stdout.write(diff)
-if diff and not diff.endswith("\n"):
-    print()
+
+def display(value):
+    if value is None:
+        return "absent"
+    if isinstance(value, str):
+        if not value:
+            return "empty"
+        suffix = "/theme.json"
+        marker = "/themes/"
+        if value.endswith(suffix) and marker in value:
+            return value[: -len(suffix)].rsplit("/", 1)[-1]
+        home = str(Path.home())
+        if value.startswith(home + "/"):
+            return "~" + value[len(home):]
+        return value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    text = json.dumps(value, ensure_ascii=False)
+    return text if len(text) <= 80 else text[:77] + "..."
+
+
+def added(value, path):
+    if isinstance(value, dict):
+        out = []
+        for key, item in value.items():
+            out.extend(added(item, f"{path}.{key}"))
+        return out
+    if isinstance(value, list):
+        return list_rows([], value, path)
+    return [(path, "absent", display(value))]
+
+
+def list_rows(old, new, path):
+    if old == new:
+        return []
+    if all(isinstance(item, dict) and isinstance(item.get("id"), str) for item in [*old, *new]):
+        out = []
+        old_ids = [item["id"] for item in old]
+        new_ids = [item["id"] for item in new]
+        if old_ids != new_ids:
+            out.append((path, " ".join(old_ids) or "empty", " ".join(new_ids) or "empty"))
+        old_by = {}
+        for item in old:
+            old_by.setdefault(item["id"], item)
+        new_by = {}
+        for item in new:
+            new_by.setdefault(item["id"], item)
+        for item_id in new_ids:
+            child = f"{path}.{item_id}"
+            if item_id in old_by:
+                out.extend(rows(old_by[item_id], new_by[item_id], child))
+            else:
+                out.extend(added(new_by[item_id], child))
+        for item_id in old_ids:
+            if item_id not in new_by:
+                out.append((f"{path}.{item_id}", "removed", "absent"))
+        return out
+    return [(path, display(old), display(new))]
+
+
+def rows(old, new, path):
+    if old == new:
+        return []
+    if isinstance(new, dict) and (old is None or isinstance(old, dict)):
+        old = old or {}
+        out = []
+        seen = []
+        for key in [*old, *new]:
+            if key in seen:
+                continue
+            seen.append(key)
+            child = f"{path}.{key}"
+            if key not in old:
+                out.extend(added(new[key], child))
+            elif key not in new:
+                out.append((child, display(old[key]), "absent"))
+            else:
+                out.extend(rows(old[key], new[key], child))
+        return out
+    if isinstance(new, list) and (old is None or isinstance(old, list)):
+        return list_rows(old or [], new, path)
+    return [(path, display(old), display(new))]
+
+
+report = []
+for key, value in changes.items():
+    report.extend(rows(theme.get(key), value, key))
+
+print(f"sync-back: {theme_name}")
+print()
+for path, before, after in report:
+    print(f"  {path}")
+    print(f"    {before} → {after}")
+
 if not apply:
-    print("sync-back: dry run, re-run with --apply to write.")
+    command = "theme-switcher sync-back --apply"
+    if layout_only:
+        command += " --layout-only"
+    print()
+    print(f"Nothing written. Save with: {command}")
     sys.exit(0)
 
 tmp_fd, tmp_path = tempfile.mkstemp(dir=str(theme_file.parent), prefix=".dms-settings.", suffix=".tmp")
@@ -715,7 +817,7 @@ except BaseException:
     except OSError:
         pass
     raise
-print(f"sync-back: wrote {', '.join(changes)} to {theme_file}.")
+print(f"sync-back: updated {theme_name} ({', '.join(changes)}).")
 PY
 }
 
@@ -727,11 +829,18 @@ usage() {
     echo "  apply <theme>         Apply a theme (default, windows-10, windows-11)"
     echo "  apply <theme> --reset Apply theme defaults, discarding saved bar/layout tweaks"
     echo "  current, status       Show the active theme"
+    echo "  sync-back             Preview drift for the active theme (dry run)"
+    echo "  sync-back --apply     Write that drift into the theme file"
+    echo "  sync-back --theme NAME"
+    echo "                        Target a theme other than the active one"
+    echo "  sync-back --keys a,b  Sync an explicit key list instead of the default"
     echo "  help, -h              Show this message"
     echo ""
-    echo "GUI tweaks, bar layouts, and color themes are automatically live-synced in"
-    echo "the background to the active theme in ~/dotfiles. Reapplying or switching"
-    echo "themes restores each theme's snapshot. Floating mode is kept across applies."
+    echo "sync-back includes bar layout, widget chrome, and the color scheme."
+    echo "It writes only when you pass --apply. The background watcher writes"
+    echo "layout and widget chrome on its own, so a palette click does not"
+    echo "rewrite the git theme until you sync it back. Switching themes"
+    echo "restores each theme's snapshot. Floating mode is kept across applies."
     echo ""
     echo "Examples:"
     echo "  theme-switcher list"
@@ -739,6 +848,8 @@ usage() {
     echo "  theme-switcher apply windows-11"
     echo "  theme-switcher apply windows-11 --reset"
     echo "  theme-switcher apply default"
+    echo "  theme-switcher sync-back"
+    echo "  theme-switcher sync-back --apply"
 }
 
 parse_reset_flag() {

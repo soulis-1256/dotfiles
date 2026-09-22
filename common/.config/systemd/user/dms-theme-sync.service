@@ -12,4 +12,6 @@ ConditionPathExists=!%h/.config/.theme-switcher-applying
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/sleep 1
-ExecStart=/home/soulis/.local/bin/theme-switcher sync-back --apply
+# Layout and widget chrome only. A plain `sync-back --apply` also writes
+# the palette, which would put every color click into the git theme.
+ExecStart=/home/soulis/.local/bin/theme-switcher sync-back --apply --layout-only
