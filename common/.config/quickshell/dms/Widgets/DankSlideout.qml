@@ -87,6 +87,18 @@ PanelWindow {
         root.keyboardHeld = false;
     }
 
+    function _popoutHoldsKeyboard() {
+        const map = PopoutManager.currentPopoutsByScreen;
+        if (!map)
+            return false;
+        for (const name in map) {
+            const popout = map[name];
+            if (popout && popout.shouldBeVisible)
+                return true;
+        }
+        return false;
+    }
+
     function releaseKeyboardFromGrab() {
         // The click that ends the grab is not delivered to the window under
         // the pointer. Hyprland then refocuses whichever window was still
@@ -333,6 +345,11 @@ PanelWindow {
         repeat: false
         onTriggered: {
             if (root._pendingFocusRequest !== root._focusRequest || root.keyboardHeld)
+                return;
+            // A popout that opened while this probe was in flight owns the
+            // seat. Focusing the client under the cursor would take it back
+            // and leave the start search with no keyboard.
+            if (root._popoutHoldsKeyboard())
                 return;
             if (root._pendingFocusAddress)
                 HyprlandService.focusWindow(root._pendingFocusAddress);

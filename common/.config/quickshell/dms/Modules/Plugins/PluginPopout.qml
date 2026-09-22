@@ -67,6 +67,16 @@ DankPopout {
                         }
                     });
                 }
+                function onKeyboardGrabbed() {
+                    Qt.callLater(() => {
+                        if (!root.shouldBeVisible)
+                            return;
+                        if (popoutContentLoader.item)
+                            popoutContentLoader.item.forceActiveFocus();
+                        else
+                            popoutContainer.forceActiveFocus();
+                    });
+                }
             }
 
             Column {

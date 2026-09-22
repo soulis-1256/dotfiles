@@ -51,11 +51,44 @@ Item {
     signal opened
     signal popoutClosed
     signal backgroundClicked
+    // Seat keyboard is on this popout. Content should take Qt focus now;
+    // forceActiveFocus during open runs before the surface can receive keys.
+    signal keyboardGrabbed
 
     readonly property var contentLoader: impl.item ? impl.item.contentLoader : _fallbackContentLoader
     readonly property var overlayLoader: impl.item ? impl.item.overlayLoader : _fallbackOverlayLoader
     readonly property var backgroundWindow: impl.item ? impl.item.backgroundWindow : null
     readonly property var contentWindow: impl.item ? impl.item.contentWindow : null
+
+    // The layer maps with keyboard None, then becomes OnDemand one tick later
+    // so Hyprland's onMap does not steal the pointer. None→OnDemand does not
+    // move the seat. The grab does, and Hyprland clears it if it starts before
+    // that mode is queued, after which nothing owns the keyboard.
+    readonly property bool keyboardReady: !!(impl.item && impl.item._keyboardReady)
+    property bool grabArmed: false
+    property bool grabSettled: false
+    property bool rearmedThisOpen: false
+
+    function _syncGrabArm() {
+        if (!root.shouldBeVisible || !root.keyboardReady) {
+            root.grabArmed = false;
+            root.grabSettled = false;
+            root.rearmedThisOpen = false;
+            grabSettleTimer.stop();
+            return;
+        }
+        if (!KeyboardFocus.wantsGrab(true, root.customKeyboardFocus)) {
+            root.keyboardGrabbed();
+            return;
+        }
+        Qt.callLater(() => {
+            if (root.shouldBeVisible && root.keyboardReady && !root.grabArmed)
+                root.grabArmed = true;
+        });
+    }
+
+    onKeyboardReadyChanged: _syncGrabArm()
+    onShouldBeVisibleChanged: _syncGrabArm()
 
     TransientSurfaceTracker {
         id: _transientSurfaceTracker
@@ -63,6 +96,7 @@ Item {
 
     // Hyprland OnDemand grab: whitelist popout surfaces and bars so dismiss clicks still land.
     DankFocusGrab {
+        id: popoutKeyboardGrab
         clientWindows: {
             const list = [];
             if (root.contentWindow)
@@ -72,7 +106,41 @@ Item {
             const transientWindows = root.transientSurfaceTracker?.focusWindows ?? [];
             return list.concat(transientWindows).concat(KeyboardFocus.barWindows);
         }
-        wanted: KeyboardFocus.wantsGrab(root.shouldBeVisible, root.customKeyboardFocus)
+        wanted: KeyboardFocus.wantsGrab(root.shouldBeVisible && root.keyboardReady && root.grabArmed, root.customKeyboardFocus)
+    }
+
+    Timer {
+        id: grabSettleTimer
+        interval: 80
+        repeat: false
+        onTriggered: {
+            if (root.grabArmed && popoutKeyboardGrab.active)
+                root.grabSettled = true;
+        }
+    }
+
+    Connections {
+        target: popoutKeyboardGrab
+        function onActiveChanged() {
+            if (popoutKeyboardGrab.active) {
+                // A startup clear must not suppress restoring the previous
+                // window when this popout later closes cleanly.
+                popoutKeyboardGrab._compositorCleared = false;
+                if (!root.grabSettled)
+                    grabSettleTimer.restart();
+                root.keyboardGrabbed();
+                return;
+            }
+            if (!root.grabArmed || !root.shouldBeVisible || root.grabSettled || root.rearmedThisOpen)
+                return;
+            root.rearmedThisOpen = true;
+            Qt.callLater(() => {
+                if (root.grabArmed && root.shouldBeVisible && !root.grabSettled && !popoutKeyboardGrab.active) {
+                    popoutKeyboardGrab._compositorCleared = false;
+                    popoutKeyboardGrab.active = true;
+                }
+            });
+        }
     }
 
     Loader {
