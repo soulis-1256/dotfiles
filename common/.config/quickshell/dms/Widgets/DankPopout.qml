@@ -62,45 +62,96 @@ Item {
 
     // The layer maps with keyboard None, then becomes OnDemand one tick later
     // so Hyprland's onMap does not steal the pointer. None→OnDemand does not
-    // move the seat. The grab does, and Hyprland clears it if it starts before
-    // that mode is queued, after which nothing owns the keyboard.
-    readonly property bool keyboardReady: !!(impl.item && impl.item._keyboardReady)
+    // move the seat. The grab does. Hyprland then keyboard-focuses the first
+    // whitelist surface whose box contains the pointer (else the first
+    // surface). The fullscreen dismiss layer and the bar are in that list and
+    // their keyboard mode is None, so Escape and typing go nowhere until the
+    // pointer is over the menu. The first commit is the menu surface alone.
+    // Surfaces added afterwards do not move the keyboard. Rebuilding the grab
+    // (active false then true) after that would run the pointer search again.
+    readonly property bool keyboardReady: impl.item ? impl.item._keyboardReady : false
     property bool grabArmed: false
-    property bool grabSettled: false
-    property bool rearmedThisOpen: false
+    property bool _grabFocusLocked: false
+    property bool _grabCommitting: false
+    property int _grabGeneration: 0
+    property int _grabTries: 0
+    property bool _armPending: false
 
-    function _syncGrabArm() {
-        if (!root.shouldBeVisible || !root.keyboardReady) {
+    function _scheduleGrabArm() {
+        if (!root.shouldBeVisible) {
+            root._grabGeneration++;
             root.grabArmed = false;
-            root.grabSettled = false;
-            root.rearmedThisOpen = false;
+            root._grabFocusLocked = false;
+            root._grabCommitting = false;
+            root._grabTries = 0;
+            root._armPending = false;
             grabSettleTimer.stop();
             return;
         }
+        if (!root.keyboardReady)
+            return;
         if (!KeyboardFocus.wantsGrab(true, root.customKeyboardFocus)) {
             root.keyboardGrabbed();
             return;
         }
+        if (root._armPending)
+            return;
+        root._armPending = true;
+        root._grabTries = 0;
+        const generation = root._grabGeneration;
+        // OnDemand was just queued. Start the grab on the next turn.
         Qt.callLater(() => {
-            if (root.shouldBeVisible && root.keyboardReady && !root.grabArmed)
-                root.grabArmed = true;
+            root._armPending = false;
+            root._kickGrab(generation);
         });
     }
 
-    onKeyboardReadyChanged: _syncGrabArm()
-    onShouldBeVisibleChanged: _syncGrabArm()
+    function _lockGrabFocus() {
+        if (!root.shouldBeVisible || !popoutKeyboardGrab.active || root._grabFocusLocked)
+            return;
+        popoutKeyboardGrab._compositorCleared = false;
+        root._grabFocusLocked = true;
+        root.keyboardGrabbed();
+    }
+
+    function _kickGrab(generation) {
+        if (generation !== root._grabGeneration || !root.shouldBeVisible || !root.keyboardReady)
+            return;
+        if (root._grabFocusLocked && popoutKeyboardGrab.active)
+            return;
+        // Hold the lock off across the false/true below. The wanted binding
+        // activates synchronously, and that signal must not widen the
+        // whitelist before this new grab's first commit.
+        root._grabCommitting = true;
+        root._grabFocusLocked = false;
+        root.grabArmed = true;
+        // false then true always builds a new protocol grab. A leftover
+        // target from the previous open would ignore a bare true.
+        popoutKeyboardGrab.active = false;
+        popoutKeyboardGrab.active = true;
+        root._grabCommitting = false;
+        root._lockGrabFocus();
+        grabSettleTimer.restart();
+    }
+
+    onKeyboardReadyChanged: _scheduleGrabArm()
+    onShouldBeVisibleChanged: _scheduleGrabArm()
 
     TransientSurfaceTracker {
         id: _transientSurfaceTracker
     }
 
-    // Hyprland OnDemand grab: whitelist popout surfaces and bars so dismiss clicks still land.
+    // Hyprland OnDemand grab. Menu surface first; dismiss layers, transients,
+    // and bars join only after that surface holds the keyboard.
     DankFocusGrab {
         id: popoutKeyboardGrab
+        deferDismissWindows: true
         clientWindows: {
             const list = [];
             if (root.contentWindow)
                 list.push(root.contentWindow);
+            if (!root._grabFocusLocked)
+                return list;
             if (root.backgroundWindow && root.backgroundWindow !== root.contentWindow)
                 list.push(root.backgroundWindow);
             const transientWindows = root.transientSurfaceTracker?.focusWindows ?? [];
@@ -114,32 +165,29 @@ Item {
         interval: 80
         repeat: false
         onTriggered: {
-            if (root.grabArmed && popoutKeyboardGrab.active)
-                root.grabSettled = true;
+            if (!root.shouldBeVisible || !root.keyboardReady)
+                return;
+            if (popoutKeyboardGrab.active) {
+                root._lockGrabFocus();
+                return;
+            }
+            root._grabTries += 1;
+            if (root._grabTries < 4)
+                root._kickGrab(root._grabGeneration);
         }
     }
 
     Connections {
         target: popoutKeyboardGrab
         function onActiveChanged() {
-            if (popoutKeyboardGrab.active) {
-                // A startup clear must not suppress restoring the previous
-                // window when this popout later closes cleanly.
-                popoutKeyboardGrab._compositorCleared = false;
-                if (!root.grabSettled)
-                    grabSettleTimer.restart();
-                root.keyboardGrabbed();
+            if (!popoutKeyboardGrab.active) {
+                if (!root._grabCommitting)
+                    root._grabFocusLocked = false;
                 return;
             }
-            if (!root.grabArmed || !root.shouldBeVisible || root.grabSettled || root.rearmedThisOpen)
+            if (root._grabCommitting)
                 return;
-            root.rearmedThisOpen = true;
-            Qt.callLater(() => {
-                if (root.grabArmed && root.shouldBeVisible && !root.grabSettled && !popoutKeyboardGrab.active) {
-                    popoutKeyboardGrab._compositorCleared = false;
-                    popoutKeyboardGrab.active = true;
-                }
-            });
+            root._lockGrabFocus();
         }
     }
 

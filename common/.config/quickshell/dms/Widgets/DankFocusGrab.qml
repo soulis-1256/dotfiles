@@ -16,11 +16,20 @@ HyprlandFocusGrab {
     property bool _held: false
     property bool _compositorCleared: false
     property var _restoreToplevel: null
+    // Popouts set this so the grab can start on the menu surface alone.
+    // Hyprland focuses the first whitelist surface under the pointer when the
+    // grab starts, and a fullscreen dismiss layer would take the seat.
+    property bool deferDismissWindows: false
 
     // Other-monitor dismiss overlays must stay whitelisted. A click on a
     // non-whitelisted surface clears the compositor grab and writes active=false,
     // which breaks a QML binding and prevents the next open from re-acquiring.
-    windows: (clientWindows || []).concat(KeyboardFocus.dismissWindows)
+    windows: {
+        const clients = clientWindows || [];
+        if (root.deferDismissWindows && !root.active)
+            return clients;
+        return clients.concat(KeyboardFocus.dismissWindows);
+    }
 
     property Timer _releaseTimer: Timer {
         interval: 50
