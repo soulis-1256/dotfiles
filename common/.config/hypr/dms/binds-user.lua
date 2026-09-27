@@ -187,6 +187,10 @@ hl.unbind("SUPER + SHIFT + L")
 hl.unbind("SUPER + CTRL + L")
 hl.unbind("SUPER + SHIFT + CTRL + L")
 
+hl.unbind("SUPER + W")
+hl.unbind("ALT + space")
+hl.unbind("SUPER + SHIFT + P")
+
 hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/soulis/.local/bin/dms-game-overlay"), { release = true, description = "Toggle Game Control Center" })
 
 hl.unbind("SUPER + z")
