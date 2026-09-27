@@ -12,8 +12,8 @@ background-blur-radius = 32
 cursor-style = block
 cursor-style-blink = true
 
-# Scrollback
-scrollback-limit = 3023
+# Scrollback (in bytes; memory is allocated lazily)
+scrollback-limit = 100000000
 
 # Terminal features
 mouse-hide-while-typing = true
