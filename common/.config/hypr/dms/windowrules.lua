@@ -21,6 +21,13 @@ hl.window_rule({
 	no_shadow = true,
 })
 
+-- Unreal Engine on 7 (silent so it does not steal the active workspace)
+hl.window_rule({
+	match = { class = "^([uU]nreal.*)$" },
+	workspace = "7 silent",
+	no_initial_focus = true,
+})
+
 -- Games on workspace 9. Map-time workspace/monitor pins do not stick
 -- if the client later fullscreen-outputs onto another monitor.
 hl.window_rule({
@@ -114,6 +121,7 @@ _G.hyprbars_blacklist = {
 		"com\\.danklinux\\.dms",
 		"steam_app_.*",
 		".*\\.exe.*",
+		"[uU]nreal.*",
 	},
 	titles = {
 		".*[Pp]icture[- ][iI]n[- ][pP]icture.*",
