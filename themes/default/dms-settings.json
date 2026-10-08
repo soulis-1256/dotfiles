@@ -736,7 +736,7 @@
       "bottomGap": 0,
       "transparency": 1,
       "widgetTransparency": 1,
-      "squareCorners": true,
+      "squareCorners": false,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
@@ -756,7 +756,8 @@
       "shadowOpacity": 60,
       "widgetOutlineEnabled": false,
       "scrollEnabled": true,
-      "clickThrough": false
+      "clickThrough": false,
+      "attachToScreenEdge": false
     },
     {
       "id": "bar1770393292481",
@@ -823,7 +824,7 @@
       "bottomGap": 0,
       "transparency": 1,
       "widgetTransparency": 1,
-      "squareCorners": true,
+      "squareCorners": false,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
@@ -851,7 +852,8 @@
       "shadowIntensity": 0,
       "shadowOpacity": 60,
       "shadowColorMode": "text",
-      "shadowCustomColor": "#000000"
+      "shadowCustomColor": "#000000",
+      "attachToScreenEdge": false
     }
   ],
   "desktopClockEnabled": false,

@@ -1,0 +1,2763 @@
+import QtQuick
+import QtQuick.Effects
+import Quickshell
+import Quickshell.Widgets
+import Quickshell.Hyprland
+import Quickshell.I3
+import Quickshell.WindowManager
+import qs.Common
+import qs.Services
+import qs.Widgets
+import "../../../Common/WheelInput.js" as WheelInput
+
+Item {
+    id: root
+
+    property bool isVertical: axis?.isVertical ?? false
+    property var axis: null
+    property string screenName: ""
+    property real widgetHeight: 30
+    property real barThickness: 48
+    property var barConfig: null
+    property var blurBarWindow: null
+    property var hyprlandOverviewLoader: null
+    property var parentScreen: null
+    property real crossEdgeExtension: 0
+
+    readonly property bool isMango: CompositorService.isMango
+    readonly property bool isFullHeight: (barConfig && barConfig.fullHeightWidgets) || false
+    readonly property bool useAqueous: CompositorService.isAqueous && AqueousService.available && Quickshell.env("DMS_FORCE_EXTWS") !== "1"
+
+    property bool isFirst: false
+    property bool isLast: false
+    property real sectionSpacing: 0
+    property bool isLeftBarEdge: false
+    property bool isRightBarEdge: false
+    property bool isTopBarEdge: false
+    property bool isBottomBarEdge: false
+
+    readonly property real barEdgeExtension: 1000
+    readonly property real _leftMargin: isVertical ? 0 : (isLeftBarEdge && isFirst ? barEdgeExtension : (isFirst ? sectionSpacing : sectionSpacing / 2))
+    readonly property real _rightMargin: isVertical ? 0 : (isRightBarEdge && isLast ? barEdgeExtension : (isLast ? sectionSpacing : sectionSpacing / 2))
+    readonly property real _topMargin: isVertical ? (isTopBarEdge && isFirst ? barEdgeExtension : (isFirst ? sectionSpacing : sectionSpacing / 2)) : (axis?.edge === "top" ? crossEdgeExtension : 0)
+    readonly property real _bottomMargin: isVertical ? (isBottomBarEdge && isLast ? barEdgeExtension : (isLast ? sectionSpacing : sectionSpacing / 2)) : (axis?.edge === "bottom" ? crossEdgeExtension : 0)
+
+    property int _desktopEntriesUpdateTrigger: 0
+    readonly property var sortedToplevels: {
+        return CompositorService.filterCurrentWorkspace(CompositorService.sortedToplevels, screenName);
+    }
+
+    readonly property string effectiveScreenName: {
+        if (!SettingsData.workspaceFollowFocus)
+            return root.screenName;
+        return BarWidgetService.getFocusedScreenName() || root.screenName;
+    }
+    readonly property bool mangoOverviewActive: CompositorService.isMango && MangoService.isOutputInOverview(effectiveScreenName)
+
+    readonly property bool isFocusedMonitor: {
+        const focused = BarWidgetService.getFocusedScreenName();
+        return focused === "" || root.screenName === "" || focused === root.screenName;
+    }
+    readonly property bool useUnfocusedAppearance: !isFocusedMonitor && SettingsData.workspaceUnfocusedMonitorSeparateAppearance && BarWidgetService.focusedScreenDetectionSupported
+
+    readonly property var extProjection: (useExtWorkspace && parentScreen) ? WindowManager.screenProjection(CompositorService.isAqueous ? Quickshell.screens.find(s => s.name === effectiveScreenName) || parentScreen : parentScreen) : null
+    readonly property bool useExtWorkspace: {
+        if (useAqueous)
+            return false;
+        if (Quickshell.env("DMS_FORCE_EXTWS") === "1")
+            return (WindowManager.windowsets?.length ?? 0) > 0;
+        if (!CompositorService.compositorDetected)
+            return false;
+        switch (CompositorService.compositor) {
+        case "niri":
+        case "hyprland":
+        case "mango":
+        case "sway":
+        case "scroll":
+        case "miracle":
+            return false;
+        default:
+            return (WindowManager.windowsets?.length ?? 0) > 0;
+        }
+    }
+
+    Connections {
+        target: DesktopEntries
+        function onApplicationsChanged() {
+            _desktopEntriesUpdateTrigger++;
+        }
+    }
+
+    Connections {
+        target: CompositorService
+        function onCompositorChanged() {
+            root._placeholderPool = [];
+            root._hyprSlotPool = {};
+        }
+    }
+
+    property var currentWorkspace: {
+        if (useAqueous)
+            return AqueousService.workspacesForOutput(effectiveScreenName).find(w => w.active)?.id || "";
+        if (useExtWorkspace)
+            return getExtWorkspaceActiveWorkspace();
+
+        switch (CompositorService.compositor) {
+        case "niri":
+            return getNiriActiveWorkspace();
+        case "hyprland":
+            return getHyprlandActiveWorkspace();
+        case "mango":
+            const activeTags = getDwlActiveTags();
+            return activeTags.length > 0 ? activeTags[0] : -1;
+        case "sway":
+        case "scroll":
+        case "miracle":
+            return getSwayActiveWorkspace();
+        default:
+            return 1;
+        }
+    }
+    property var dwlActiveTags: {
+        if (root.isMango) {
+            return getDwlActiveTags();
+        }
+        return [];
+    }
+    property var workspaceList: {
+        if (useAqueous) {
+            const baseList = AqueousService.workspacesForOutput(effectiveScreenName).filter(ws => !SettingsData.showOccupiedWorkspacesOnly || ws.active || AqueousService.toplevels.some(w => w.aqueousWorkspaceId === ws.id));
+            return SettingsData.showWorkspacePadding && baseList.length ? padWorkspaces(baseList) : baseList;
+        }
+        if (useExtWorkspace) {
+            const baseList = getExtWorkspaceWorkspaces();
+            return SettingsData.showWorkspacePadding ? padWorkspaces(baseList) : baseList;
+        }
+
+        let baseList;
+        switch (CompositorService.compositor) {
+        case "niri":
+            baseList = getNiriWorkspaces();
+            break;
+        case "hyprland":
+            return hyprlandSlotList(getHyprlandWorkspaces());
+        case "mango":
+            if (root.mangoOverviewActive)
+                return [];
+            baseList = getDwlTags();
+            break;
+        case "sway":
+        case "scroll":
+        case "miracle":
+            baseList = getSwayWorkspaces();
+            break;
+        default:
+            return [1];
+        }
+        return SettingsData.showWorkspacePadding ? padWorkspaces(baseList) : baseList;
+    }
+
+    function getSwayWorkspaces() {
+        const workspaces = I3.workspaces?.values || [];
+        if (workspaces.length === 0)
+            return [
+                {
+                    "num": 1
+                }
+            ];
+
+        function mapWorkspace(ws) {
+            return {
+                "num": ws.number,
+                "name": stripSwayWorkspaceNumber(ws.number, ws.name),
+                "focused": ws.focused,
+                "active": ws.active,
+                "urgent": ws.urgent,
+                "monitor": ws.monitor
+            };
+        }
+
+        if (!root.screenName || SettingsData.workspaceFollowFocus) {
+            return workspaces.slice().sort(swayWorkspaceOrder).map(mapWorkspace);
+        }
+
+        const monitorWorkspaces = workspaces.filter(ws => ws.monitor?.name === root.screenName);
+        return monitorWorkspaces.length > 0 ? monitorWorkspaces.sort(swayWorkspaceOrder).map(mapWorkspace) : [
+            {
+                "num": 1
+            }
+        ];
+    }
+
+    // sway/scroll fold `<num>:<name>` into the name field (num 1 → name "1:test"); drop the redundant prefix so the index option controls it
+    function stripSwayWorkspaceNumber(num, name) {
+        if (num === undefined || num === -1)
+            return name;
+        if (typeof name !== "string")
+            return name;
+        const prefix = num + ":";
+        if (!name.startsWith(prefix))
+            return name;
+        return name.slice(prefix.length);
+    }
+
+    // Numbered workspaces first in ascending order; purely-named workspaces (sway reports num -1) after, by name
+    function swayWorkspaceOrder(a, b) {
+        const keyA = a.num === -1 ? Number.MAX_SAFE_INTEGER : a.num;
+        const keyB = b.num === -1 ? Number.MAX_SAFE_INTEGER : b.num;
+        if (keyA !== keyB)
+            return keyA - keyB;
+        return (a.name ?? "").localeCompare(b.name ?? "");
+    }
+
+    // Sway reports num -1 for purely-named workspaces, so identity must fall back to name
+    function swayWorkspaceKey(ws) {
+        return ws.num !== -1 ? ws.num : ws.name;
+    }
+
+    function getSwayActiveWorkspace() {
+        if (!root.screenName || SettingsData.workspaceFollowFocus) {
+            const focusedWs = I3.workspaces?.values?.find(ws => ws.focused === true);
+            return focusedWs ? swayWorkspaceKey(focusedWs) : 1;
+        }
+
+        const focusedWs = I3.workspaces?.values?.find(ws => ws.monitor?.name === root.screenName && ws.focused === true);
+        return focusedWs ? swayWorkspaceKey(focusedWs) : 1;
+    }
+
+    // Numbered workspaces first in id order, named (negative id) after, by name
+    function hyprlandWorkspaceOrder(a, b) {
+        const keyA = a.id < 0 ? Number.MAX_SAFE_INTEGER : a.id;
+        const keyB = b.id < 0 ? Number.MAX_SAFE_INTEGER : b.id;
+        if (keyA !== keyB)
+            return keyA - keyB;
+        return (a.name ?? "").localeCompare(b.name ?? "");
+    }
+
+    function hyprlandWorkspaceSelector(ws) {
+        if (!ws)
+            return 1;
+        if (typeof ws === "number")
+            return ws;
+        return ws.id > 0 ? ws.id : "name:" + (ws.name ?? "");
+    }
+
+    function contextMenuAllWindows(modelData) {
+        const sourceWindows = modelData?.windows || [];
+        const allWindows = [];
+        for (let i = 0; i < sourceWindows.length; i++) {
+            const win = sourceWindows[i];
+            if (!win)
+                continue;
+            const toplevel = win.wayland || win;
+            allWindows.push({
+                toplevel: toplevel,
+                hypr: win,
+                index: i,
+                windowTitle: win.title || toplevel.title || "",
+                address: win.address || toplevel.address || ""
+            });
+        }
+        return allWindows;
+    }
+
+    function contextMenuWorkspaceWindows(workspace, appId) {
+        if (!workspace || !appId)
+            return [];
+        const icons = root.getWorkspaceIcons(workspace);
+        const windows = [];
+        const seen = {};
+        for (let i = 0; i < icons.length; i++) {
+            const icon = icons[i];
+            if (Paths.moddedAppId(icon.appId || "") !== appId)
+                continue;
+            const iconWindows = root.contextMenuAllWindows(icon);
+            for (let j = 0; j < iconWindows.length; j++) {
+                const win = iconWindows[j];
+                const key = win.address || (win.toplevel ? String(i) + ":" + j : "");
+                if (key && seen[key])
+                    continue;
+                if (key)
+                    seen[key] = true;
+                windows.push(win);
+            }
+        }
+        return windows;
+    }
+
+    function showAppContextMenu(item, modelData, workspace) {
+        if (!item || !modelData)
+            return;
+
+        const moddedId = Paths.moddedAppId(modelData.appId || modelData.fallbackText || "");
+        const iconWindows = root.contextMenuAllWindows(modelData);
+        const windowId = modelData.windowId || iconWindows[0]?.address || "";
+        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
+            const current = appContextMenuLoader.item.appData;
+            if (current?.appId === moddedId && (current?.windowId || "") === windowId) {
+                appContextMenuLoader.item.close();
+                return;
+            }
+        }
+
+        root.hideAppPreview();
+        appContextMenuLoader.active = true;
+        if (!appContextMenuLoader.item)
+            return;
+
+        const isBarVertical = root.axis?.isVertical ?? false;
+        const barEdge = root.axis?.edge ?? (root.isFullHeight ? (isBarVertical ? "left" : "bottom") : "bottom");
+        const localPos = item.mapToItem(null, item.width / 2, item.height / 2);
+
+        let x = localPos.x;
+        let y = localPos.y;
+        const screenHeight = root.parentScreen?.height ?? Screen.height;
+        const screenWidth = root.parentScreen?.width ?? Screen.width;
+
+        switch (barEdge) {
+        case "bottom":
+            y = screenHeight - root.barThickness - (root.barSpacing || 0);
+            break;
+        case "top":
+            y = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "left":
+            x = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "right":
+            x = screenWidth - root.barThickness - (root.barSpacing || 0);
+            break;
+        }
+
+        const shouldHidePin = true;
+        const desktopEntry = moddedId ? DesktopEntries.heuristicLookup(moddedId) : null;
+        let workspaceWindows = root.contextMenuWorkspaceWindows(workspace, moddedId);
+        if (workspaceWindows.length === 0)
+            workspaceWindows = iconWindows;
+        const isGroup = iconWindows.length > 1;
+        const first = iconWindows[0] || null;
+        const appData = {
+            appId: moddedId,
+            type: isGroup ? "grouped" : "window",
+            windowCount: iconWindows.length,
+            windowId: windowId,
+            allWindows: iconWindows,
+            workspaceWindows: workspaceWindows,
+            toplevel: first?.toplevel || null,
+            address: first?.address || ""
+        };
+
+        appContextMenuLoader.item.showAt(x, y, isBarVertical, barEdge, appData, shouldHidePin, desktopEntry, root.parentScreen);
+    }
+
+    function workspacePreviewsEnabled(workspace) {
+        HyprlandService.floatingModeActive;
+        HyprlandService.floatingWorkspaces;
+        HyprlandService.windowStateRevision;
+        if (!CompositorService.isHyprland)
+            return false;
+        const id = workspace?.id !== undefined ? workspace.id : root.currentWorkspace;
+        if (HyprlandService.isWorkspaceFloating(id))
+            return true;
+        return HyprlandService.workspaceHasMixedFloatingAndTiled(id);
+    }
+
+    function hideAppPreview() {
+        previewShowTimer.stop();
+        previewHideTimer.stop();
+        if (appPreviewLoader.item)
+            appPreviewLoader.item.close();
+    }
+
+    function scheduleHideAppPreview() {
+        previewShowTimer.stop();
+        previewHideTimer.restart();
+    }
+
+    function scheduleAppPreview(item, modelData, workspace) {
+        if (!item || !modelData || !root.workspacePreviewsEnabled(workspace)) {
+            root.hideAppPreview();
+            return;
+        }
+        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
+            root.hideAppPreview();
+            return;
+        }
+        previewShowTimer.item = item;
+        previewShowTimer.modelData = modelData;
+        previewShowTimer.workspace = workspace;
+        previewHideTimer.stop();
+        if (appPreviewLoader.item && appPreviewLoader.item.visible) {
+            root.showAppPreview(item, modelData, workspace);
+            return;
+        }
+        previewShowTimer.restart();
+    }
+
+    function showAppPreview(item, modelData, workspace) {
+        if (!item || !modelData || !root.workspacePreviewsEnabled(workspace))
+            return;
+        if (appContextMenuLoader.item && appContextMenuLoader.item.shown)
+            return;
+
+        appPreviewLoader.active = true;
+        if (!appPreviewLoader.item)
+            return;
+
+        const windows = root.contextMenuAllWindows(modelData);
+        if (windows.length === 0)
+            return;
+
+        const isBarVertical = root.axis?.isVertical ?? false;
+        const barEdge = root.axis?.edge ?? (root.isFullHeight ? (isBarVertical ? "left" : "bottom") : "bottom");
+        const localPos = item.mapToItem(null, item.width / 2, item.height / 2);
+        let x = localPos.x;
+        let y = localPos.y;
+        const screenHeight = root.parentScreen?.height ?? Screen.height;
+        const screenWidth = root.parentScreen?.width ?? Screen.width;
+
+        switch (barEdge) {
+        case "bottom":
+            y = screenHeight - root.barThickness - (root.barSpacing || 0);
+            break;
+        case "top":
+            y = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "left":
+            x = root.barThickness + (root.barSpacing || 0);
+            break;
+        case "right":
+            x = screenWidth - root.barThickness - (root.barSpacing || 0);
+            break;
+        }
+
+        appPreviewLoader.item.showAt(x, y, isBarVertical, barEdge, windows, modelData.fallbackText || "", modelData.icon || "", root.parentScreen);
+    }
+
+    // A hotplug can leave the workspace→monitor mapping stale so nothing matches this screen;
+    // show what the monitor itself reports rather than a fabricated workspace "1" (#3133)
+    function hyprlandMonitorWorkspaces(workspaces) {
+        const monitorWorkspaces = workspaces.filter(ws => ws.monitor?.name === root.screenName);
+        if (monitorWorkspaces.length > 0)
+            return monitorWorkspaces.sort(hyprlandWorkspaceOrder);
+        const active = Hyprland.monitors?.values?.find(m => m.name === root.screenName)?.activeWorkspace;
+        return active ? [active] : [];
+    }
+
+    function getHyprlandWorkspaces() {
+        const workspaces = Hyprland.workspaces?.values || [];
+        if (workspaces.length === 0) {
+            return [
+                {
+                    id: 1,
+                    name: "1"
+                }
+            ];
+        }
+
+        // Hyprland gives named workspaces negative ids (from -1337 down); special
+        // workspaces always store a "special:" name prefix ("special" pre-colon era)
+        let filtered = workspaces.filter(ws => {
+            if (ws.id > 0)
+                return true;
+            const name = ws.name ?? "";
+            return name !== "special" && !name.startsWith("special:");
+        });
+        if (filtered.length === 0) {
+            return [
+                {
+                    id: 1,
+                    name: "1"
+                }
+            ];
+        }
+
+        if (!root.screenName || SettingsData.workspaceFollowFocus) {
+            filtered = filtered.slice().sort(hyprlandWorkspaceOrder);
+        } else {
+            filtered = hyprlandMonitorWorkspaces(filtered);
+        }
+
+        if (!SettingsData.showOccupiedWorkspacesOnly) {
+            return filtered;
+        }
+
+        const hyprlandToplevels = Array.from(Hyprland.toplevels?.values || []);
+        const activeWsId = root.currentWorkspace;
+        return filtered.filter(ws => {
+            if (ws.id === activeWsId)
+                return true;
+            return hyprlandToplevels.some(tl => tl.workspace?.id === ws.id);
+        });
+    }
+
+    function getHyprlandActiveWorkspace() {
+        if (!root.screenName || SettingsData.workspaceFollowFocus) {
+            return Hyprland.focusedWorkspace?.id || 1;
+        }
+
+        const monitor = Hyprland.monitors?.values?.find(m => m.name === root.screenName);
+        return monitor?.activeWorkspace?.id || 1;
+    }
+
+    function getWorkspaceIcons(ws) {
+        _desktopEntriesUpdateTrigger;
+        if (!SettingsData.showWorkspaceApps || !ws || useExtWorkspace || (useAqueous && ws._placeholder)) {
+            return [];
+        }
+
+        let targetWorkspaceId;
+        if (useAqueous) {
+            targetWorkspaceId = ws.id;
+        } else if (CompositorService.isNiri) {
+            if (!ws || typeof ws !== "object") {
+                const wsNumber = typeof ws === "number" ? ws : -1;
+                if (wsNumber <= 0) {
+                    return [];
+                }
+                const workspace = NiriService.allWorkspaces.find(w => w.idx + 1 === wsNumber && w.output === root.effectiveScreenName);
+                if (!workspace) {
+                    return [];
+                }
+                targetWorkspaceId = workspace.id;
+            } else {
+                if (ws.id === undefined || ws.id === -1 || ws.idx === -1) {
+                    return [];
+                }
+                targetWorkspaceId = ws.id;
+            }
+        } else if (CompositorService.isHyprland) {
+            targetWorkspaceId = ws.id !== undefined ? ws.id : ws;
+        } else if (root.isMango) {
+            if (typeof ws !== "object" || ws.tag === undefined) {
+                return [];
+            }
+            targetWorkspaceId = ws.tag;
+        } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+            targetWorkspaceId = ws.num !== undefined ? ws.num : ws;
+        } else {
+            return [];
+        }
+
+        const wins = CompositorService.isNiri ? (NiriService.windows || []) : CompositorService.sortedToplevels;
+
+        const byApp = {};
+        let isActiveWs = false;
+        if (CompositorService.isNiri) {
+            isActiveWs = NiriService.allWorkspaces.some(ws => ws.id === targetWorkspaceId && ws.is_active);
+        } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+            const focusedWs = I3.workspaces?.values?.find(ws => ws.focused === true);
+            isActiveWs = focusedWs ? (focusedWs.num === targetWorkspaceId) : false;
+        } else if (root.isMango) {
+            const output = MangoService.getOutputState(root.effectiveScreenName);
+            if (output && output.tags) {
+                const tag = output.tags.find(t => t.tag === targetWorkspaceId);
+                isActiveWs = tag ? (tag.state === 1) : false;
+            }
+        } else {
+            isActiveWs = targetWorkspaceId === root.currentWorkspace;
+        }
+
+        wins.forEach((w, i) => {
+            if (!w) {
+                return;
+            }
+
+            if (CompositorService.isMango) {
+                // mangoTags are 1-based; targetWorkspaceId is 0-based.
+                if (!(w.mangoTags || []).includes(targetWorkspaceId + 1))
+                    return;
+            } else {
+                let winWs = null;
+                if (useAqueous) {
+                    winWs = w.aqueousWorkspaceId;
+                } else if (CompositorService.isNiri) {
+                    winWs = w.workspace_id;
+                } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+                    winWs = w.workspace?.num;
+                } else {
+                    const hyprlandToplevels = Array.from(Hyprland.toplevels?.values || []);
+                    const hyprToplevel = hyprlandToplevels.find(ht => ht.wayland === w);
+                    winWs = hyprToplevel?.workspace?.id;
+                }
+
+                if (winWs === undefined || winWs === null || winWs !== targetWorkspaceId) {
+                    return;
+                }
+            }
+
+            const keyBase = (w.app_id || w.appId || w.class || w.windowClass || "unknown");
+            const moddedId = Paths.moddedAppId(keyBase);
+            const groupThisWs = SettingsData.groupWorkspaceApps && (!isActiveWs || SettingsData.groupActiveWorkspaceApps);
+            const key = groupThisWs ? moddedId : (w.aqueousKey || `${moddedId}_${i}`);
+
+            let targetWindow = w;
+            if (CompositorService.isHyprland) {
+                const hyprlandToplevels = Array.from(Hyprland.toplevels?.values || []);
+                const hyprToplevel = hyprlandToplevels.find(ht => ht.wayland === w || ht.address === w.address || ht === w);
+                if (hyprToplevel)
+                    targetWindow = hyprToplevel;
+            }
+
+            if (!byApp[key]) {
+                const isQuickshell = keyBase === "org.quickshell" || keyBase === "com.danklinux.dms";
+                const isSteamApp = Paths.isSteamApp(moddedId);
+                const desktopEntry = DesktopEntries.heuristicLookup(moddedId);
+                const icon = Paths.getAppIcon(moddedId, desktopEntry);
+                const appName = Paths.getAppName(moddedId, desktopEntry);
+                byApp[key] = {
+                    "type": "icon",
+                    "appId": moddedId,
+                    "icon": icon,
+                    "isQuickshell": isQuickshell,
+                    "isSteamApp": isSteamApp,
+                    "active": !!((w.activated || w.is_focused) || (CompositorService.isNiri && w.is_focused)),
+                    "count": 1,
+                    "windowId": w.address || w.id,
+                    "windowSession": useAqueous ? w.aqueousSession : "",
+                    "fallbackText": appName || "",
+                    "windows": [targetWindow]
+                };
+            } else {
+                byApp[key].count++;
+                if (byApp[key].windows)
+                    byApp[key].windows.push(targetWindow);
+                if ((w.activated || w.is_focused) || (CompositorService.isNiri && w.is_focused)) {
+                    byApp[key].active = true;
+                }
+            }
+        });
+
+        return Object.values(byApp);
+    }
+
+    function _makePlaceholder() {
+        if (useAqueous || useExtWorkspace)
+            return {
+                "id": "",
+                "name": "",
+                "active": false,
+                "_placeholder": true
+            };
+        if (CompositorService.isNiri)
+            return {
+                "id": -1,
+                "idx": -1,
+                "name": ""
+            };
+        if (CompositorService.isHyprland)
+            return {
+                "id": -1,
+                "name": ""
+            };
+        if (root.isMango)
+            return {
+                "tag": -1
+            };
+        if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+            return {
+                "num": -1,
+                "_placeholder": true
+            };
+        return -1;
+    }
+
+    // Hyprland creates/destroys workspaces on empty enter/leave; slots keyed by id keep delegate identity so pills animate instead of popping
+    property var _hyprSlotPool: ({})
+
+    Component {
+        id: hyprSlotComponent
+
+        QtObject {
+            property var ws: null
+            readonly property var id: ws ? ws.id : -1
+            readonly property string name: ws?.name ?? ""
+            readonly property bool urgent: ws?.urgent ?? false
+        }
+    }
+
+    function _hyprSlot(key, ws) {
+        let slot = _hyprSlotPool[key];
+        if (!slot) {
+            slot = hyprSlotComponent.createObject(root);
+            _hyprSlotPool[key] = slot;
+        }
+        if (slot.ws !== ws)
+            slot.ws = ws;
+        return slot;
+    }
+
+    function hyprlandSlotList(raw) {
+        const slots = raw.map(ws => _hyprSlot(ws.id > 0 ? ws.id : "name:" + (ws.name ?? ""), ws));
+        if (!SettingsData.showWorkspacePadding)
+            return slots;
+        // pad past the highest real id so a placeholder becomes that workspace's slot once created
+        let nextId = raw.reduce((max, ws) => Math.max(max, ws.id ?? 0), 0);
+        while (slots.length < 3)
+            slots.push(_hyprSlot(++nextId, null));
+        return slots;
+    }
+
+    // Stable placeholder instances so ScriptModel (identity-diffed) reuses padding delegates instead of recreating them on workspace churn
+    property var _placeholderPool: []
+
+    function padWorkspaces(list) {
+        const padded = list.slice();
+        let slot = 0;
+        while (padded.length < 3) {
+            if (root._placeholderPool.length <= slot)
+                root._placeholderPool.push(root._makePlaceholder());
+            padded.push(root._placeholderPool[slot]);
+            slot++;
+        }
+        return padded;
+    }
+
+    function getNiriWorkspaces() {
+        if (NiriService.allWorkspaces.length === 0) {
+            return [
+                {
+                    "id": 1,
+                    "idx": 0,
+                    "name": ""
+                },
+                {
+                    "id": 2,
+                    "idx": 1,
+                    "name": ""
+                }
+            ];
+        }
+
+        const fallbackWorkspaces = [
+            {
+                "id": 1,
+                "idx": 0,
+                "name": ""
+            },
+            {
+                "id": 2,
+                "idx": 1,
+                "name": ""
+            }
+        ];
+
+        let workspaces;
+        if (!root.screenName || SettingsData.workspaceFollowFocus) {
+            const currentWorkspaces = NiriService.getCurrentOutputWorkspaces();
+            workspaces = currentWorkspaces.length > 0 ? currentWorkspaces : fallbackWorkspaces;
+        } else {
+            const displayWorkspaces = NiriService.allWorkspaces.filter(ws => ws.output === root.screenName);
+            workspaces = displayWorkspaces.length > 0 ? displayWorkspaces : fallbackWorkspaces;
+        }
+
+        workspaces = workspaces.slice().sort((a, b) => a.idx - b.idx);
+
+        if (!SettingsData.showOccupiedWorkspacesOnly) {
+            return workspaces;
+        }
+
+        return workspaces.filter(ws => {
+            if (ws.is_active)
+                return true;
+            return NiriService.windows?.some(win => win.workspace_id === ws.id) ?? false;
+        });
+    }
+
+    function getNiriActiveWorkspace() {
+        if (NiriService.allWorkspaces.length === 0) {
+            return 1;
+        }
+
+        if (!root.screenName || SettingsData.workspaceFollowFocus) {
+            return NiriService.getCurrentWorkspaceNumber();
+        }
+
+        const activeWs = NiriService.allWorkspaces.find(ws => ws.output === root.screenName && ws.is_active);
+        return activeWs ? activeWs.idx : 1;
+    }
+
+    function getDwlTags() {
+        if (!MangoService.available)
+            return [];
+
+        const targetScreen = root.effectiveScreenName;
+        const output = MangoService.getOutputState(targetScreen);
+        if (!output || !output.tags || output.tags.length === 0)
+            return [];
+
+        if (SettingsData.dwlShowAllTags) {
+            return output.tags.map(tag => ({
+                        "tag": tag.tag,
+                        "state": tag.state,
+                        "clients": tag.clients,
+                        "focused": tag.focused
+                    }));
+        }
+
+        const visibleTagIndices = MangoService.getVisibleTags(targetScreen);
+        return visibleTagIndices.map(tagIndex => {
+            const tagData = output.tags.find(t => t.tag === tagIndex);
+            return {
+                "tag": tagIndex,
+                "state": tagData?.state ?? 0,
+                "clients": tagData?.clients ?? 0,
+                "focused": tagData?.focused ?? false
+            };
+        });
+    }
+
+    function getDwlActiveTags() {
+        if (!MangoService.available)
+            return [];
+
+        return MangoService.getActiveTags(root.effectiveScreenName);
+    }
+
+    function getExtWorkspaceWorkspaces() {
+        const fallback = [
+            {
+                "id": "1",
+                "name": "1",
+                "active": false
+            }
+        ];
+        if (!extProjection)
+            return fallback;
+
+        let visible = extProjection.windowsets.filter(ws => ws.shouldDisplay);
+
+        const hasValidCoordinates = visible.some(ws => ws.coordinates && ws.coordinates.length > 0);
+        if (hasValidCoordinates) {
+            visible = visible.slice().sort((a, b) => {
+                const coordsA = a.coordinates || [0, 0];
+                const coordsB = b.coordinates || [0, 0];
+                if (coordsA[0] !== coordsB[0])
+                    return coordsA[0] - coordsB[0];
+                return coordsA[1] - coordsB[1];
+            });
+        }
+
+        return visible.length > 0 ? visible : fallback;
+    }
+
+    function getExtWorkspaceActiveWorkspace() {
+        if (!extProjection)
+            return "";
+        const activeWs = extProjection.windowsets.find(ws => ws.active);
+        return activeWs || null;
+    }
+
+    readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
+    readonly property real padding: (root.isFullHeight || (root.barConfig?.removeWidgetPadding ?? false)) ? 0 : Theme.snap((root.barConfig?.widgetPadding ?? 12) * (widgetHeight / 30), dpr)
+    readonly property real visualWidth: isVertical ? (root.isFullHeight ? root.barThickness : widgetHeight) : (workspaceRow.implicitWidth + (root.isFullHeight ? 0 : padding * 2))
+    readonly property real visualHeight: isVertical ? (workspaceRow.implicitHeight + (root.isFullHeight ? 0 : padding * 2)) : (root.isFullHeight ? root.barThickness : widgetHeight)
+    readonly property bool compactHorizontal: !isVertical && SettingsData.workspaceIndicatorStyle === "compact"
+    readonly property int compactIndexTopMargin: 1
+    readonly property int compactPillBottomMargin: 1
+    readonly property int compactPillHeight: 3
+    readonly property int workspaceLabelSize: Theme.barTextSize(barThickness, barConfig?.fontScale, barConfig?.maximizeWidgetText)
+    readonly property real appIconSize: {
+        if (root.isFullHeight) {
+            if (root.compactHorizontal) {
+                const hover = root.barThickness - 2 * Theme.barHoverMargin;
+                const topBand = compactIndexTopMargin + workspaceLabelSize;
+                const bottomBand = compactPillBottomMargin + compactPillHeight;
+                return Math.max(16, hover - topBand - bottomBand - 2 + SettingsData.workspaceAppIconSizeOffset);
+            }
+            return Math.max(20, Math.round(root.barThickness * 0.54 + SettingsData.workspaceAppIconSizeOffset));
+        }
+        return Theme.barIconSize(barThickness, -6 + SettingsData.workspaceAppIconSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale);
+    }
+    readonly property int appCountBadgeSize: Math.max(11, Math.round(appIconSize * 0.58))
+    readonly property int appCountBadgeTextSize: Math.max(8, Math.round(appCountBadgeSize * 0.68))
+
+    function getRealWorkspaces() {
+        return root.workspaceList.filter(ws => {
+            if (useAqueous || useExtWorkspace)
+                return ws && !ws._placeholder;
+            if (CompositorService.isNiri)
+                return ws && ws.idx !== -1;
+            if (CompositorService.isHyprland)
+                return ws && ws.id !== -1;
+            if (root.isMango)
+                return ws && ws.tag !== -1;
+            if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+                return ws && !ws._placeholder;
+            return ws !== -1;
+        });
+    }
+
+    function switchToWorkspaceByModelData(data) {
+        if (!data || data._placeholder)
+            return;
+
+        if (useAqueous) {
+            AqueousService.activateWorkspace(data);
+            return;
+        }
+
+        if (root.useExtWorkspace) {
+            if (typeof data.activate === "function")
+                data.activate();
+            return;
+        }
+
+        switch (CompositorService.compositor) {
+        case "niri":
+            if (data.id !== undefined)
+                NiriService.switchToWorkspace(data.id);
+            break;
+        case "hyprland":
+            if (data.id && data.id !== -1) {
+                HyprlandService.focusWorkspace(hyprlandWorkspaceSelector(data));
+            }
+            break;
+        case "mango":
+            if (data.tag !== undefined)
+                MangoService.switchToTag(root.screenName, data.tag);
+            break;
+        case "sway":
+        case "scroll":
+        case "miracle":
+            CompositorService.dispatchSwayWorkspace(data);
+            break;
+        }
+    }
+
+    function findClosestWorkspaceIndex(localX, localY) {
+        if (workspaceRepeater.count === 0)
+            return -1;
+
+        let closestIdx = -1;
+        let closestDist = Infinity;
+
+        for (let i = 0; i < workspaceRepeater.count; i++) {
+            const item = workspaceRepeater.itemAt(i);
+            if (!item || item.isPlaceholder)
+                continue;
+            const center = item.mapToItem(root, item.width / 2, item.height / 2);
+            const dist = isVertical ? Math.abs(localY - center.y) : Math.abs(localX - center.x);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestIdx = i;
+            }
+        }
+        return closestIdx;
+    }
+
+    function switchWorkspace(direction) {
+        if (useAqueous) {
+            const workspaces = getRealWorkspaces();
+            const index = workspaces.findIndex(w => w.id === currentWorkspace);
+            const next = Math.max(0, Math.min(workspaces.length - 1, index + (direction > 0 ? 1 : -1)));
+            if (next !== index)
+                AqueousService.activateWorkspace(workspaces[next]);
+            return;
+        }
+        if (useExtWorkspace) {
+            const realWorkspaces = getRealWorkspaces();
+            if (realWorkspaces.length < 2) {
+                return;
+            }
+
+            const currentIndex = realWorkspaces.findIndex(ws => ws === root.currentWorkspace);
+            const validIndex = currentIndex === -1 ? 0 : currentIndex;
+            const nextIndex = direction > 0 ? Math.min(validIndex + 1, realWorkspaces.length - 1) : Math.max(validIndex - 1, 0);
+
+            if (nextIndex === validIndex) {
+                return;
+            }
+
+            const nextWorkspace = realWorkspaces[nextIndex];
+            if (typeof nextWorkspace.activate === "function")
+                nextWorkspace.activate();
+        } else if (CompositorService.isNiri) {
+            const realWorkspaces = getRealWorkspaces();
+            if (realWorkspaces.length < 2) {
+                return;
+            }
+
+            const currentIndex = realWorkspaces.findIndex(ws => ws && ws.idx === root.currentWorkspace);
+            const validIndex = currentIndex === -1 ? 0 : currentIndex;
+            const nextIndex = direction > 0 ? Math.min(validIndex + 1, realWorkspaces.length - 1) : Math.max(validIndex - 1, 0);
+
+            if (nextIndex === validIndex) {
+                return;
+            }
+
+            const nextWorkspace = realWorkspaces[nextIndex];
+            if (!nextWorkspace || nextWorkspace.id === undefined) {
+                return;
+            }
+            NiriService.switchToWorkspace(nextWorkspace.id);
+        } else if (CompositorService.isHyprland) {
+            const realWorkspaces = getRealWorkspaces();
+            if (realWorkspaces.length < 2) {
+                return;
+            }
+
+            const currentIndex = realWorkspaces.findIndex(ws => ws.id === root.currentWorkspace);
+            const validIndex = currentIndex === -1 ? 0 : currentIndex;
+            const nextIndex = direction > 0 ? Math.min(validIndex + 1, realWorkspaces.length - 1) : Math.max(validIndex - 1, 0);
+
+            if (nextIndex === validIndex) {
+                return;
+            }
+
+            HyprlandService.focusWorkspace(hyprlandWorkspaceSelector(realWorkspaces[nextIndex]));
+        } else if (root.isMango) {
+            const realWorkspaces = getRealWorkspaces();
+            if (realWorkspaces.length < 2) {
+                return;
+            }
+
+            const currentIndex = realWorkspaces.findIndex(ws => ws.tag === root.currentWorkspace);
+            const validIndex = currentIndex === -1 ? 0 : currentIndex;
+            const nextIndex = direction > 0 ? Math.min(validIndex + 1, realWorkspaces.length - 1) : Math.max(validIndex - 1, 0);
+
+            if (nextIndex === validIndex) {
+                return;
+            }
+
+            MangoService.switchToTag(root.screenName, realWorkspaces[nextIndex].tag);
+        } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+            const realWorkspaces = getRealWorkspaces();
+            if (realWorkspaces.length < 2) {
+                return;
+            }
+
+            const currentIndex = realWorkspaces.findIndex(ws => swayWorkspaceKey(ws) === root.currentWorkspace);
+            const validIndex = currentIndex === -1 ? 0 : currentIndex;
+            const nextIndex = direction > 0 ? Math.min(validIndex + 1, realWorkspaces.length - 1) : Math.max(validIndex - 1, 0);
+
+            if (nextIndex === validIndex) {
+                return;
+            }
+
+            CompositorService.dispatchSwayWorkspace(realWorkspaces[nextIndex]);
+        }
+    }
+
+    function getWorkspaceIndexFallback(modelData, index) {
+        if (useAqueous)
+            return modelData?.number ?? "";
+        if (root.useExtWorkspace)
+            return index + 1;
+        if (CompositorService.isNiri)
+            return (modelData?.idx !== undefined && modelData?.idx !== -1) ? modelData.idx : "";
+        if (CompositorService.isHyprland)
+            return modelData?.id > 0 ? modelData.id : (modelData?.name ?? "");
+        if (root.isMango)
+            return (modelData?.tag !== undefined) ? (modelData.tag + 1) : "";
+        if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+            return (modelData?.num !== undefined && modelData.num !== -1) ? modelData.num : (modelData?.name ?? "");
+        return modelData - 1;
+    }
+
+    function getWorkspaceIndex(modelData, index) {
+        let isPlaceholder;
+        if (root.useAqueous || root.useExtWorkspace) {
+            isPlaceholder = modelData?._placeholder === true;
+        } else if (CompositorService.isNiri) {
+            isPlaceholder = modelData?.idx === -1;
+        } else if (CompositorService.isHyprland) {
+            isPlaceholder = modelData?.id === -1;
+        } else if (root.isMango) {
+            isPlaceholder = modelData?.tag === -1;
+        } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+            isPlaceholder = modelData?._placeholder === true;
+        } else {
+            isPlaceholder = modelData === -1;
+        }
+
+        if (isPlaceholder)
+            return index + 1;
+
+        let workspaceName = "";
+        if (SettingsData.showWorkspaceName) {
+            workspaceName = modelData?.name ?? "";
+
+            if (workspaceName && workspaceName !== "") {
+                if (root.isVertical) {
+                    workspaceName = workspaceName.charAt(0);
+                }
+            } else {
+                workspaceName = "";
+            }
+        }
+
+        if (workspaceName) {
+            if (SettingsData.showWorkspaceIndex) {
+                const indexLabel = getWorkspaceIndexFallback(modelData, index);
+                return indexLabel ? `${indexLabel}: ${workspaceName}` : workspaceName;
+            }
+            return workspaceName;
+        }
+
+        return getWorkspaceIndexFallback(modelData, index);
+    }
+
+    readonly property bool hasNativeWorkspaceSupport: useAqueous || CompositorService.isNiri || CompositorService.isHyprland || root.isMango || CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle
+    readonly property bool hasWorkspaces: getRealWorkspaces().length > 0
+    readonly property bool shouldShow: hasNativeWorkspaceSupport || (useExtWorkspace && hasWorkspaces)
+
+    width: shouldShow ? (isVertical ? barThickness : visualWidth) : 0
+    height: shouldShow ? (isVertical ? visualHeight : barThickness) : 0
+    visible: shouldShow
+
+    Item {
+        id: visualBackground
+        width: root.visualWidth
+        height: root.visualHeight
+        anchors.centerIn: parent
+
+        Rectangle {
+            id: outline
+            anchors.centerIn: parent
+            width: {
+                const borderWidth = (barConfig?.widgetOutlineEnabled ?? false) ? (barConfig?.widgetOutlineThickness ?? 1) : 0;
+                return parent.width + borderWidth * 2;
+            }
+            height: {
+                const borderWidth = (barConfig?.widgetOutlineEnabled ?? false) ? (barConfig?.widgetOutlineThickness ?? 1) : 0;
+                return parent.height + borderWidth * 2;
+            }
+            radius: (root.isFullHeight || (barConfig?.noBackground ?? false)) ? 0 : Theme.cornerRadius
+            color: "transparent"
+            border.width: {
+                if (barConfig?.widgetOutlineEnabled ?? false) {
+                    return barConfig?.widgetOutlineThickness ?? 1;
+                }
+                return 0;
+            }
+            border.color: {
+                if (!(barConfig?.widgetOutlineEnabled ?? false)) {
+                    return "transparent";
+                }
+                const colorOption = barConfig?.widgetOutlineColor || "primary";
+                const opacity = barConfig?.widgetOutlineOpacity ?? 1.0;
+                switch (colorOption) {
+                case "surfaceText":
+                    return Theme.withAlpha(Theme.surfaceText, opacity);
+                case "secondary":
+                    return Theme.withAlpha(Theme.secondary, opacity);
+                case "primary":
+                    return Theme.withAlpha(Theme.primary, opacity);
+                default:
+                    return Theme.withAlpha(Theme.primary, opacity);
+                }
+            }
+        }
+
+        Rectangle {
+            id: background
+            anchors.fill: parent
+            radius: (barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius
+            color: {
+                if ((barConfig?.noBackground ?? false))
+                    return "transparent";
+                const baseColor = Theme.widgetBaseBackgroundColor;
+                const transparency = (root.barConfig && root.barConfig.widgetTransparency !== undefined) ? root.barConfig.widgetTransparency : 1.0;
+                if (Theme.widgetBackgroundHasAlpha) {
+                    return Theme.blendAlpha(baseColor, transparency);
+                }
+                return Theme.withAlpha(baseColor, transparency);
+            }
+        }
+    }
+
+    MouseArea {
+        id: edgeMouseArea
+        z: -1
+        x: -root._leftMargin
+        y: -root._topMargin
+        width: root.width + root._leftMargin + root._rightMargin
+        height: root.height + root._topMargin + root._bottomMargin
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+
+        property real touchpadAccumulator: 0
+        property real mouseAccumulator: 0
+        property bool scrollInProgress: false
+
+        Timer {
+            id: scrollCooldown
+            interval: 100
+            onTriggered: parent.scrollInProgress = false
+        }
+
+        onClicked: mouse => {
+            const rootPos = edgeMouseArea.mapToItem(root, mouse.x, mouse.y);
+            switch (mouse.button) {
+            case Qt.RightButton:
+                if (CompositorService.isAqueous) {
+                    AqueousService.toggleOverview(root.effectiveScreenName);
+                } else if (CompositorService.isNiri) {
+                    NiriService.toggleOverview();
+                } else if (CompositorService.isHyprland && root.hyprlandOverviewLoader?.item) {
+                    root.hyprlandOverviewLoader.item.overviewOpen = !root.hyprlandOverviewLoader.item.overviewOpen;
+                }
+                break;
+            case Qt.LeftButton:
+                const idx = root.findClosestWorkspaceIndex(rootPos.x, rootPos.y);
+                if (idx >= 0)
+                    root.switchToWorkspaceByModelData(root.workspaceList[idx]);
+                break;
+            }
+        }
+
+        onWheel: wheel => {
+            if (Math.abs(wheel.angleDelta.x) > Math.abs(wheel.angleDelta.y)) {
+                wheel.accepted = false;
+                return;
+            }
+
+            if (scrollInProgress)
+                return;
+
+            const delta = wheel.angleDelta.y;
+            const isTouchpad = WheelInput.isTouchpad(wheel);
+            const reverse = SettingsData.reverseScrolling ? -1 : 1;
+
+            if (isTouchpad) {
+                touchpadAccumulator += delta;
+                if (Math.abs(touchpadAccumulator) < 500)
+                    return;
+                const direction = touchpadAccumulator * reverse < 0 ? 1 : -1;
+                root.switchWorkspace(direction);
+                scrollInProgress = true;
+                scrollCooldown.restart();
+                touchpadAccumulator = 0;
+                return;
+            }
+
+            mouseAccumulator += delta;
+            if (Math.abs(mouseAccumulator) < 120)
+                return;
+            const direction = mouseAccumulator * reverse < 0 ? 1 : -1;
+            root.switchWorkspace(direction);
+            scrollInProgress = true;
+            scrollCooldown.restart();
+            mouseAccumulator = 0;
+        }
+    }
+
+    property int dragSourceIndex: -1
+    property int dragTargetIndex: -1
+    property bool suppressShiftAnimation: false
+
+    onWorkspaceListChanged: {
+        if (dragSourceIndex >= 0) {
+            dragSourceIndex = -1;
+            dragTargetIndex = -1;
+            suppressShiftAnimation = false;
+        }
+    }
+
+    Flow {
+        id: workspaceRow
+
+        x: root.isFullHeight ? 0 : (isVertical ? visualBackground.x : (parent.width - implicitWidth) / 2)
+        y: root.isFullHeight ? 0 : (isVertical ? (parent.height - implicitHeight) / 2 : visualBackground.y)
+        spacing: root.isFullHeight ? (root.barConfig?.spacing ?? 0) : Theme.spacingS
+        flow: isVertical ? Flow.TopToBottom : Flow.LeftToRight
+
+        // mango reports active_tags=0 while the overview is open; surface it as a pill
+        Item {
+            id: overviewPill
+            visible: CompositorService.isMango && MangoService.inOverview
+            width: root.isVertical ? root.widgetHeight : overviewBg.width
+            height: root.isVertical ? overviewBg.height : root.widgetHeight
+
+            readonly property real labelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+
+            Rectangle {
+                id: overviewBg
+                anchors.centerIn: parent
+                width: root.isVertical ? Math.max(root.widgetHeight * 0.7, overviewContent.implicitWidth + Theme.spacingS) : (overviewContent.implicitWidth + Theme.spacingS * 2)
+                height: Math.max(root.widgetHeight * 0.5, overviewContent.implicitHeight + Theme.spacingXS)
+                radius: Theme.cornerRadius
+                color: Theme.withAlpha(Theme.primary, 0.18)
+
+                Row {
+                    id: overviewContent
+                    anchors.centerIn: parent
+                    spacing: Theme.spacingXS
+
+                    DankIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "grid_view"
+                        size: overviewPill.labelSize + 2
+                        color: Theme.primary
+                    }
+
+                    StyledText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !root.isVertical
+                        text: I18n.tr("Overview")
+                        color: Theme.primary
+                        font.pixelSize: overviewPill.labelSize
+                        font.weight: Font.DemiBold
+                    }
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: MangoService.dispatch("toggleoverview")
+            }
+        }
+
+        Repeater {
+            id: workspaceRepeater
+            model: ScriptModel {
+                values: root.workspaceList
+            }
+
+            Item {
+                id: delegateRoot
+
+                property var workspaceModel: modelData
+                property bool isDropTarget: root.dragTargetIndex === index
+
+                z: dragHandler.dragging ? 1000 : 1
+
+                property real shiftOffset: {
+                    if (root.dragSourceIndex < 0 || index === root.dragSourceIndex)
+                        return 0;
+                    const dragIdx = root.dragSourceIndex;
+                    const dropIdx = root.dragTargetIndex;
+                    if (dropIdx < 0)
+                        return 0;
+                    const shiftAmount = delegateRoot.width + Theme.spacingS;
+                    if (dragIdx < dropIdx && index > dragIdx && index <= dropIdx)
+                        return -shiftAmount;
+                    if (dragIdx > dropIdx && index >= dropIdx && index < dragIdx)
+                        return shiftAmount;
+                    return 0;
+                }
+
+                readonly property var shiftSpringParams: Theme.springPreset("fast", 150)
+
+                SpringMotion {
+                    id: shiftXSpring
+                    enabled: !root.suppressShiftAnimation
+                    positionEpsilon: 0.05
+                    velocityEpsilon: 0.05
+                    stiffness: delegateRoot.shiftSpringParams.stiffness
+                    damping: delegateRoot.shiftSpringParams.damping
+                    value: delegateRoot.shiftOffset
+
+                    Component.onCompleted: snapTo(delegateRoot.shiftOffset)
+                }
+
+                SpringMotion {
+                    id: shiftYSpring
+                    enabled: !root.suppressShiftAnimation
+                    positionEpsilon: 0.05
+                    velocityEpsilon: 0.05
+                    stiffness: delegateRoot.shiftSpringParams.stiffness
+                    damping: delegateRoot.shiftSpringParams.damping
+                    value: delegateRoot.shiftOffset
+
+                    Component.onCompleted: snapTo(delegateRoot.shiftOffset)
+                }
+
+                onShiftOffsetChanged: {
+                    shiftXSpring.retarget(shiftOffset);
+                    shiftYSpring.retarget(shiftOffset);
+                }
+
+                transform: Translate {
+                    x: root.isVertical ? 0 : shiftXSpring.value
+                    y: root.isVertical ? shiftYSpring.value : 0
+                }
+
+                property bool isActive: {
+                    if (root.useAqueous)
+                        return modelData?.active === true;
+                    if (root.useExtWorkspace)
+                        return modelData === root.currentWorkspace;
+                    if (CompositorService.isNiri)
+                        return !!(modelData && modelData.idx === root.currentWorkspace);
+                    if (CompositorService.isHyprland)
+                        return !!(modelData && modelData.id === root.currentWorkspace);
+                    if (root.isMango)
+                        return !!(modelData && root.dwlActiveTags.includes(modelData.tag));
+                    if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+                        return !!(modelData && root.swayWorkspaceKey(modelData) === root.currentWorkspace);
+                    return modelData === root.currentWorkspace;
+                }
+                property bool isOccupied: {
+                    if (root.useAqueous)
+                        return AqueousService.toplevels.some(w => w.aqueousWorkspaceId === modelData?.id);
+                    if (CompositorService.isHyprland)
+                        return Array.from(Hyprland.toplevels?.values || []).some(tl => tl.workspace?.id === modelData?.id);
+                    if (root.isMango)
+                        return modelData.clients > 0;
+                    if (CompositorService.isNiri)
+                        return NiriService.windows?.some(win => win.workspace_id === modelData?.id) ?? false;
+                    return false;
+                }
+                property bool isPlaceholder: {
+                    if (root.useAqueous || root.useExtWorkspace)
+                        return !!(modelData && modelData._placeholder);
+                    if (CompositorService.isNiri)
+                        return !!(modelData && modelData.idx === -1);
+                    if (CompositorService.isHyprland)
+                        return !!(modelData && modelData.id === -1);
+                    if (root.isMango)
+                        return !!(modelData && modelData.tag === -1);
+                    if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+                        return !!(modelData && modelData._placeholder);
+                    return modelData === -1;
+                }
+                HoverHandler {
+                    id: workspaceHover
+                    enabled: !delegateRoot.isPlaceholder
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                }
+                // MouseArea.containsMouse is the source of truth (Win10). HoverHandler
+                // only supplements the active slot, where child icon MouseAreas steal
+                // containsMouse. Ignoring HoverHandler on inactive slots prevents a
+                // stuck hovered=true from painting another workspace as active.
+                property bool isHovered: mouseArea.containsMouse || (isActive && workspaceHover.hovered)
+
+                property var loadedWorkspaceData: null
+                property bool loadedIsUrgent: false
+                property bool isUrgent: {
+                    if (root.useAqueous)
+                        return modelData?.urgent === true;
+                    if (root.useExtWorkspace)
+                        return modelData?.urgent ?? false;
+                    if (CompositorService.isHyprland)
+                        return modelData?.urgent ?? false;
+                    if (CompositorService.isNiri)
+                        return loadedIsUrgent;
+                    if (root.isMango)
+                        return modelData?.state === 2;
+                    if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+                        return loadedIsUrgent;
+                    return false;
+                }
+                readonly property var loadedIconData: {
+                    if (isPlaceholder)
+                        return null;
+                    const name = modelData?.name;
+                    if (!name)
+                        return null;
+                    return SettingsData.getWorkspaceNameIcon(name);
+                }
+                readonly property bool loadedHasIcon: loadedIconData !== null
+                property var loadedIcons: []
+
+                readonly property int stableIconCount: {
+                    if (!SettingsData.showWorkspaceApps || isPlaceholder)
+                        return 0;
+
+                    if (root.useAqueous)
+                        return loadedIcons.length;
+
+                    let targetWorkspaceId;
+                    if (root.useExtWorkspace) {
+                        targetWorkspaceId = modelData?.id || modelData?.name;
+                    } else if (CompositorService.isNiri) {
+                        targetWorkspaceId = modelData?.id;
+                    } else if (CompositorService.isHyprland) {
+                        targetWorkspaceId = modelData?.id;
+                    } else if (root.isMango) {
+                        targetWorkspaceId = modelData?.tag;
+                    } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+                        targetWorkspaceId = modelData?.num;
+                    }
+                    if (targetWorkspaceId === undefined || targetWorkspaceId === null)
+                        return 0;
+
+                    const wins = CompositorService.isNiri ? (NiriService.windows || []) : CompositorService.sortedToplevels;
+                    const seen = {};
+                    let groupedCount = 0;
+                    let totalCount = 0;
+
+                    for (let i = 0; i < wins.length; i++) {
+                        const w = wins[i];
+                        if (!w)
+                            continue;
+
+                        let winWs = null;
+                        if (CompositorService.isNiri) {
+                            winWs = w.workspace_id;
+                        } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+                            winWs = w.workspace?.num;
+                        } else if (CompositorService.isHyprland) {
+                            const hyprlandToplevels = Array.from(Hyprland.toplevels?.values || []);
+                            const hyprToplevel = hyprlandToplevels.find(ht => ht.wayland === w);
+                            winWs = hyprToplevel?.workspace?.id;
+                        }
+
+                        if (CompositorService.isMango) {
+                            if (!(w.mangoTags || []).includes(targetWorkspaceId + 1))
+                                continue;
+                        } else if (winWs !== targetWorkspaceId) {
+                            continue;
+                        }
+                        totalCount++;
+
+                        const appKey = w.app_id || w.appId || w.class || w.windowClass || "unknown";
+                        if (!seen[appKey]) {
+                            seen[appKey] = true;
+                            groupedCount++;
+                        }
+                    }
+
+                    return (SettingsData.groupWorkspaceApps && (!isActive || SettingsData.groupActiveWorkspaceApps)) ? groupedCount : totalCount;
+                }
+
+                readonly property bool compactHorizontal: root.compactHorizontal
+                readonly property bool hasWorkspaceApps: loadedHasIcon || (SettingsData.showWorkspaceApps && (loadedIcons.length > 0 || stableIconCount > 0))
+
+                readonly property real baseWidth: {
+                    if (root.isFullHeight) {
+                        if (root.isVertical)
+                            return root.barThickness;
+                        if (compactHorizontal)
+                            return root.barThickness;
+                        return root.appIconSize + 10 + (isActive ? 6 : 0);
+                    }
+                    return root.isVertical ? (SettingsData.showWorkspaceApps ? Math.max(widgetHeight * 0.7, root.appIconSize + Theme.spacingXS * 2) : widgetHeight * 0.5) : (isActive ? Math.max(root.widgetHeight * 1.05, root.appIconSize * 1.6) : Math.max(root.widgetHeight * 0.7, root.appIconSize * 1.2));
+                }
+                readonly property real baseHeight: {
+                    if (root.isFullHeight) {
+                        if (!root.isVertical)
+                            return root.barThickness;
+                        return root.appIconSize + 10 + (isActive ? 6 : 0);
+                    }
+                    return root.isVertical ? (isActive ? Math.max(root.widgetHeight * 1.05, root.appIconSize * 1.6) : Math.max(root.widgetHeight * 0.7, root.appIconSize * 1.2)) : (SettingsData.showWorkspaceApps ? Math.max(widgetHeight * 0.7, root.appIconSize + Theme.spacingXS * 2) : widgetHeight * 0.5);
+                }
+                readonly property bool hasWorkspaceName: SettingsData.showWorkspaceName && modelData?.name && modelData.name !== ""
+                readonly property bool workspaceNamesEnabled: SettingsData.showWorkspaceName && (root.useAqueous || CompositorService.isNiri || CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+                readonly property real contentImplicitWidth: appIconsLoader.item?.contentWidth ?? 0
+                readonly property real contentImplicitHeight: appIconsLoader.item?.contentHeight ?? 0
+
+                readonly property real iconsExtraWidth: {
+                    if (!root.isVertical && SettingsData.showWorkspaceApps && stableIconCount > 0) {
+                        const numIcons = Math.min(stableIconCount, SettingsData.maxWorkspaceIcons);
+                        if (compactHorizontal)
+                            return Math.max(0, numIcons - 1) * (root.appIconSize + Theme.spacingXS);
+                        return numIcons * root.appIconSize + (numIcons > 0 ? (numIcons - 1) * Theme.spacingXS : 0) + (isActive ? Theme.spacingXS : 0);
+                    }
+                    return 0;
+                }
+                readonly property real iconsExtraHeight: {
+                    if (root.isVertical && SettingsData.showWorkspaceApps && stableIconCount > 0) {
+                        const numIcons = Math.min(stableIconCount, SettingsData.maxWorkspaceIcons);
+                        return numIcons * root.appIconSize + (numIcons > 0 ? (numIcons - 1) * Theme.spacingXS : 0) + (isActive ? Theme.spacingXS : 0);
+                    }
+                    return 0;
+                }
+
+                readonly property real visualWidth: {
+                    if (root.isFullHeight && root.isVertical)
+                        return root.barThickness;
+                    if (compactHorizontal && root.isFullHeight)
+                        return baseWidth + iconsExtraWidth;
+                    if (contentImplicitWidth <= 0)
+                        return baseWidth + iconsExtraWidth;
+                    const padding = root.isFullHeight ? 8 : (root.isVertical ? Theme.spacingXS : Theme.spacingS);
+                    return Math.max(baseWidth + iconsExtraWidth, contentImplicitWidth + padding);
+                }
+                readonly property real visualHeight: {
+                    if (root.isFullHeight && !root.isVertical)
+                        return root.barThickness;
+                    if (contentImplicitHeight <= 0)
+                        return baseHeight + iconsExtraHeight;
+                    const padding = root.isVertical ? Theme.spacingS : Theme.spacingXS;
+                    return Math.max(baseHeight + iconsExtraHeight, contentImplicitHeight + padding);
+                }
+
+                function colorFromMode(mode, fallbackColor, customColor, customFallbackColor) {
+                    switch (mode) {
+                    case "primary":
+                    case "pri":
+                        return Theme.primary;
+                    case "primaryContainer":
+                        return Theme.primaryContainer;
+                    case "secondary":
+                    case "sec":
+                        return Theme.secondary;
+                    case "secondaryContainer":
+                        return Theme.secondaryContainer;
+                    case "tertiary":
+                    case "ter":
+                        return Theme.tertiary;
+                    case "tertiaryContainer":
+                        return Theme.tertiaryContainer;
+                    case "surfaceText":
+                        return Theme.surfaceText;
+                    case "s":
+                        return Theme.surface;
+                    case "sc":
+                        return Theme.surfaceContainer;
+                    case "sch":
+                        return Theme.surfaceContainerHigh;
+                    case "schh":
+                        return Theme.surfaceContainerHighest;
+                    case "error":
+                    case "err":
+                        return Theme.error;
+                    case "custom":
+                        return Theme.safeColor(customColor, customFallbackColor);
+                    default:
+                        return fallbackColor;
+                    }
+                }
+
+                function effectiveColorMode(focusedMode, unfocusedMode) {
+                    return root.useUnfocusedAppearance ? unfocusedMode : focusedMode;
+                }
+
+                function effectiveCustomColor(focusedCustom, unfocusedCustom) {
+                    return root.useUnfocusedAppearance ? unfocusedCustom : focusedCustom;
+                }
+
+                readonly property color unfocusedColor: colorFromMode(effectiveColorMode(SettingsData.workspaceUnfocusedColorMode, SettingsData.workspaceUnfocusedMonitorUnfocusedColorMode), Theme.surfaceTextAlpha, effectiveCustomColor(SettingsData.workspaceUnfocusedCustomColor, SettingsData.workspaceUnfocusedMonitorUnfocusedCustomColor), Theme.surfaceTextAlpha)
+
+                readonly property color activeColor: {
+                    const mode = effectiveColorMode(SettingsData.workspaceColorMode, SettingsData.workspaceUnfocusedMonitorColorMode);
+                    if (mode === "none")
+                        return unfocusedColor;
+                    return colorFromMode(mode, Theme.primary, effectiveCustomColor(SettingsData.workspaceFocusedCustomColor, SettingsData.workspaceUnfocusedMonitorFocusedCustomColor), Theme.primary);
+                }
+
+                readonly property color occupiedColor: {
+                    const mode = effectiveColorMode(SettingsData.workspaceOccupiedColorMode, SettingsData.workspaceUnfocusedMonitorOccupiedColorMode);
+                    if (mode === "none")
+                        return unfocusedColor;
+                    return colorFromMode(mode, unfocusedColor, effectiveCustomColor(SettingsData.workspaceOccupiedCustomColor, SettingsData.workspaceUnfocusedMonitorOccupiedCustomColor), Theme.secondary);
+                }
+
+                readonly property color urgentColor: colorFromMode(effectiveColorMode(SettingsData.workspaceUrgentColorMode, SettingsData.workspaceUnfocusedMonitorUrgentColorMode), Theme.error, effectiveCustomColor(SettingsData.workspaceUrgentCustomColor, SettingsData.workspaceUnfocusedMonitorUrgentCustomColor), Theme.error)
+
+                readonly property color focusedBorderColor: colorFromMode(effectiveColorMode(SettingsData.workspaceFocusedBorderColor, SettingsData.workspaceUnfocusedMonitorBorderColor), Theme.primary, effectiveCustomColor(SettingsData.workspaceFocusedBorderCustomColor, SettingsData.workspaceUnfocusedMonitorBorderCustomColor), Theme.primary)
+
+                readonly property bool focusedBorderEnabledForMonitor: root.useUnfocusedAppearance ? SettingsData.workspaceUnfocusedMonitorBorderEnabled : SettingsData.workspaceFocusedBorderEnabled
+                readonly property int focusedBorderThicknessForMonitor: root.useUnfocusedAppearance ? SettingsData.workspaceUnfocusedMonitorBorderThickness : SettingsData.workspaceFocusedBorderThickness
+
+                function getContrastingIconColor(bgColor, isPillActive) {
+                    let effBg = bgColor;
+                    if (!effBg || effBg === "transparent" || effBg.a === 0 || effBg.a === undefined) {
+                        effBg = Theme.surface;
+                    } else if (effBg.a < 0.9) {
+                        effBg = Qt.rgba(
+                            effBg.r * effBg.a + Theme.surface.r * (1 - effBg.a),
+                            effBg.g * effBg.a + Theme.surface.g * (1 - effBg.a),
+                            effBg.b * effBg.a + Theme.surface.b * (1 - effBg.a),
+                            1.0
+                        );
+                    }
+
+                    const bgLum = 0.2126 * effBg.r + 0.7152 * effBg.g + 0.0722 * effBg.b;
+                    const primLum = 0.2126 * Theme.primary.r + 0.7152 * Theme.primary.g + 0.0722 * Theme.primary.b;
+                    const contrastWithPrimary = Math.abs(bgLum - primLum);
+
+                    if (isPillActive && !root.isFullHeight && contrastWithPrimary < 0.25) {
+                        return bgLum >= 0.45 ? (Theme.onPrimary || "#1a1a1a") : (Theme.surfaceText || "#ffffff");
+                    }
+
+                    if (contrastWithPrimary >= 0.20) {
+                        return Theme.primary;
+                    }
+
+                    return bgLum >= 0.45 ? (Theme.onPrimary || "#1a1a1a") : (Theme.surfaceText || "#ffffff");
+                }
+
+                readonly property color quickshellIconActiveColor: getContrastingIconColor(root.isFullHeight ? "#2a2a2a" : activeColor, true)
+                readonly property color quickshellIconInactiveColor: getContrastingIconColor(root.isFullHeight ? "transparent" : (isOccupied ? occupiedColor : unfocusedColor), false)
+
+                readonly property color requestedColor: {
+                    if (root.isFullHeight && Theme.barHoverInset)
+                        return "transparent";
+                    if (root.isFullHeight) {
+                        if (isActive)
+                            return "#2a2a2a";
+                        if (delegateRoot.isHovered || mouseArea.pressed)
+                            return isUrgent ? Qt.lighter(urgentColor, 1.15) : "#323232";
+                        if (isUrgent)
+                            return urgentColor;
+                        return "transparent";
+                    }
+                    return isActive ? activeColor : isUrgent ? (isHovered ? Qt.lighter(urgentColor, 1.15) : urgentColor) : isPlaceholder ? Theme.surfaceTextLight : isHovered ? Theme.withAlpha(unfocusedColor, 0.7) : isOccupied ? occupiedColor : unfocusedColor;
+                }
+
+                property bool colorAnimationReady: false
+
+                readonly property color displayColor: pillColor.value
+
+                DankColorAnimation {
+                    id: pillColor
+                    to: delegateRoot.requestedColor
+                    animated: delegateRoot.colorAnimationReady
+                }
+
+                Item {
+                    id: dragHandler
+                    anchors.fill: parent
+                    property bool dragging: false
+                    property point dragStartPos: Qt.point(0, 0)
+                    property real dragAxisOffset: 0
+
+                    Connections {
+                        target: root
+                        function onWorkspaceListChanged() {
+                            if (dragHandler.dragging) {
+                                dragHandler.dragging = false;
+                                dragHandler.dragAxisOffset = 0;
+                                mouseArea.mousePressed = false;
+                            }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: mouseArea
+                    anchors.fill: parent
+                    hoverEnabled: !isPlaceholder
+                    cursorShape: isPlaceholder ? Qt.ArrowCursor : (dragHandler.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor)
+                    enabled: !isPlaceholder
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                    property bool mousePressed: false
+
+                    onPressed: mouse => {
+                        if (mouse.button === Qt.LeftButton && CompositorService.isNiri && SettingsData.workspaceDragReorder && !isPlaceholder) {
+                            mousePressed = true;
+                            dragHandler.dragStartPos = Qt.point(mouse.x, mouse.y);
+                        }
+                    }
+
+                    onPositionChanged: mouse => {
+                        if (!mousePressed || !CompositorService.isNiri || !SettingsData.workspaceDragReorder || isPlaceholder)
+                            return;
+
+                        if (!dragHandler.dragging) {
+                            const distance = root.isVertical ? Math.abs(mouse.y - dragHandler.dragStartPos.y) : Math.abs(mouse.x - dragHandler.dragStartPos.x);
+                            if (distance > 5) {
+                                dragHandler.dragging = true;
+                                root.dragSourceIndex = index;
+                                root.dragTargetIndex = index;
+                            }
+                        }
+
+                        if (!dragHandler.dragging)
+                            return;
+
+                        const rawAxisOffset = root.isVertical ? (mouse.y - dragHandler.dragStartPos.y) : (mouse.x - dragHandler.dragStartPos.x);
+
+                        const itemSize = (root.isVertical ? delegateRoot.height : delegateRoot.width) + Theme.spacingS;
+                        const maxOffsetPositive = (root.workspaceList.length - 1 - index) * itemSize;
+                        const maxOffsetNegative = -index * itemSize;
+                        const axisOffset = Math.max(maxOffsetNegative, Math.min(maxOffsetPositive, rawAxisOffset));
+                        dragHandler.dragAxisOffset = axisOffset;
+
+                        const slotOffset = Math.round(axisOffset / itemSize);
+                        const newTargetIndex = Math.max(0, Math.min(root.workspaceList.length - 1, index + slotOffset));
+
+                        if (newTargetIndex !== root.dragTargetIndex) {
+                            root.dragTargetIndex = newTargetIndex;
+                        }
+                    }
+
+                    onReleased: mouse => {
+                        const wasDragging = dragHandler.dragging;
+                        const didReorder = wasDragging && root.dragTargetIndex >= 0 && root.dragTargetIndex !== root.dragSourceIndex;
+
+                        if (didReorder) {
+                            const sourceWs = root.workspaceList[root.dragSourceIndex];
+                            const targetWs = root.workspaceList[root.dragTargetIndex];
+
+                            if (sourceWs && targetWs && sourceWs.id !== undefined && targetWs.idx !== undefined) {
+                                root.suppressShiftAnimation = true;
+                                NiriService.moveWorkspaceToIndex(sourceWs.id, targetWs.idx);
+                                Qt.callLater(() => root.suppressShiftAnimation = false);
+                            }
+                        }
+
+                        mousePressed = false;
+                        dragHandler.dragging = false;
+                        dragHandler.dragAxisOffset = 0;
+                        root.dragSourceIndex = -1;
+                        root.dragTargetIndex = -1;
+
+                        if (wasDragging || isPlaceholder)
+                            return;
+
+                        if (appContextMenuLoader.item && appContextMenuLoader.item.shown)
+                            appContextMenuLoader.item.close();
+
+                        if (mouse.button === Qt.LeftButton) {
+                            if (delegateRoot.focusWindowAt(mouse.x, mouse.y))
+                                return;
+                            if (root.useAqueous) {
+                                root.switchToWorkspaceByModelData(modelData);
+                            } else if (root.useExtWorkspace) {
+                                if (typeof modelData?.activate === "function")
+                                    modelData.activate();
+                            } else if (CompositorService.isNiri) {
+                                if (modelData && modelData.id !== undefined) {
+                                    NiriService.switchToWorkspace(modelData.id);
+                                }
+                            } else if (CompositorService.isHyprland && modelData?.id) {
+                                HyprlandService.focusWorkspace(root.hyprlandWorkspaceSelector(modelData));
+                            } else if (root.isMango && modelData?.tag !== undefined) {
+                                MangoService.switchToTag(root.screenName, modelData.tag);
+                            } else if ((CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) && modelData?.num !== undefined) {
+                                CompositorService.dispatchSwayWorkspace(modelData);
+                            }
+                        } else if (mouse.button === Qt.RightButton) {
+                            if (CompositorService.isAqueous) {
+                                AqueousService.toggleOverview(root.effectiveScreenName);
+                            } else if (CompositorService.isNiri) {
+                                NiriService.toggleOverview();
+                            } else if (CompositorService.isHyprland && root.hyprlandOverviewLoader?.item) {
+                                root.hyprlandOverviewLoader.item.overviewOpen = !root.hyprlandOverviewLoader.item.overviewOpen;
+                            } else if (root.isMango && modelData?.tag !== undefined) {
+                                MangoService.toggleTag(root.screenName, modelData.tag);
+                            }
+                        }
+                    }
+                }
+
+                Timer {
+                    id: dataUpdateTimer
+                    interval: 50
+                    onTriggered: {
+                        if (isPlaceholder) {
+                            delegateRoot.loadedWorkspaceData = null;
+                            delegateRoot.loadedIcons = [];
+                            delegateRoot.loadedIsUrgent = false;
+                            return;
+                        }
+
+                        var wsData = null;
+                        if (root.useAqueous || root.useExtWorkspace) {
+                            wsData = modelData;
+                        } else if (CompositorService.isNiri) {
+                            wsData = modelData || null;
+                        } else if (CompositorService.isHyprland) {
+                            wsData = modelData;
+                        } else if (root.isMango) {
+                            wsData = modelData;
+                        } else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+                            wsData = modelData;
+                        }
+                        delegateRoot.loadedWorkspaceData = wsData;
+                        if (CompositorService.isNiri) {
+                            const workspaceId = wsData?.id;
+                            delegateRoot.loadedIsUrgent = workspaceId ? NiriService.windows.some(w => w.workspace_id === workspaceId && w.is_urgent) : false;
+                        } else {
+                            delegateRoot.loadedIsUrgent = wsData?.urgent ?? false;
+                        }
+
+                        if (SettingsData.showWorkspaceApps) {
+                            if (root.isMango || CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle) {
+                                delegateRoot.loadedIcons = root.getWorkspaceIcons(modelData);
+                            } else if (CompositorService.isNiri) {
+                                delegateRoot.loadedIcons = root.getWorkspaceIcons(isPlaceholder ? null : modelData);
+                            } else {
+                                delegateRoot.loadedIcons = root.getWorkspaceIcons(CompositorService.isHyprland ? modelData : (modelData === -1 ? null : modelData));
+                            }
+                        } else {
+                            delegateRoot.loadedIcons = [];
+                        }
+                    }
+                }
+
+                function updateAllData() {
+                    dataUpdateTimer.restart();
+                }
+
+                function windowIdAt(x, y) {
+                    const layout = appIconsLoader.item?.iconsLayout;
+                    if (!layout)
+                        return null;
+                    const point = layout.mapFromItem(mouseArea, x, y);
+                    const icon = layout.childAt(point.x, point.y);
+                    if (root.useAqueous)
+                        return icon?.windowId ? {id: icon.windowId, session: icon.windowSession} : null;
+                    return icon?.windowId ?? null;
+                }
+
+                function focusWindowAt(x, y) {
+                    const winId = delegateRoot.windowIdAt(x, y);
+                    if (!winId)
+                        return false;
+                    if (root.useAqueous) {
+                        AqueousService.command("window.activate", winId);
+                        return true;
+                    }
+                    if (CompositorService.isHyprland) {
+                        HyprlandService.focusWindow(winId);
+                        return true;
+                    }
+                    if (CompositorService.isNiri) {
+                        NiriService.focusWindow(winId);
+                        return true;
+                    }
+                    return false;
+                }
+
+                width: root.isVertical ? (root.isFullHeight ? root.barThickness : root.widgetHeight) : visualWidth
+                height: root.isVertical ? visualHeight : (root.isFullHeight ? root.barThickness : root.widgetHeight)
+
+                Behavior on width {
+                    NumberAnimation {
+                        duration: Theme.mediumDuration
+                        easing.type: Theme.emphasizedEasing
+                    }
+                }
+
+                Behavior on height {
+                    NumberAnimation {
+                        duration: Theme.mediumDuration
+                        easing.type: Theme.emphasizedEasing
+                    }
+                }
+
+                Rectangle {
+                    id: focusedBorderRing
+                    visible: !root.isFullHeight
+                    x: root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2
+                    y: root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2
+                    width: {
+                        const borderWidth = (delegateRoot.focusedBorderEnabledForMonitor && isActive && !isPlaceholder) ? delegateRoot.focusedBorderThicknessForMonitor : 0;
+                        return delegateRoot.visualWidth + borderWidth * 2;
+                    }
+                    height: {
+                        const borderWidth = (delegateRoot.focusedBorderEnabledForMonitor && isActive && !isPlaceholder) ? delegateRoot.focusedBorderThicknessForMonitor : 0;
+                        return delegateRoot.visualHeight + borderWidth * 2;
+                    }
+                    radius: Theme.cornerRadius
+                    color: "transparent"
+                    border.width: (delegateRoot.focusedBorderEnabledForMonitor && isActive && !isPlaceholder) ? delegateRoot.focusedBorderThicknessForMonitor : 0
+                    border.color: (delegateRoot.focusedBorderEnabledForMonitor && isActive && !isPlaceholder) ? focusedBorderColor : Theme.withAlpha(focusedBorderColor, 0)
+
+                    Behavior on width {
+                        NumberAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on border.width {
+                        NumberAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: visualContent
+                    readonly property bool compactHorizontal: delegateRoot.compactHorizontal
+                    readonly property bool hasWorkspaceApps: delegateRoot.hasWorkspaceApps
+                    readonly property real compactIconOffset: {
+                        if (!compactHorizontal)
+                            return 0;
+                        const hoverY = hoverBg.visible ? hoverBg.y : 0;
+                        const hoverH = hoverBg.visible ? hoverBg.height : height;
+                        const numberBottom = compactIndexLabel.visible ? (compactIndexLabel.y + compactIndexLabel.height) : hoverY;
+                        const pillTop = hoverY + hoverH - root.compactPillBottomMargin - root.compactPillHeight;
+                        return (numberBottom + pillTop) / 2 - height / 2;
+                    }
+                    width: (root.isFullHeight && root.isVertical) ? root.barThickness : delegateRoot.visualWidth
+                    height: (root.isFullHeight && !root.isVertical) ? root.barThickness : delegateRoot.visualHeight
+                    x: root.isFullHeight ? 0 : (root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2)
+                    y: root.isFullHeight ? 0 : (root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2)
+                    radius: root.isFullHeight ? 0 : Theme.cornerRadius
+                    color: delegateRoot.displayColor
+                    opacity: dragHandler.dragging ? 0.8 : 1.0
+
+                    Rectangle {
+                        id: hoverBg
+                        visible: root.isFullHeight && Theme.barHoverInset && !isPlaceholder
+                        anchors.fill: parent
+                        anchors.margins: Theme.barHoverMargin
+                        radius: Theme.barHoverRadius
+                        readonly property bool shown: mouseArea.pressed || isUrgent || isHovered || isActive
+                        color: {
+                            if (isUrgent)
+                                return isHovered ? Qt.lighter(urgentColor, 1.15) : Theme.withAlpha(urgentColor, 0.35);
+                            return Theme.barHoverFill(mouseArea.pressed, isHovered, isActive);
+                        }
+                        opacity: shown ? 1 : 0
+                        // Animate opacity, never color→transparent. Qt interpolates
+                        // transparent as black and can leave a leftover dark fill
+                        // that looks like a second active workspace.
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: 100
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: activeIndicator
+                        readonly property bool compact: SettingsData.workspaceIndicatorStyle === "compact"
+                        readonly property bool showOccupied: compact && isOccupied && !isActive
+                        visible: root.isFullHeight && !isPlaceholder && (isActive || showOccupied)
+                        color: isActive ? Theme.primary : Theme.withAlpha(Theme.surfaceText, 0.45)
+                        radius: compact ? 1.5 : 0
+                        width: {
+                            if (root.isVertical)
+                                return 3;
+                            if (compact)
+                                return isActive ? 18 : 8;
+                            return parent.width;
+                        }
+                        height: {
+                            if (!root.isVertical)
+                                return 3;
+                            if (compact)
+                                return isActive ? 18 : 8;
+                            return parent.height;
+                        }
+                        x: {
+                            if (root.isVertical)
+                                return root.axis?.edge === "right" ? 0 : parent.width - width;
+                            if (compact && hoverBg.visible)
+                                return hoverBg.x + Math.round((hoverBg.width - width) / 2);
+                            return Math.round((parent.width - width) / 2);
+                        }
+                        y: {
+                            if (root.isVertical)
+                                return Math.round((parent.height - height) / 2);
+                            if (compact && hoverBg.visible)
+                                return hoverBg.y + hoverBg.height - height - root.compactPillBottomMargin;
+                            return parent.height - height;
+                        }
+
+                        Behavior on width {
+                            enabled: activeIndicator.compact
+                            NumberAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
+                        Behavior on height {
+                            enabled: activeIndicator.compact
+                            NumberAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
+                    }
+
+                    border.width: dragHandler.dragging ? 2 : (isDropTarget ? 2 : 0)
+                    border.color: dragHandler.dragging ? Theme.primary : (isDropTarget ? Theme.primary : Theme.withAlpha(Theme.primary, 0))
+
+                    transform: Translate {
+                        x: root.isVertical ? 0 : (dragHandler.dragging ? dragHandler.dragAxisOffset : 0)
+                        y: root.isVertical ? (dragHandler.dragging ? dragHandler.dragAxisOffset : 0) : 0
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Theme.shortDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on width {
+                        NumberAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on border.width {
+                        NumberAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: Theme.mediumDuration
+                            easing.type: Theme.emphasizedEasing
+                        }
+                    }
+
+                    StyledText {
+                        id: compactIndexLabel
+                        visible: visualContent.compactHorizontal && (SettingsData.showWorkspaceIndex || !visualContent.hasWorkspaceApps) && !isPlaceholder
+                        anchors.horizontalCenter: hoverBg.visible ? hoverBg.horizontalCenter : parent.horizontalCenter
+                        anchors.top: hoverBg.visible ? hoverBg.top : parent.top
+                        anchors.topMargin: {
+                            if (!visualContent.hasWorkspaceApps) {
+                                const h = hoverBg.visible ? hoverBg.height : parent.height;
+                                const bottomReserved = (isActive || (isOccupied && activeIndicator.visible)) ? (root.compactPillBottomMargin + root.compactPillHeight) : 0;
+                                const labelH = height > 0 ? height : root.workspaceLabelSize;
+                                return Math.max(1, Math.round((h - bottomReserved - labelH) / 2));
+                            }
+                            return hoverBg.visible ? root.compactIndexTopMargin : 1;
+                        }
+                        width: Math.min(implicitWidth, (hoverBg.visible ? hoverBg.width : parent.width) - 4)
+                        height: root.workspaceLabelSize
+                        z: 3
+                        text: root.getWorkspaceIndex(modelData, index)
+                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                        font.pixelSize: root.workspaceLabelSize
+                        font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
+                        wrapMode: Text.NoWrap
+                        elide: Text.ElideNone
+                        horizontalAlignment: Text.AlignHCenter
+
+                        Behavior on anchors.topMargin {
+                            NumberAnimation {
+                                duration: Theme.shortDuration
+                                easing.type: Theme.emphasizedEasing
+                            }
+                        }
+                    }
+
+                    Loader {
+                        id: appIconsLoader
+                        anchors.fill: parent
+                        active: SettingsData.showWorkspaceApps || SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName || loadedHasIcon
+                        sourceComponent: Item {
+                            id: contentRoot
+                            readonly property real contentWidth: contentRow.item?.implicitWidth ?? 0
+                            readonly property real contentHeight: contentRow.item?.implicitHeight ?? 0
+                            property alias iconsLayout: contentRow.item
+
+                            Loader {
+                                id: contentRow
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.verticalCenterOffset: visualContent.compactIconOffset
+                                sourceComponent: root.isVertical ? columnLayout : rowLayout
+                            }
+
+                            Component {
+                                id: rowLayout
+                                Row {
+                                    spacing: Theme.spacingXS
+                                    visible: loadedIcons.length > 0 || SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName || loadedHasIcon
+
+                                    Item {
+                                        visible: loadedHasIcon && loadedIconData?.type === "icon"
+                                        width: wsIcon.width
+                                        height: root.appIconSize
+
+                                        DankIcon {
+                                            id: wsIcon
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            name: loadedIconData?.value ?? ""
+                                            size: root.workspaceLabelSize
+                                            color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                            weight: (isActive && !isPlaceholder) ? 500 : 400
+                                        }
+                                    }
+
+                                    Item {
+                                        visible: loadedHasIcon && loadedIconData?.type === "text"
+                                        width: wsText.implicitWidth
+                                        height: root.appIconSize
+
+                                        StyledText {
+                                            id: wsText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: loadedIconData?.value ?? ""
+                                            color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                            font.pixelSize: root.workspaceLabelSize
+                                            font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
+                                        }
+                                    }
+
+                                    Item {
+                                        visible: !visualContent.compactHorizontal && (((SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName) && !loadedHasIcon) || (loadedHasIcon && SettingsData.showWorkspaceName && hasWorkspaceName))
+                                        width: wsIndexText.implicitWidth
+                                        height: root.appIconSize
+
+                                        StyledText {
+                                            id: wsIndexText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: loadedHasIcon ? (modelData?.name ?? "") : root.getWorkspaceIndex(modelData, index)
+                                            color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                            font.pixelSize: root.workspaceLabelSize
+                                            font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
+                                        }
+                                    }
+
+                                    Repeater {
+                                        model: ScriptModel {
+                                            values: loadedIcons.slice(0, SettingsData.maxWorkspaceIcons)
+                                        }
+                                        delegate: Item {
+                                            width: root.appIconSize
+                                            height: root.appIconSize
+                                            readonly property var windowId: modelData.windowId
+                                            readonly property string windowSession: modelData.windowSession || ""
+                                            readonly property bool appHighlightActive: SettingsData.workspaceActiveAppHighlightEnabled && modelData.active
+                                            readonly property color appBorderColor: appHighlightActive ? focusedBorderColor : Theme.primarySelected
+                                            readonly property color appGlyphColor: appHighlightActive ? focusedBorderColor : Theme.primary
+                                            readonly property real appOpacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+
+                                            IconImage {
+                                                id: rowAppIcon
+                                                anchors.fill: parent
+                                                source: modelData.icon || ""
+                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && status === Image.Ready
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && rowAppIcon.status !== Image.Ready
+                                                color: Theme.surfaceContainer
+                                                radius: Theme.cornerRadius * (root.appIconSize / 40)
+                                                border.width: 1
+                                                border.color: appBorderColor
+                                                opacity: appOpacity
+
+                                                StyledText {
+                                                    anchors.centerIn: parent
+                                                    text: (modelData.fallbackText || "?").charAt(0).toUpperCase()
+                                                    font.pixelSize: parent.width * 0.45
+                                                    color: appGlyphColor
+                                                    font.weight: Font.Bold
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: !modelData.isQuickshell && modelData.isSteamApp && !rowSteamIcon.visible && !rowAppIcon.visible
+                                                color: Theme.surfaceContainer
+                                                radius: Theme.cornerRadius * (root.appIconSize / 40)
+                                                border.width: 1
+                                                border.color: appBorderColor
+                                                opacity: appOpacity
+
+                                                DankIcon {
+                                                    anchors.centerIn: parent
+                                                    size: parent.width * 0.7
+                                                    name: "sports_esports"
+                                                    color: appGlyphColor
+                                                }
+                                            }
+
+                                            IconImage {
+                                                id: rowQsIcon
+                                                anchors.fill: parent
+                                                source: modelData.icon
+                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                visible: modelData.isQuickshell
+                                                layer.enabled: true
+                                                layer.effect: MultiEffect {
+                                                    saturation: 0
+                                                    colorization: 1
+                                                    colorizationColor: appHighlightActive ? focusedBorderColor : (isActive ? quickshellIconActiveColor : quickshellIconInactiveColor)
+                                                }
+                                            }
+
+                                            IconImage {
+                                                id: rowSteamIcon
+                                                anchors.fill: parent
+                                                source: modelData.icon
+                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                visible: modelData.isSteamApp && modelData.icon
+                                            }
+
+                                            DankIcon {
+                                                anchors.centerIn: parent
+                                                size: root.appIconSize
+                                                name: "sports_esports"
+                                                color: appHighlightActive ? focusedBorderColor : Theme.widgetTextColor
+                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                visible: modelData.isSteamApp && !modelData.icon
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: (rowAppIcon.visible || rowSteamIcon.visible || rowQsIcon.visible) && (appHighlightActive || (isActive && !modelData.active && rowAppMouseArea.containsMouse))
+                                                color: (isActive && !modelData.active && rowAppMouseArea.containsMouse) ? Theme.withAlpha(Theme.surfaceText, 0.12) : "transparent"
+                                                radius: Theme.cornerRadius * (root.appIconSize / 40)
+                                                border.width: appHighlightActive ? 1 : 0
+                                                border.color: focusedBorderColor
+                                                z: 1
+                                            }
+
+                                            HoverHandler {
+                                                id: rowAppHover
+                                            }
+
+                                            MouseArea {
+                                                id: rowAppMouseArea
+                                                anchors.fill: parent
+                                                enabled: isActive
+                                                hoverEnabled: isActive
+                                                cursorShape: Qt.PointingHandCursor
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onEntered: root.scheduleAppPreview(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel)
+                                                onExited: {
+                                                    if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                                                        return;
+                                                    root.scheduleHideAppPreview();
+                                                }
+                                                onClicked: mouse => {
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        root.showAppContextMenu(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
+                                                    } else if (mouse.button === Qt.LeftButton) {
+                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
+                                                            appContextMenuLoader.item.close();
+                                                            return;
+                                                        }
+                                                        root.hideAppPreview();
+                                                        const winId = modelData.windowId;
+                                                        if (!winId)
+                                                            return;
+                                                        if (CompositorService.isHyprland)
+                                                            Hyprland.dispatch("focuswindow address:" + winId);
+                                                    }
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                visible: modelData.count > 1 && !isActive
+                                                width: root.appIconSize * 0.67
+                                                height: root.appIconSize * 0.67
+                                                radius: root.appIconSize * 0.33
+                                                color: "black"
+                                                border.color: "white"
+                                                border.width: 1
+                                                anchors.right: parent.right
+                                                anchors.bottom: parent.bottom
+                                                z: 2
+
+                                                StyledText {
+                                                    anchors.centerIn: parent
+                                                    text: modelData.count
+                                                    font.pixelSize: root.appIconSize * 0.44
+                                                    color: "white"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Component {
+                                id: columnLayout
+                                Column {
+                                    spacing: Theme.spacingXS
+                                    visible: loadedIcons.length > 0 || SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName || loadedHasIcon
+
+                                    DankIcon {
+                                        visible: loadedHasIcon && loadedIconData?.type === "icon"
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        name: loadedIconData?.value ?? ""
+                                        size: root.workspaceLabelSize
+                                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                        weight: (isActive && !isPlaceholder) ? 500 : 400
+                                    }
+
+                                    StyledText {
+                                        visible: loadedHasIcon && loadedIconData?.type === "text"
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: loadedIconData?.value ?? ""
+                                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                        font.pixelSize: root.workspaceLabelSize
+                                        font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
+                                    }
+
+                                    StyledText {
+                                        visible: (SettingsData.showWorkspaceIndex || SettingsData.showWorkspaceName) && !loadedHasIcon
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: root.getWorkspaceIndex(modelData, index)
+                                        color: (isActive || isUrgent) ? (root.isFullHeight ? "#ffffff" : Theme.withAlpha(Theme.surfaceContainer, 0.95)) : isPlaceholder ? Theme.surfaceTextAlpha : Theme.surfaceTextMedium
+                                        font.pixelSize: root.workspaceLabelSize
+                                        font.weight: (isActive && !isPlaceholder) ? Math.max(Theme.fontWeight, Font.DemiBold) : Theme.fontWeight
+                                    }
+
+                                    Repeater {
+                                        model: ScriptModel {
+                                            values: loadedIcons.slice(0, SettingsData.maxWorkspaceIcons)
+                                        }
+                                        delegate: Item {
+                                            width: root.appIconSize
+                                            height: root.appIconSize
+                                            readonly property var windowId: modelData.windowId
+                                            readonly property string windowSession: modelData.windowSession || ""
+                                            readonly property bool appHighlightActive: SettingsData.workspaceActiveAppHighlightEnabled && modelData.active
+                                            readonly property color appBorderColor: appHighlightActive ? focusedBorderColor : Theme.primarySelected
+                                            readonly property color appGlyphColor: appHighlightActive ? focusedBorderColor : Theme.primary
+                                            readonly property real appOpacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+
+                                            IconImage {
+                                                id: colAppIcon
+                                                anchors.fill: parent
+                                                source: modelData.icon || ""
+                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && status === Image.Ready
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: !modelData.isQuickshell && !modelData.isSteamApp && colAppIcon.status !== Image.Ready
+                                                color: Theme.surfaceContainer
+                                                radius: Theme.cornerRadius * (root.appIconSize / 40)
+                                                border.width: 1
+                                                border.color: appBorderColor
+                                                opacity: appOpacity
+
+                                                StyledText {
+                                                    anchors.centerIn: parent
+                                                    text: (modelData.fallbackText || "?").charAt(0).toUpperCase()
+                                                    font.pixelSize: parent.width * 0.45
+                                                    color: appGlyphColor
+                                                    font.weight: Font.Bold
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: !modelData.isQuickshell && modelData.isSteamApp && !colSteamIcon.visible && !colAppIcon.visible
+                                                color: Theme.surfaceContainer
+                                                radius: Theme.cornerRadius * (root.appIconSize / 40)
+                                                border.width: 1
+                                                border.color: appBorderColor
+                                                opacity: appOpacity
+
+                                                DankIcon {
+                                                    anchors.centerIn: parent
+                                                    size: parent.width * 0.7
+                                                    name: "sports_esports"
+                                                    color: appGlyphColor
+                                                }
+                                            }
+
+                                            IconImage {
+                                                id: colQsIcon
+                                                anchors.fill: parent
+                                                source: modelData.icon
+                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                visible: modelData.isQuickshell
+                                                layer.enabled: true
+                                                layer.effect: MultiEffect {
+                                                    saturation: 0
+                                                    colorization: 1
+                                                    colorizationColor: appHighlightActive ? focusedBorderColor : (isActive ? quickshellIconActiveColor : quickshellIconInactiveColor)
+                                                }
+                                            }
+
+                                            IconImage {
+                                                id: colSteamIcon
+                                                anchors.fill: parent
+                                                source: modelData.icon
+                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                visible: modelData.isSteamApp && modelData.icon
+                                            }
+
+                                            DankIcon {
+                                                anchors.centerIn: parent
+                                                size: root.appIconSize
+                                                name: "sports_esports"
+                                                color: appHighlightActive ? focusedBorderColor : Theme.widgetTextColor
+                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                visible: modelData.isSteamApp && !modelData.icon
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: (colAppIcon.visible || colSteamIcon.visible || colQsIcon.visible) && (appHighlightActive || (isActive && !modelData.active && colAppMouseArea.containsMouse))
+                                                color: (isActive && !modelData.active && colAppMouseArea.containsMouse) ? Theme.withAlpha(Theme.surfaceText, 0.12) : "transparent"
+                                                radius: Theme.cornerRadius * (root.appIconSize / 40)
+                                                border.width: appHighlightActive ? 1 : 0
+                                                border.color: focusedBorderColor
+                                                z: 1
+                                            }
+
+                                            HoverHandler {
+                                                id: colAppHover
+                                            }
+
+                                            MouseArea {
+                                                id: colAppMouseArea
+                                                anchors.fill: parent
+                                                enabled: isActive
+                                                hoverEnabled: isActive
+                                                cursorShape: Qt.PointingHandCursor
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onEntered: root.scheduleAppPreview(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel)
+                                                onExited: {
+                                                    if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                                                        return;
+                                                    root.scheduleHideAppPreview();
+                                                }
+                                                onClicked: mouse => {
+                                                    if (mouse.button === Qt.RightButton) {
+                                                        root.showAppContextMenu(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel);
+                                                    } else if (mouse.button === Qt.LeftButton) {
+                                                        if (appContextMenuLoader.item && appContextMenuLoader.item.shown) {
+                                                            appContextMenuLoader.item.close();
+                                                            return;
+                                                        }
+                                                        root.hideAppPreview();
+                                                        const winId = modelData.windowId;
+                                                        if (!winId)
+                                                            return;
+                                                        if (CompositorService.isHyprland)
+                                                            Hyprland.dispatch("focuswindow address:" + winId);
+                                                    }
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                visible: modelData.count > 1 && !isActive
+                                                width: root.appIconSize * 0.67
+                                                height: root.appIconSize * 0.67
+                                                radius: root.appIconSize * 0.33
+                                                color: "black"
+                                                border.color: "white"
+                                                border.width: 1
+                                                anchors.right: parent.right
+                                                anchors.bottom: parent.bottom
+                                                z: 2
+
+                                                StyledText {
+                                                    anchors.centerIn: parent
+                                                    text: modelData.count
+                                                    font.pixelSize: root.appIconSize * 0.44
+                                                    color: "white"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Component.onCompleted: {
+                    updateAllData();
+                    delegateRoot.colorAnimationReady = true;
+                }
+
+                Connections {
+                    target: CompositorService
+                    function onSortedToplevelsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: root
+                    function onCurrentWorkspaceChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: NiriService
+                    enabled: CompositorService.isNiri
+                    function onAllWorkspacesChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                    function onWindowUrgentChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                    function onWindowsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: Paths
+                    function onSteamIconRevisionChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: SettingsData
+                    function onShowWorkspaceAppsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                    function onWorkspaceNameIconsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                    function onAppIdSubstitutionsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                    function onGroupWorkspaceAppsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                    function onGroupActiveWorkspaceAppsChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: MangoService
+                    enabled: root.isMango
+                    function onStateChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: Hyprland.workspaces
+                    enabled: CompositorService.isHyprland
+                    function onValuesChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: CompositorService.isHyprland ? Hyprland : null
+                    enabled: CompositorService.isHyprland
+                    function onRawEvent(event) {
+                        if (event.name === "activewindow" || event.name === "activewindowv2")
+                            delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: I3.workspaces
+                    enabled: (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
+                    function onValuesChanged() {
+                        delegateRoot.updateAllData();
+                    }
+                }
+                Connections {
+                    target: AqueousService
+                    function onStateChanged() {
+                        if (root.useAqueous)
+                            delegateRoot.updateAllData();
+                    }
+                }
+                property var _extWindowsetsTrigger: root.useExtWorkspace ? WindowManager.windowsets : null
+                on_ExtWindowsetsTriggerChanged: {
+                    if (root.useExtWorkspace)
+                        delegateRoot.updateAllData();
+                }
+            }
+        }
+    }
+
+    Loader {
+        id: appContextMenuLoader
+        active: false
+        source: "AppsDockContextMenu.qml"
+    }
+
+    Loader {
+        id: appPreviewLoader
+        active: false
+        source: "WorkspaceAppPreview.qml"
+    }
+
+    Timer {
+        id: previewShowTimer
+        interval: 400
+        repeat: false
+        property var item: null
+        property var modelData: null
+        property var workspace: null
+        onTriggered: root.showAppPreview(item, modelData, workspace)
+    }
+
+    Timer {
+        id: previewHideTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+            if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                return;
+            root.hideAppPreview();
+        }
+    }
+
+    Connections {
+        target: appPreviewLoader.item
+        enabled: appPreviewLoader.status === Loader.Ready
+        function onHoveredChanged() {
+            if (appPreviewLoader.item && appPreviewLoader.item.hovered)
+                previewHideTimer.stop();
+            else
+                root.scheduleHideAppPreview();
+        }
+    }
+
+    Connections {
+        target: HyprlandService
+        function onFloatingModeActiveChanged() {
+            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
+                root.hideAppPreview();
+        }
+        function onFloatingWorkspacesChanged() {
+            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
+                root.hideAppPreview();
+        }
+        function onWindowStateRevisionChanged() {
+            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
+                root.hideAppPreview();
+        }
+    }
+
+    Connections {
+        target: root
+        function onCurrentWorkspaceChanged() {
+            root.hideAppPreview();
+        }
+    }
+
+
+    Component.onCompleted: {
+        _updateBlurRegistration();
+    }
+
+    property bool _blurRegistered: false
+    readonly property bool _shouldBlur: BlurService.enabled && blurBarWindow && blurBarWindow.registerBlurWidget && !(barConfig?.noBackground ?? false) && root.visible && root.width > 0
+
+    on_ShouldBlurChanged: _updateBlurRegistration()
+
+    function _updateBlurRegistration() {
+        if (_shouldBlur && !_blurRegistered) {
+            blurBarWindow.registerBlurWidget(visualBackground);
+            _blurRegistered = true;
+        } else if (!_shouldBlur && _blurRegistered) {
+            if (blurBarWindow && blurBarWindow.unregisterBlurWidget)
+                blurBarWindow.unregisterBlurWidget(visualBackground);
+            _blurRegistered = false;
+        }
+    }
+
+    Component.onDestruction: {
+        if (_blurRegistered && blurBarWindow && blurBarWindow.unregisterBlurWidget)
+            blurBarWindow.unregisterBlurWidget(visualBackground);
+    }
+}

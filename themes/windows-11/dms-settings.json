@@ -741,7 +741,8 @@
       "scrollEnabled": true,
       "clickThrough": false,
       "removeWidgetPadding": false,
-      "widgetPadding": 4
+      "widgetPadding": 4,
+      "attachToScreenEdge": false
     },
     {
       "id": "bar1770393292481",
@@ -857,7 +858,8 @@
       "shadowColorMode": "text",
       "shadowCustomColor": "#000000",
       "removeWidgetPadding": false,
-      "widgetPadding": 4
+      "widgetPadding": 4,
+      "attachToScreenEdge": false
     }
   ],
   "desktopClockEnabled": false,

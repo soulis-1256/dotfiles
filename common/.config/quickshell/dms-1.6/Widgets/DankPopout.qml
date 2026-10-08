@@ -1,0 +1,503 @@
+import QtQuick
+import qs.Common
+import qs.Services
+
+Item {
+    id: root
+    readonly property var log: Log.scoped("DankPopout")
+
+    property string layerNamespace: "dms:popout"
+    property Component content: null
+    property Component overlayContent: null
+    property real popupWidth: 400
+    property real popupHeight: 300
+    property real triggerX: 0
+    property real triggerY: 0
+    property real triggerWidth: 40
+    property string triggerSection: ""
+    property string positioning: "center"
+    property int animationDuration: Theme.popoutAnimationDuration
+    property real animationScaleCollapsed: Theme.effectScaleCollapsed
+    property real animationOffset: Theme.effectAnimOffset
+    property list<real> animationEnterCurve: Theme.variantPopoutEnterCurve
+    property list<real> animationExitCurve: Theme.variantPopoutExitCurve
+    property bool suspendShadowWhileResizing: false
+    property bool shouldBeVisible: false
+    property bool hoverDismissEnabled: false
+    property bool hoverDismissSuspended: false
+    property var customKeyboardFocus: null
+    property var backgroundKeyboardFocus: null
+    readonly property alias transientSurfaceTracker: _transientSurfaceTracker
+    readonly property bool effectiveHoverDismissSuspended: hoverDismissSuspended || (transientSurfaceTracker?.active ?? false)
+    property bool backgroundInteractive: true
+    property bool contentHandlesKeys: false
+    property bool fullHeightSurface: false
+    property bool _primeContent: false
+
+    property real storedBarThickness: Theme.barHeight - 4
+    property real storedBarSpacing: 4
+    property var storedBarConfig: null
+    property bool triggerUsesOverlayLayer: false
+    property var adjacentBarInfo: ({
+            "topBar": 0,
+            "bottomBar": 0,
+            "leftBar": 0,
+            "rightBar": 0
+        })
+    property var screen: null
+    property int effectiveBarPosition: 0
+    property real effectiveBarBottomGap: 0
+
+    signal opened
+    signal popoutClosed
+    signal backgroundClicked
+    // Seat keyboard is on this popout. Content should take Qt focus now;
+    // forceActiveFocus during open runs before the surface can receive keys.
+    signal keyboardGrabbed
+
+    readonly property var contentLoader: impl.item ? impl.item.contentLoader : _fallbackContentLoader
+    readonly property var overlayLoader: impl.item ? impl.item.overlayLoader : _fallbackOverlayLoader
+    readonly property var backgroundWindow: impl.item ? impl.item.backgroundWindow : null
+    readonly property var contentWindow: impl.item ? impl.item.contentWindow : null
+
+    // The layer maps with keyboard None, then becomes OnDemand one tick later
+    // so Hyprland's onMap does not steal the pointer. None→OnDemand does not
+    // move the seat. The grab does. Hyprland then keyboard-focuses the first
+    // whitelist surface whose box contains the pointer (else the first
+    // surface). The fullscreen dismiss layer and the bar are in that list and
+    // their keyboard mode is None, so Escape and typing go nowhere until the
+    // pointer is over the menu. The first commit is the menu surface alone.
+    // Surfaces added afterwards do not move the keyboard. Rebuilding the grab
+    // (active false then true) after that would run the pointer search again.
+    readonly property bool keyboardReady: impl.item ? impl.item._keyboardReady : false
+    property bool grabArmed: false
+    property bool _grabFocusLocked: false
+    property bool _grabCommitting: false
+    property int _grabGeneration: 0
+    property int _grabTries: 0
+    property bool _armPending: false
+
+    function _scheduleGrabArm() {
+        if (!root.shouldBeVisible) {
+            root._grabGeneration++;
+            root.grabArmed = false;
+            root._grabFocusLocked = false;
+            root._grabCommitting = false;
+            root._grabTries = 0;
+            root._armPending = false;
+            grabSettleTimer.stop();
+            return;
+        }
+        if (!root.keyboardReady)
+            return;
+        if (!KeyboardFocus.wantsGrab(true, root.customKeyboardFocus)) {
+            root.keyboardGrabbed();
+            return;
+        }
+        if (root._armPending)
+            return;
+        root._armPending = true;
+        root._grabTries = 0;
+        const generation = root._grabGeneration;
+        // OnDemand was just queued. Start the grab on the next turn.
+        Qt.callLater(() => {
+            root._armPending = false;
+            root._kickGrab(generation);
+        });
+    }
+
+    function _lockGrabFocus() {
+        if (!root.shouldBeVisible || !popoutKeyboardGrab.active || root._grabFocusLocked)
+            return;
+        popoutKeyboardGrab._compositorCleared = false;
+        root._grabFocusLocked = true;
+        root.keyboardGrabbed();
+    }
+
+    function _kickGrab(generation) {
+        if (generation !== root._grabGeneration || !root.shouldBeVisible || !root.keyboardReady)
+            return;
+        if (root._grabFocusLocked && popoutKeyboardGrab.active)
+            return;
+        // Hold the lock off across the false/true below. The wanted binding
+        // activates synchronously, and that signal must not widen the
+        // whitelist before this new grab's first commit.
+        root._grabCommitting = true;
+        root._grabFocusLocked = false;
+        root.grabArmed = true;
+        // false then true always builds a new protocol grab. A leftover
+        // target from the previous open would ignore a bare true.
+        popoutKeyboardGrab.active = false;
+        popoutKeyboardGrab.active = true;
+        root._grabCommitting = false;
+        root._lockGrabFocus();
+        grabSettleTimer.restart();
+    }
+
+    onKeyboardReadyChanged: _scheduleGrabArm()
+    onShouldBeVisibleChanged: _scheduleGrabArm()
+
+    TransientSurfaceTracker {
+        id: _transientSurfaceTracker
+    }
+
+    // Hyprland OnDemand grab. Menu surface first; dismiss layers, transients,
+    // and bars join only after that surface holds the keyboard.
+    DankFocusGrab {
+        id: popoutKeyboardGrab
+        deferDismissWindows: true
+        clientWindows: {
+            const list = [];
+            if (root.contentWindow)
+                list.push(root.contentWindow);
+            if (!root._grabFocusLocked)
+                return list;
+            if (root.backgroundWindow && root.backgroundWindow !== root.contentWindow)
+                list.push(root.backgroundWindow);
+            const transientWindows = root.transientSurfaceTracker?.focusWindows ?? [];
+            return list.concat(transientWindows).concat(KeyboardFocus.barWindows);
+        }
+        wanted: KeyboardFocus.wantsGrab(root.shouldBeVisible && root.keyboardReady && root.grabArmed, root.customKeyboardFocus)
+    }
+
+    Timer {
+        id: grabSettleTimer
+        interval: 80
+        repeat: false
+        onTriggered: {
+            if (!root.shouldBeVisible || !root.keyboardReady)
+                return;
+            if (popoutKeyboardGrab.active) {
+                root._lockGrabFocus();
+                return;
+            }
+            root._grabTries += 1;
+            if (root._grabTries < 4)
+                root._kickGrab(root._grabGeneration);
+        }
+    }
+
+    Connections {
+        target: popoutKeyboardGrab
+        function onActiveChanged() {
+            if (!popoutKeyboardGrab.active) {
+                if (!root._grabCommitting)
+                    root._grabFocusLocked = false;
+                return;
+            }
+            if (root._grabCommitting)
+                return;
+            root._lockGrabFocus();
+        }
+    }
+
+    Loader {
+        id: _fallbackContentLoader
+        active: false
+    }
+    Loader {
+        id: _fallbackOverlayLoader
+        active: false
+    }
+    readonly property bool isClosing: impl.item ? (impl.item.isClosing ?? false) : false
+    readonly property real dpr: impl.item ? impl.item.dpr : 1
+    readonly property real screenWidth: impl.item ? impl.item.screenWidth : 0
+    readonly property real screenHeight: impl.item ? impl.item.screenHeight : 0
+    readonly property real alignedX: impl.item ? impl.item.alignedX : 0
+    readonly property real alignedY: impl.item ? impl.item.alignedY : 0
+    readonly property real alignedWidth: impl.item ? impl.item.alignedWidth : 0
+    readonly property real alignedHeight: impl.item ? impl.item.alignedHeight : 0
+    readonly property real renderedAlignedY: impl.item ? (impl.item.renderedAlignedY ?? impl.item.alignedY) : 0
+    readonly property real renderedAlignedHeight: impl.item ? (impl.item.renderedAlignedHeight ?? impl.item.alignedHeight) : 0
+    readonly property real maskX: impl.item ? impl.item.maskX : 0
+    readonly property real maskY: impl.item ? impl.item.maskY : 0
+    readonly property real maskWidth: impl.item ? impl.item.maskWidth : 0
+    readonly property real maskHeight: impl.item ? impl.item.maskHeight : 0
+    readonly property real barX: impl.item ? impl.item.barX : 0
+    readonly property real barY: impl.item ? impl.item.barY : 0
+    readonly property real barWidth: impl.item ? impl.item.barWidth : 0
+    readonly property real barHeight: impl.item ? impl.item.barHeight : 0
+    readonly property bool useConnectedBackend: _usesConnectedBackendForScreen(screen)
+    property var _resolvedBackend: null
+    property bool _pendingOpen: false
+
+    Timer {
+        id: _pendingOpenTimer
+        interval: 0
+        onTriggered: {
+            if (!root._pendingOpen || !impl.item)
+                return;
+            root._pendingOpen = false;
+            impl.item.open();
+        }
+    }
+
+    onUseConnectedBackendChanged: _maybeResolveBackend()
+    Component.onCompleted: _resolvedBackend = _backendForScreen(screen)
+
+    Connections {
+        target: SettingsData
+        function onConnectedFrameModeActiveChanged() {
+            root._maybeResolveBackend();
+        }
+        function onFrameEnabledChanged() {
+            root._maybeResolveBackend();
+        }
+        function onFrameScreenPreferencesChanged() {
+            root._maybeResolveBackend();
+        }
+        function onShowDockChanged() {
+            root._maybeResolveBackend();
+        }
+        function onBarConfigsChanged() {
+            root._maybeResolveBackend();
+        }
+    }
+
+    function _usesConnectedBackendForScreen(targetScreen) {
+        return CompositorService.usesConnectedFrameChromeForScreen(targetScreen);
+    }
+
+    function _backendForScreen(targetScreen) {
+        return _usesConnectedBackendForScreen(targetScreen) ? connectedComp : standaloneComp;
+    }
+
+    function _maybeResolveBackend() {
+        _resolveBackendForScreen(screen);
+    }
+
+    function _resolveBackendForScreen(targetScreen) {
+        const backend = _backendForScreen(targetScreen);
+        if (_resolvedBackend === backend)
+            return;
+        if (impl.item && (impl.item.shouldBeVisible || impl.item.isClosing))
+            return;
+        _resolvedBackend = backend;
+    }
+
+    function open() {
+        _maybeResolveBackend();
+        if (impl.item) {
+            _pendingOpen = false;
+            impl.item.open();
+            return;
+        }
+        _pendingOpen = true;
+    }
+
+    function close() {
+        _close(false);
+    }
+
+    function instantClose() {
+        _close(true);
+    }
+
+    function _close(instant) {
+        _pendingOpen = false;
+        _pendingOpenTimer.stop();
+        transientSurfaceTracker?.closeAll?.();
+        if (impl.item) {
+            instant ? impl.item.instantClose() : impl.item.close();
+            return;
+        }
+        PopoutManager.hidePopout(root);
+        if (!shouldBeVisible)
+            return;
+        shouldBeVisible = false;
+        popoutClosed();
+    }
+
+    function cancelHoverDismiss() {
+        if (impl.item?.cancelHoverDismiss)
+            impl.item.cancelHoverDismiss();
+    }
+
+    // Fade out in place during morph switch transitions.
+    function beginSupersededClose() {
+        if (impl.item?.beginSupersededClose)
+            impl.item.beginSupersededClose();
+    }
+
+    function closeFromHoverDismiss() {
+        if (effectiveHoverDismissSuspended)
+            return;
+        transientSurfaceTracker?.closeAll?.();
+        hoverDismissEnabled = false;
+        // Enable animations using standard Theme-bound popout motion to preserve bindings.
+        if (impl.item)
+            impl.item.animationsEnabled = true;
+        for (const prop of ["dashVisible", "notificationHistoryVisible"]) {
+            if (root[prop] !== undefined) {
+                root[prop] = false;
+                return;
+            }
+        }
+        if (impl.item)
+            impl.item.close();
+        else
+            close();
+    }
+
+    function toggle() {
+        (shouldBeVisible || _pendingOpen) ? close() : open();
+    }
+
+    function setBarContext(position, bottomGap) {
+        effectiveBarPosition = position !== undefined ? position : 0;
+        effectiveBarBottomGap = bottomGap !== undefined ? bottomGap : 0;
+    }
+
+    function _triggerBarUsesOverlayLayer(targetScreen, barConfig) {
+        const frameHostsBar = CompositorService.frameHostsBarForConfig(targetScreen, barConfig);
+        const frameRequiresOverlay = CompositorService.framePeerSurfacesUseOverlayForScreen(targetScreen) && !frameHostsBar;
+        return LayerShell.envUsesOverlay("DMS_DANKBAR_LAYER", (barConfig?.useOverlayLayer ?? false) || frameRequiresOverlay);
+    }
+
+    function setTriggerPosition(x, y, width, section, targetScreen, barPosition, barThickness, barSpacing, barConfig) {
+        triggerX = x;
+        triggerY = y;
+        triggerWidth = width;
+        triggerSection = section;
+        screen = targetScreen;
+
+        storedBarThickness = barThickness !== undefined ? barThickness : (Theme.barHeight - 4);
+        storedBarSpacing = barSpacing !== undefined ? barSpacing : 4;
+        storedBarConfig = barConfig;
+        triggerUsesOverlayLayer = _triggerBarUsesOverlayLayer(targetScreen, barConfig);
+
+        const pos = barPosition !== undefined ? barPosition : 0;
+        const bottomGap = barConfig ? (barConfig.bottomGap !== undefined ? barConfig.bottomGap : 0) : 0;
+
+        adjacentBarInfo = SettingsData.getAdjacentBarInfo(targetScreen, pos, barConfig);
+        setBarContext(pos, bottomGap);
+        _resolveBackendForScreen(targetScreen);
+    }
+
+    function updateSurfacePosition() {
+        if (impl.item && typeof impl.item.updateSurfacePosition === "function")
+            impl.item.updateSurfacePosition();
+    }
+
+    function containsGlobalPoint(gx, gy) {
+        if (!screen)
+            return false;
+        const presented = shouldBeVisible || (impl.item?.isClosing ?? false);
+        if (!presented)
+            return false;
+        const padding = 24;
+        const x = alignedX - padding;
+        const y = renderedAlignedY - padding;
+        const w = alignedWidth + padding * 2;
+        const h = renderedAlignedHeight + padding * 2;
+        return gx >= x && gx <= x + w && gy >= y && gy <= y + h;
+    }
+
+    Loader {
+        id: impl
+        active: root.screen !== null
+        sourceComponent: root._resolvedBackend
+        onItemChanged: if (item)
+            root._wireBackend(item)
+    }
+
+    Component {
+        id: standaloneComp
+        DankPopoutStandalone {}
+    }
+
+    Component {
+        id: connectedComp
+        DankPopoutConnected {}
+    }
+
+    function _wireBackend(it) {
+        if (!it)
+            return;
+
+        it.popoutHandle = root;
+        it.layerNamespace = Qt.binding(() => root.layerNamespace);
+        it.content = Qt.binding(() => root.content);
+        it.overlayContent = Qt.binding(() => root.overlayContent);
+        it.popupWidth = Qt.binding(() => root.popupWidth);
+        it.popupHeight = Qt.binding(() => root.popupHeight);
+        it.triggerX = Qt.binding(() => root.triggerX);
+        it.triggerY = Qt.binding(() => root.triggerY);
+        it.triggerWidth = Qt.binding(() => root.triggerWidth);
+        it.triggerSection = Qt.binding(() => root.triggerSection);
+        it.positioning = Qt.binding(() => root.positioning);
+        it.animationDuration = Qt.binding(() => root.animationDuration);
+        it.animationScaleCollapsed = Qt.binding(() => root.animationScaleCollapsed);
+        it.animationOffset = Qt.binding(() => root.animationOffset);
+        it.animationEnterCurve = Qt.binding(() => root.animationEnterCurve);
+        it.animationExitCurve = Qt.binding(() => root.animationExitCurve);
+        it.suspendShadowWhileResizing = Qt.binding(() => root.suspendShadowWhileResizing);
+        it.customKeyboardFocus = Qt.binding(() => root.customKeyboardFocus);
+        it.backgroundKeyboardFocus = Qt.binding(() => root.backgroundKeyboardFocus);
+        it.backgroundInteractive = Qt.binding(() => root.backgroundInteractive);
+        it.contentHandlesKeys = Qt.binding(() => root.contentHandlesKeys);
+        it.fullHeightSurface = Qt.binding(() => root.fullHeightSurface);
+        it.storedBarThickness = Qt.binding(() => root.storedBarThickness);
+        it.storedBarSpacing = Qt.binding(() => root.storedBarSpacing);
+        it.storedBarConfig = Qt.binding(() => root.storedBarConfig);
+        it.triggerUsesOverlayLayer = Qt.binding(() => root.triggerUsesOverlayLayer);
+        it.adjacentBarInfo = Qt.binding(() => root.adjacentBarInfo);
+        it.screen = Qt.binding(() => root.screen);
+        it.effectiveBarPosition = Qt.binding(() => root.effectiveBarPosition);
+        it.effectiveBarBottomGap = Qt.binding(() => root.effectiveBarBottomGap);
+        it.hoverDismissEnabled = Qt.binding(() => root.hoverDismissEnabled);
+        it.hoverDismissSuspended = Qt.binding(() => root.effectiveHoverDismissSuspended);
+
+        if (root.shouldBeVisible && !_pendingOpen)
+            root.shouldBeVisible = false;
+        if (root._primeContent && typeof it.primeContent === "function")
+            it.primeContent();
+        if (_pendingOpen)
+            _pendingOpenTimer.restart();
+    }
+
+    function primeContent() {
+        _primeContent = true;
+        if (impl.item)
+            impl.item.primeContent();
+    }
+
+    function clearPrimedContent() {
+        _primeContent = false;
+        if (impl.item)
+            impl.item.clearPrimedContent();
+    }
+
+    Connections {
+        target: root
+        function onShouldBeVisibleChanged() {
+            if (!root.shouldBeVisible)
+                root.transientSurfaceTracker?.closeAll?.();
+            if (impl.item && impl.item.shouldBeVisible !== root.shouldBeVisible)
+                impl.item.shouldBeVisible = root.shouldBeVisible;
+        }
+    }
+
+    Connections {
+        target: impl.item
+        ignoreUnknownSignals: true
+
+        function onShouldBeVisibleChanged() {
+            if (impl.item && root.shouldBeVisible !== impl.item.shouldBeVisible)
+                root.shouldBeVisible = impl.item.shouldBeVisible;
+        }
+
+        function onOpened() {
+            root.opened();
+        }
+
+        function onPopoutClosed() {
+            root.popoutClosed();
+            root._maybeResolveBackend();
+        }
+
+        function onBackgroundClicked() {
+            root.backgroundClicked();
+        }
+    }
+}

@@ -54,8 +54,14 @@ PluginComponent {
 
             LauncherLogo {
                 anchors.centerIn: parent
-                barThickness: root.barThickness
-                barConfig: root.barConfig
+                mode: SettingsData.launcherLogoMode
+                size: Theme.barIconSize(root.barThickness, SettingsData.launcherLogoSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+                appsIconSize: Theme.barIconSize(root.barThickness, -4, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+                appsIconColor: Theme.widgetIconColor
+                colorOverride: Theme.effectiveLogoColor
+                brightness: SettingsData.launcherLogoBrightness
+                contrast: SettingsData.launcherLogoContrast
+                customPath: SettingsData.launcherLogoCustomPath
             }
         }
     }
@@ -69,8 +75,14 @@ PluginComponent {
 
             LauncherLogo {
                 anchors.centerIn: parent
-                barThickness: root.barThickness
-                barConfig: root.barConfig
+                mode: SettingsData.launcherLogoMode
+                size: Theme.barIconSize(root.barThickness, SettingsData.launcherLogoSizeOffset, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+                appsIconSize: Theme.barIconSize(root.barThickness, -4, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+                appsIconColor: Theme.widgetIconColor
+                colorOverride: Theme.effectiveLogoColor
+                brightness: SettingsData.launcherLogoBrightness
+                contrast: SettingsData.launcherLogoContrast
+                customPath: SettingsData.launcherLogoCustomPath
             }
         }
     }
