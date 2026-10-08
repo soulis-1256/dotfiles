@@ -423,7 +423,7 @@ BasePill {
         }
     }
 
-    readonly property real trayItemSize: root.widgetThickness
+    readonly property real trayItemSize: Math.round(Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale) + 12)
 
     readonly property real minTooltipY: {
         if (!parentScreen || !isVerticalOrientation) {
@@ -1361,7 +1361,7 @@ BasePill {
                             height: root.trayItemSize + 4
                             z: popupDragHandler.dragging ? 100 : 0
                             radius: Theme.cornerRadius
-                            color: itemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(Theme.surfaceContainer, 0)
+                            color: itemArea.containsMouse ? (BlurService.enabled ? Theme.withAlpha(Theme.surfaceText, 0.14) : BlurService.hoverColor(Theme.widgetBaseHoverColor)) : "transparent"
                             border.width: popupDragHandler.dragging ? 2 : 0
                             border.color: Theme.primary
                             opacity: popupDragHandler.dragging ? 0.8 : 1.0
@@ -1502,6 +1502,9 @@ BasePill {
             property bool menuReady: false
             property var menuHandle: null
             property string menuMode: "native"
+            // Solid blend on opaque popups; neutral wash on blurred/translucent ones
+            // where the blend is nearly invisible (e.g. Win11 acrylic).
+            readonly property color rowHover: BlurService.enabled ? Theme.withAlpha(Theme.surfaceText, 0.14) : BlurService.hoverColor(Theme.widgetBaseHoverColor)
 
             ListModel {
                 id: entryStack
@@ -1943,7 +1946,7 @@ BasePill {
                                 width: parent.width
                                 height: 28
                                 radius: Theme.cornerRadius
-                                color: visibilityToggleArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(Theme.surfaceContainer, 0)
+                                color: visibilityToggleArea.containsMouse ? menuRoot.rowHover : "transparent"
 
                                 StyledText {
                                     anchors.left: parent.left
@@ -2000,7 +2003,7 @@ BasePill {
                                 width: parent.width
                                 height: 28
                                 radius: Theme.cornerRadius
-                                color: backArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(Theme.surfaceContainer, 0)
+                                color: backArea.containsMouse ? menuRoot.rowHover : "transparent"
 
                                 Row {
                                     anchors.left: parent.left
@@ -2053,7 +2056,7 @@ BasePill {
                                     color: {
                                         if (menuEntry?.isSeparator)
                                             return Theme.outlineHeavy;
-                                        return itemArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(Theme.surfaceContainer, 0);
+                                        return itemArea.containsMouse ? menuRoot.rowHover : "transparent";
                                     }
 
                                     MouseArea {

@@ -182,7 +182,21 @@ function M.classify(win)
 	end
 
 	local cls = (win.class or win.initial_class or win.initialClass or ""):lower()
-	local title = (win.title or ""):lower()
+	local title = (win.title or win.initial_title or win.initialTitle or ""):lower()
+
+	-- Picture-in-Picture windows are floating overlays, NEVER tiled canvas
+	if title:match("picture[%- ]in[%- ]picture") then
+		return M.ARCHETYPES.utility
+	end
+
+	-- Any window explicitly marked floating or pinned in Hyprland is a utility float
+	local is_float = false
+	pcall(function()
+		is_float = (win.floating and true) or (win.pinned and true) or false
+	end)
+	if is_float then
+		return M.ARCHETYPES.utility
+	end
 
 	-- 1. Check curated rules
 	for _, rule in ipairs(M.RULES) do

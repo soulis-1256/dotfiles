@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch ~/.config/vpn-bypass.list for changes
+
+[Path]
+PathModified=%h/.config/vpn-bypass.list
+Unit=vpn-bypass-sync.service
+
+[Install]
+WantedBy=default.target

@@ -177,8 +177,8 @@ local SKIP_GEOMETRY_CLASS = {
 
 local function is_special_overlay(w)
 	if not w then return false end
-	local title = (w.title or ""):lower()
-	local cls = (w.class or ""):lower()
+	local title = (w.title or w.initial_title or w.initialTitle or ""):lower()
+	local cls = (w.class or w.initial_class or w.initialClass or ""):lower()
 	if title:match("picture[%- ]in[%- ]picture") then return true end
 	if cls:match("^steam") and title:match("^notificationtoasts") then return true end
 	return false

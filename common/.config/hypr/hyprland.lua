@@ -134,6 +134,7 @@ hl.window_rule({
 	pin = true,
 })
 hl.window_rule({ match = { class = "^(zoom)$" }, float = true })
+hl.window_rule({ match = { class = "^(org\\.qbittorrent\\.qBittorrent|qbittorrent)$" }, float = true })
 hl.layer_rule({ match = { namespace = "^(quickshell)$" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "^dms:.*" }, no_anim = true })
 

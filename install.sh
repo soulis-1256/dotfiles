@@ -256,10 +256,11 @@ main() {
     cd "$DOTFILES_DIR"
     stow "${stow_flags[@]}" "${packages[@]}"
 
-    # Ensure DMS and gamepad-clock user services are enabled
+    # Ensure DMS, gamepad-clock, and vpn-bypass-sync user services are enabled
     if command -v systemctl &>/dev/null; then
         systemctl --user list-unit-files dms.service &>/dev/null && systemctl --user enable dms.service >/dev/null 2>&1 || true
         systemctl --user list-unit-files gamepad-clock.service &>/dev/null && systemctl --user enable gamepad-clock.service >/dev/null 2>&1 || true
+        systemctl --user list-unit-files vpn-bypass-sync.path &>/dev/null && systemctl --user enable vpn-bypass-sync.path >/dev/null 2>&1 || true
     fi
 
     echo -e "\n${GREEN}[SUCCESS] Dotfiles deployed successfully for profile '${detected_profile}'.${NC}"

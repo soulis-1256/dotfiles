@@ -213,15 +213,15 @@ Item {
     }
 
     // =========================================================================
-    // 2. MOON CRESCENT (Windows 11 Mathematically Exact Golden 3D Crescent)
+    // 2. MOON CRESCENT (Microsoft Fluent Weather Rounded Golden 3D Crescent)
     // =========================================================================
     Canvas {
         id: moonCanvas
         visible: root.showMoon
-        width: (root.moonLarge ? 17.5 : 16.5) * root.u
+        width: (root.moonLarge ? 17.5 : 15.0) * root.u
         height: width
-        x: (root.moonLarge ? 3.25 : 1.5) * root.u
-        y: ((root.moonLarge ? 3.25 : 1.5) * root.u) + root.floatOffset
+        x: (root.moonLarge ? 3.25 : 2.0) * root.u
+        y: ((root.moonLarge ? 3.25 : 1.6) * root.u) + root.floatOffset
         renderStrategy: Canvas.Cooperative
         antialiasing: true
 
@@ -239,24 +239,26 @@ Item {
             ctx.setTransform(paintScale, 0, 0, paintScale, 0, 0);
             ctx.clearRect(0, 0, width, height);
 
-            const cx = width / 2;
-            const cy = height / 2;
-            const r = width / 2;
+            const sx = width / 48;
+            const sy = height / 48;
 
-            const ox = -0.436 * r;
-            const oy = -0.182 * r;
-            const inR = 0.873 * r;
-
-            const grad = ctx.createLinearGradient(cx - r * 0.5, cy - r * 0.6, cx + r * 0.7, cy + r * 0.7);
+            const grad = ctx.createLinearGradient(12 * sx, 6 * sy, 40 * sx, 42 * sy);
             grad.addColorStop(0.0, "#fffde7");
-            grad.addColorStop(0.3, "#fff176");
-            grad.addColorStop(0.7, "#ffb300");
+            grad.addColorStop(0.35, "#ffd54f");
+            grad.addColorStop(0.75, "#ffb300");
             grad.addColorStop(1.0, "#ff8f00");
 
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(cx, cy, r - 0.5, -0.537 * Math.PI, 0.788 * Math.PI, false);
-            ctx.arc(cx + ox, cy + oy, inR, 0.631 * Math.PI, -0.380 * Math.PI, true);
+            ctx.moveTo(37.9026 * sx, 33.0093 * sy);
+            ctx.bezierCurveTo(32.9320 * sx, 41.6185 * sy, 21.9234 * sx, 44.5683 * sy, 13.3141 * sx, 39.5977 * sy);
+            ctx.bezierCurveTo(10.9696 * sx, 38.2441 * sy, 8.99587 * sx, 36.4129 * sy, 7.49260 * sx, 34.2300 * sy);
+            ctx.bezierCurveTo(6.99000 * sx, 33.5001 * sy, 7.31511 * sx, 32.4922 * sy, 8.14944 * sx, 32.1936 * sy);
+            ctx.bezierCurveTo(14.9298 * sx, 29.7668 * sy, 18.5612 * sx, 26.9546 * sy, 20.6685 * sy, 22.9320 * sy);
+            ctx.bezierCurveTo(22.8870 * sx, 18.6973 * sy, 23.4603 * sx, 14.0586 * sy, 21.9083 * sx, 7.70019 * sy);
+            ctx.bezierCurveTo(21.6937 * sx, 6.82096 * sy, 22.3882 * sx, 5.98380 * sy, 23.2920 * sx, 6.03228 * sy);
+            ctx.bezierCurveTo(26.0941 * sx, 6.18262 * sy, 28.8316 * sx, 6.98753 * sy, 31.3141 * sx, 8.42082 * sy);
+            ctx.bezierCurveTo(39.9234 * sx, 13.3914 * sy, 42.8731 * sx, 24.4000 * sy, 37.9026 * sx, 33.0093 * sy);
             ctx.closePath();
             ctx.fill();
         }
@@ -271,7 +273,7 @@ Item {
         width: 14.5 * root.u
         height: 10.2 * root.u
         x: 8.2 * root.u
-        y: (root.dropCount > 0 ? 2.6 : 4.0) * root.u + root.floatOffset * 0.5
+        y: (root.dropCount > 0 ? 2.6 : 4.0) * root.u
         renderStrategy: Canvas.Cooperative
         antialiasing: true
 
@@ -333,7 +335,7 @@ Item {
         width: (root.showBolt ? 19.6 : (root.kind.indexOf("partly") === 0 ? 15.2 : 16.2)) * root.u
         height: (root.showBolt ? 12.0 : 11.2) * root.u
         x: (root.showBolt ? 2.2 : (root.kind.indexOf("partly") === 0 ? 8.0 : 3.4)) * root.u
-        y: (root.showBolt ? 2.2 : (root.kind.indexOf("partly") === 0 ? 9.6 : (root.dropCount > 0 ? 3.6 : 6.6))) * root.u + root.floatOffset
+        y: (root.showBolt ? 2.2 : (root.kind.indexOf("partly") === 0 ? 9.6 : (root.dropCount > 0 ? 3.6 : 6.6))) * root.u
         renderStrategy: Canvas.Cooperative
         antialiasing: true
 

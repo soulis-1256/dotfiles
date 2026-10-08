@@ -6,4 +6,5 @@ install.sh
 .gitignore
 themes
 themes/*
-
+tools
+tools/*

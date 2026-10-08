@@ -136,7 +136,14 @@ local function is_ignorable(w)
 	if pinned then
 		return true
 	end
-	local title = (w.title or ""):lower()
+	local floating = false
+	pcall(function()
+		floating = w.floating and true or false
+	end)
+	if floating then
+		return true
+	end
+	local title = (w.title or w.initial_title or w.initialTitle or ""):lower()
 	if title:match("picture[%- ]in[%- ]picture") then
 		return true
 	end
@@ -3731,7 +3738,7 @@ local MAX_SPILL_SCAN = 20
 -- the beat so the switch reads as intentional (reactive path needs no wait:
 -- it moves pre-paint, before first paint).
 local SPILL_SPAWN_WAIT = 250
-local SPILL_BLOCKED = { [8] = true, [9] = true }
+local SPILL_BLOCKED = { [8] = true, [9] = true, [10] = true }
 local DP1_MIN = 1
 local DP1_MAX = 7
 local DP2_MIN = 10
@@ -4092,6 +4099,9 @@ local function spill_begin(w, num, ws_id, newcomer_addr, pre_paint)
 	if tonumber(cur) ~= num then
 		return false -- already moved elsewhere
 	end
+	if is_ignorable(w) then
+		return false -- dialogs/floats/PiP never spill
+	end
 	local okc, arch = pcall(db.classify, w)
 	if not (okc and arch and not arch.float) then
 		return false -- dialogs/floats never spill
@@ -4218,6 +4228,13 @@ hl.on("window.open_early", function(w)
 	if not real_layout_ok or not w then
 		return
 	end
+	if is_ignorable(w) then
+		return
+	end
+	local okc, arch = pcall(db.classify, w)
+	if okc and arch and arch.float then
+		return
+	end
 	local ws_id = w.workspace and w.workspace.id
 	if not ws_id then
 		return
@@ -4238,6 +4255,9 @@ hl.on("window.open", function(w)
 		return
 	end
 	if not real_layout_ok or not w then
+		return
+	end
+	if is_ignorable(w) then
 		return
 	end
 	local ws_id = (w and w.workspace and w.workspace.id)

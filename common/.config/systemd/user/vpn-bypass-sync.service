@@ -1,0 +1,6 @@
+[Unit]
+Description=Sync VPN Bypass Wrappers and Desktop Overrides
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/vpn-bypass-sync

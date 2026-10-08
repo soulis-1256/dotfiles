@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LIST_FILE="$HOME/.config/vpn-bypass.list"
+BIN_DIR="$HOME/.local/bin"
+APPS_DIR="$HOME/.local/share/applications"
+get_default_net_dev() {
+    ip -o route show default 2>/dev/null | awk '{print $5}' | grep -vE '^(surfshark|wg|tun|docker|br)' | head -n1 || echo "enp9s0"
+}
+NET_DEV="${VPN_BYPASS_NET_DEV:-$(get_default_net_dev)}"
+DNS_SERVER="1.1.1.1"
+
+mkdir -p "$BIN_DIR" "$APPS_DIR"
+
+if [ ! -f "$LIST_FILE" ]; then
+    echo "Creating empty list at $LIST_FILE..."
+    touch "$LIST_FILE"
+fi
+
+# Clean up previously generated wrappers that are no longer in the list
+for file in "$BIN_DIR"/*; do
+    if [ -f "$file" ]; then
+        app_name=$(basename "$file")
+        [ "$app_name" = "vpn-bypass-sync" ] && continue
+        if grep -q "# BYPASS_WRAPPER_TAG" "$file" 2>/dev/null; then
+            if ! grep -q "^[[:space:]]*${app_name}[[:space:]]*$" "$LIST_FILE"; then
+                echo "Removing bypass wrapper: $app_name"
+                rm -f "$file"
+            fi
+        fi
+    fi
+done
+
+# Clean up desktop overrides that are no longer in the list
+for dt in "$APPS_DIR"/*.desktop; do
+    if [ -f "$dt" ] && grep -q "# MANAGED_BY_VPN_BYPASS_DESKTOP" "$dt" 2>/dev/null; then
+        dt_base=$(basename "$dt" .desktop)
+        if ! grep -q "^[[:space:]]*${dt_base}[[:space:]]*$" "$LIST_FILE" && ! grep -q "^[[:space:]]*${dt_base}-browser[[:space:]]*$" "$LIST_FILE"; then
+            echo "Removing desktop override: $(basename "$dt")"
+            rm -f "$dt"
+        fi
+    fi
+done
+
+# Generate wrappers and desktop overrides for apps currently in the list
+while IFS= read -r app || [ -n "$app" ]; do
+    app=$(echo "$app" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/#.*//')
+    [ -z "$app" ] && continue
+
+    real_bin="/usr/bin/$app"
+    if [ ! -x "$real_bin" ]; then
+        echo "Warning: $real_bin not found or not executable. Skipping."
+        continue
+    fi
+
+    wrapper="$BIN_DIR/$app"
+    cat << WRAPPER_EOF > "$wrapper"
+#!/usr/bin/env bash
+# BYPASS_WRAPPER_TAG
+exec /usr/bin/firejail --quiet --noprofile --net=$NET_DEV --dns=$DNS_SERVER $real_bin "\$@"
+WRAPPER_EOF
+    chmod +x "$wrapper"
+    echo "Active bypass wrapper: $app -> $real_bin (routes directly via $NET_DEV)"
+
+    # Check for matching desktop files in /usr/share/applications
+    for dt in "/usr/share/applications/${app}.desktop" "/usr/share/applications/${app%-browser}.desktop"; do
+        if [ -f "$dt" ]; then
+            target_dt="$APPS_DIR/$(basename "$dt")"
+            python3 -c "
+import re, sys
+wrapper, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src) as f:
+    lines = f.readlines()
+with open(dst, 'w') as f:
+    for line in lines:
+        if line.startswith('Exec='):
+            line = re.sub(r'^Exec=\S+', f'Exec={wrapper}', line)
+        f.write(line)
+    f.write('\n# MANAGED_BY_VPN_BYPASS_DESKTOP\n')
+" "$wrapper" "$dt" "$target_dt"
+            echo "Active desktop override: $(basename "$dt")"
+        fi
+    done
+done < "$LIST_FILE"
+
+echo "Sync complete!"

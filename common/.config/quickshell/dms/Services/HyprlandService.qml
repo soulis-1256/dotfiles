@@ -28,6 +28,7 @@ Singleton {
     property string luaConfigFormat: ""
     property bool layoutGenerationPending: false
     property bool layoutGenerationRunning: false
+    property bool cursorGenerationPending: false
     property int _layoutRequestRevision: 0
     property int _layoutAppliedRevision: 0
     property int _frameTransitionRevision: 0
@@ -47,6 +48,10 @@ Singleton {
     onLuaConfigStatusLoadingChanged: {
         if (!luaConfigStatusLoading && layoutGenerationPending)
             layoutGenerationAction.schedule();
+        if (!luaConfigStatusLoading && cursorGenerationPending) {
+            cursorGenerationPending = false;
+            generateCursorConfig();
+        }
     }
 
     onLuaConfigActiveChanged: {
@@ -65,6 +70,7 @@ Singleton {
     function ensureDmsLuaConfigs() {
         Qt.callLater(generateLayoutConfig);
         Qt.callLater(ensureWindowrulesConfig);
+        Qt.callLater(generateCursorConfig);
     }
 
     function ensureWindowrulesConfig() {
@@ -460,8 +466,11 @@ hl.layer_rule({
     function generateCursorConfig() {
         if (!CompositorService.isHyprland)
             return;
-        if (!canWriteLuaConfig("cursor"))
+        if (!canWriteLuaConfig("cursor")) {
+            if (luaConfigStatusLoading || !luaConfigStatusReady)
+                cursorGenerationPending = true;
             return;
+        }
 
         const settings = typeof SettingsData !== "undefined" ? SettingsData.cursorSettings : null;
         if (!settings) {

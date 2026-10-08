@@ -547,26 +547,30 @@
     }
 
     /**
-     * 2. THE MOON: Mathematically exact 3D golden crescent with razor-sharp tapered tips
+     * 2. THE MOON: Microsoft Fluent Weather rounded golden 3D crescent
      */
     function drawMoon(ctx, cx, cy, r) {
       ctx.save();
-      const ox = -0.436 * r;
-      const oy = -0.182 * r;
-      const inR = 0.873 * r;
+      const s = (2 * r) / 48;
+      ctx.translate(cx - 24 * s, cy - 24 * s);
 
-      const grad = ctx.createLinearGradient(cx - r * 0.5, cy - r * 0.6, cx + r * 0.7, cy + r * 0.7);
+      const grad = ctx.createLinearGradient(12 * s, 6 * s, 40 * s, 42 * s);
       grad.addColorStop(0.0, "#fffde7");
-      grad.addColorStop(0.3, "#fff176");
-      grad.addColorStop(0.7, "#ffb300");
+      grad.addColorStop(0.35, "#ffd54f");
+      grad.addColorStop(0.75, "#ffb300");
       grad.addColorStop(1.0, "#ff8f00");
 
       ctx.fillStyle = grad;
       ctx.beginPath();
-      // Outer arc from top tip to bottom tip (clockwise)
-      ctx.arc(cx, cy, r, -0.537 * Math.PI, 0.788 * Math.PI, false);
-      // Inner arc curving back from bottom tip to top tip (counter-clockwise)
-      ctx.arc(cx + ox, cy + oy, inR, 0.631 * Math.PI, -0.380 * Math.PI, true);
+      ctx.moveTo(37.9026 * s, 33.0093 * s);
+      ctx.bezierCurveTo(32.9320 * s, 41.6185 * s, 21.9234 * s, 44.5683 * s, 13.3141 * s, 39.5977 * s);
+      ctx.bezierCurveTo(10.9696 * s, 38.2441 * s, 8.99587 * s, 36.4129 * s, 7.49260 * s, 34.2300 * s);
+      ctx.bezierCurveTo(6.99000 * s, 33.5001 * s, 7.31511 * s, 32.4922 * s, 8.14944 * s, 32.1936 * s);
+      ctx.bezierCurveTo(14.9298 * s, 29.7668 * s, 18.5612 * s, 26.9546 * s, 20.6685 * s, 22.9320 * s);
+      ctx.bezierCurveTo(22.8870 * s, 18.6973 * s, 23.4603 * s, 14.0586 * s, 21.9083 * s, 7.70019 * s);
+      ctx.bezierCurveTo(21.6937 * s, 6.82096 * s, 22.3882 * s, 5.98380 * s, 23.2920 * s, 6.03228 * s);
+      ctx.bezierCurveTo(26.0941 * s, 6.18262 * s, 28.8316 * s, 6.98753 * s, 31.3141 * s, 8.42082 * s);
+      ctx.bezierCurveTo(39.9234 * s, 13.3914 * s, 42.8731 * s, 24.4000 * s, 37.9026 * s, 33.0093 * s);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
@@ -741,7 +745,7 @@
         const cloudW = w * 0.56;
         const cloudH = h * 0.40;
         const cloudX = w * 0.36;
-        const cloudY = h * 0.78 + floatY * 0.5;
+        const cloudY = h * 0.78;
         drawCloud(ctx, cloudX, cloudY, cloudW, cloudH, false, true);
         return;
       }
@@ -758,7 +762,7 @@
         const cloudW = w * 0.56;
         const cloudH = h * 0.40;
         const cloudX = w * 0.36;
-        const cloudY = h * 0.78 + floatY * 0.5;
+        const cloudY = h * 0.78;
         drawCloud(ctx, cloudX, cloudY, cloudW, cloudH, false, true);
         return;
       }
@@ -771,14 +775,14 @@
         const rW = w * 0.54;
         const rH = h * 0.38;
         const rX = w * 0.34;
-        const rY = h * 0.62 + floatY * 0.6;
+        const rY = h * 0.62;
         drawCloud(ctx, rX, rY, rW, rH, true, false);
 
         // Front white cloud
         const fW = w * 0.58;
         const fH = h * 0.42;
         const fX = w * 0.14;
-        const fY = h * 0.72 + floatY;
+        const fY = h * 0.72;
         drawCloud(ctx, fX, fY, fW, fH, false, true);
         return;
       }
@@ -812,13 +816,13 @@
         const rW = w * 0.48;
         const rH = h * 0.34;
         const rX = w * 0.40;
-        const rY = h * 0.52 + floatY * 0.5;
+        const rY = h * 0.52;
         drawCloud(ctx, rX, rY, rW, rH, true, false);
 
         const fW = w * 0.54;
         const fH = h * 0.38;
         const fX = w * 0.16;
-        const fY = h * 0.58 + floatY;
+        const fY = h * 0.58;
         drawCloud(ctx, fX, fY, fW, fH, false, true);
 
         // Rain drops
@@ -837,13 +841,13 @@
         const rW = w * 0.48;
         const rH = h * 0.34;
         const rX = w * 0.40;
-        const rY = h * 0.52 + floatY * 0.5;
+        const rY = h * 0.52;
         drawCloud(ctx, rX, rY, rW, rH, true, false);
 
         const fW = w * 0.54;
         const fH = h * 0.38;
         const fX = w * 0.16;
-        const fY = h * 0.58 + floatY;
+        const fY = h * 0.58;
         drawCloud(ctx, fX, fY, fW, fH, false, true);
 
         // Soft 3D snowballs
@@ -874,13 +878,13 @@
         const rW = w * 0.54;
         const rH = h * 0.38;
         const rX = w * 0.34;
-        const rY = h * 0.54 + floatY * 0.5;
+        const rY = h * 0.54;
         drawCloud(ctx, rX, rY, rW, rH, true, false);
 
         const fW = w * 0.58;
         const fH = h * 0.42;
         const fX = w * 0.14;
-        const fY = h * 0.58 + floatY;
+        const fY = h * 0.58;
         drawCloud(ctx, fX, fY, fW, fH, false, true);
 
         // Electric golden bolt (always visible with flash pulse)
