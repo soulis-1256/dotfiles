@@ -381,5 +381,7 @@ if _G.setup_hyprbars_buttons then
 end
 
 require("dms.windowrules")
+require("dms.app-workspace-rules")
+require("dms.hyprbars-rules")
 
 
