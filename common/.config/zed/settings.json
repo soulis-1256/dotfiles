@@ -7,6 +7,17 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "terminal": {
+    "font_size": 15.0
+  },
+  "minimap": {
+    "thumb_border": "left_open",
+    "thumb": "always",
+    "display_in": "active_editor",
+    "show": "auto"
+  },
+  "buffer_font_family": "Pomodoro",
+  "icon_theme": "Zed (Default)",
   "session": {
     "trust_all_worktrees": true
   },
@@ -15,11 +26,11 @@
     "metrics": false,
     "anthropic_retention": false
   },
-  "ui_font_size": 16,
+  "ui_font_size": 18.0,
   "buffer_font_size": 15,
   "theme": {
-    "mode": "system",
+    "mode": "dark",
     "light": "One Light",
-    "dark": "DankShell Dark",
+    "dark": "macOS Classic Dark",
   },
 }
