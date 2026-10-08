@@ -130,9 +130,10 @@ Rectangle {
                 WeatherIcon {
                     code: root.forecastData ? (root.forecastData.wCode || 0) : 0
                     isDay: root.forecastData ? (root.forecastData.isDay ?? true) : true
-                    size: Theme.iconSize
+                    size: 38
                     color: root.isCurrent ? Theme.primary : Theme.withAlpha(Theme.primary, 0.8)
-                    animated: root.isCurrent
+                    animated: true
+                    phaseOffset: typeof index !== "undefined" ? index * 0.9 : 0
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
 

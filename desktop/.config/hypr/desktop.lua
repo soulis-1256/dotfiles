@@ -1,6 +1,13 @@
 -- Desktop-Specific Hyprland Overrides
 -- Loaded automatically when stowed from the 'desktop' package.
 
+-- Dedicated Workspace Bindings for Desktop displays
+for i = 1, 9 do
+	hl.workspace_rule({ workspace = tostring(i), monitor = "DP-1" })
+end
+hl.workspace_rule({ workspace = "1", monitor = "DP-1", default = true })
+hl.workspace_rule({ workspace = "10", monitor = "DP-2", default = true, persistent = true, gaps_in = 0, gaps_out = 0 })
+
 -- 1. Autostart Zen Browser on Workspace 1
 hl.on("hyprland.start", function()
 	hl.exec_cmd("[workspace 1] zen-browser")

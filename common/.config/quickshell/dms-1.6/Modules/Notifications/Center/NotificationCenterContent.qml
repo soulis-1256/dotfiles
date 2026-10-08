@@ -40,9 +40,11 @@ Item {
             if (NotificationService.groupedNotifications.length === 0) {
                 listHeight = 200;
             } else if (root.hostOwnsHeight) {
-                listHeight = notificationList.sessionContentHeight > 0 ? notificationList.sessionContentHeight : notificationList.estimateContentHeight(NotificationService.groupedNotifications.length);
+                const est = notificationList.sessionContentHeight > 0 ? notificationList.sessionContentHeight : notificationList.estimateContentHeight(NotificationService.groupedNotifications.length);
+                listHeight = Math.max(200, est);
             } else {
-                listHeight = root.host.shouldBeVisible ? notificationList.stableContentHeight : notificationList.listContentHeight;
+                const actual = root.host.shouldBeVisible ? notificationList.stableContentHeight : notificationList.listContentHeight;
+                listHeight = Math.max(200, actual);
             }
         } else if (NotificationService.historyList.length > 0) {
             listHeight = Math.max(200, NotificationService.historyList.length * 80);

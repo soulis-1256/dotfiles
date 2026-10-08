@@ -20,6 +20,10 @@ StyledRect {
     border.width: 1
     visible: (showLegacy || showSetup) && DisplayConfigState.hasOutputBackend && !DisplayConfigState.checkingInclude
 
+    Component.onCompleted: {
+        DisplayConfigState.checkIncludeStatus();
+    }
+
     Column {
         id: warningContent
         anchors.fill: parent

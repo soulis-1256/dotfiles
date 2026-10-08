@@ -206,7 +206,7 @@ DankPopout {
 
                 const settingsHeight = notificationSettings.expanded ? Math.min(notificationSettings.naturalContentHeight, settingsMaxHeight) : 0;
                 const currentListHeight = root.shouldBeVisible ? notificationList.stableContentHeight : notificationList.listContentHeight;
-                let listHeight = notificationHeader.currentTab === 0 ? currentListHeight : Math.max(200, NotificationService.historyList.length * 80);
+                let listHeight = notificationHeader.currentTab === 0 ? Math.max(200, currentListHeight) : Math.max(200, NotificationService.historyList.length * 80);
                 if (notificationHeader.currentTab === 0 && NotificationService.groupedNotifications.length === 0) {
                     listHeight = 200;
                 }
