@@ -587,20 +587,59 @@ Singleton {
         return toplevels;
     }
 
-    function fullscreenToplevelOnScreen(screenOrName) {
+    function hasFullscreenToplevelOnScreen(screenOrName) {
         const screenName = _screenName(screenOrName);
-        if (isAqueous && AqueousService.available)
-            return AqueousService.windows.some(w => w.output === AqueousService.outputId(screenName) && w.visible && w.fullscreen);
-        if (!screenName || !ToplevelManager.toplevels?.values)
+        if (!screenName)
             return false;
 
-        const toplevels = ToplevelManager.toplevels.values;
-        for (let i = 0; i < toplevels.length; i++) {
-            const toplevel = toplevels[i];
-            if (toplevel?.fullscreen && toplevel.activated && _toplevelOnScreen(toplevel, screenName))
+        if (isAqueous && AqueousService.available)
+            return AqueousService.windows.some(w => w.output === AqueousService.outputId(screenName) && w.visible && w.fullscreen);
+
+        if (isNiri) {
+            const active = ToplevelManager.activeToplevel;
+            if (active?.fullscreen && active?.activated && _toplevelOnScreen(active, screenName))
+                return true;
+
+            const filtered = filterCurrentWorkspace(sortedToplevels, screenName);
+            for (let i = 0; i < filtered.length; i++) {
+                if (filtered[i]?.fullscreen)
+                    return true;
+            }
+            return false;
+        }
+
+        if (isHyprland) {
+            if (Hyprland.toplevels?.values) {
+                for (const t of Hyprland.toplevels.values) {
+                    const monName = t.monitor?.name ?? t.lastIpcObject?.monitor ?? "";
+                    if (screenName && monName && monName !== screenName)
+                        continue;
+                    const fs = t.lastIpcObject?.fullscreen;
+                    const fsc = t.lastIpcObject?.fullscreenClient;
+                    if (fs === 2 || fs === 3 || fs === true || fsc === 2 || fsc === 3)
+                        return true;
+                }
+            }
+            const filtered = filterCurrentWorkspace(sortedToplevels, screenName);
+            for (let i = 0; i < filtered.length; i++) {
+                if (filtered[i]?.fullscreen)
+                    return true;
+            }
+            return false;
+        }
+
+        if (!ToplevelManager.toplevels?.values)
+            return false;
+
+        for (const toplevel of ToplevelManager.toplevels.values) {
+            if (toplevel?.fullscreen && _toplevelOnScreen(toplevel, screenName))
                 return true;
         }
         return false;
+    }
+
+    function fullscreenToplevelOnScreen(screenOrName) {
+        return hasFullscreenToplevelOnScreen(screenOrName);
     }
 
     function filterCurrentDisplay(toplevels, screenName) {

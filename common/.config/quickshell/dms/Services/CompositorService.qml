@@ -552,6 +552,17 @@ Singleton {
         }
 
         if (isHyprland) {
+            if (Hyprland.toplevels?.values) {
+                for (const t of Hyprland.toplevels.values) {
+                    const monName = t.monitor?.name ?? t.lastIpcObject?.monitor ?? "";
+                    if (screenName && monName && monName !== screenName)
+                        continue;
+                    const fs = t.lastIpcObject?.fullscreen;
+                    const fsc = t.lastIpcObject?.fullscreenClient;
+                    if (fs === 2 || fs === 3 || fs === true || fsc === 2 || fsc === 3)
+                        return true;
+                }
+            }
             const filtered = filterCurrentWorkspace(sortedToplevels, screenName);
             for (let i = 0; i < filtered.length; i++) {
                 if (filtered[i]?.fullscreen)

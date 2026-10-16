@@ -742,7 +742,8 @@
       "clickThrough": false,
       "removeWidgetPadding": false,
       "widgetPadding": 4,
-      "attachToScreenEdge": false
+      "attachToScreenEdge": false,
+      "island": false
     },
     {
       "id": "bar1770393292481",
