@@ -289,7 +289,7 @@ if f_bars then
 					},
 				})
 
-				-- Windows 11 / 10 wide rectangular caption buttons (46px wide, full bar height)
+				-- Windows 11 / 10 wide rectangular caption button (46px wide, full bar height)
 				-- Close: red hover
 				hl.plugin.hyprbars.add_button({
 					bg_color = "rgba(00000000)",
@@ -301,19 +301,6 @@ if f_bars then
 					icon = "\u{e1b2}",
 					action = "close",
 				})
-				-- Maximize / Restore
-				hl.plugin.hyprbars.add_button({
-					bg_color = "rgba(00000000)",
-					fg_color = text_color,
-					size = 14,
-					width = 46,
-					round = 0,
-					icon_size = 14,
-					icon = "\u{e167}",
-					action = "fullscreen",
-				})
-				-- No minimize: Hyprland has no window hide, and this used to
-				-- toggle tiled/floating. Close + maximize only.
 			else
 				-- Default theme: "rounded shit" (macOS / GNOME circular chiclets with glowing pills)
 				hl.config({
