@@ -1425,6 +1425,42 @@ Item {
                 // containsMouse. Ignoring HoverHandler on inactive slots prevents a
                 // stuck hovered=true from painting another workspace as active.
                 property bool isHovered: mouseArea.containsMouse || (isActive && workspaceHover.hovered)
+                // Same press as the Windows 11 start button: sink to 0.86, then spring back.
+                property real pressScale: 1
+
+                NumberAnimation {
+                    id: workspacePressAnim
+                    target: delegateRoot
+                    property: "pressScale"
+                    to: 0.86
+                    duration: 70
+                    easing.type: Easing.OutQuad
+                }
+
+                NumberAnimation {
+                    id: workspaceReleaseAnim
+                    target: delegateRoot
+                    property: "pressScale"
+                    from: Math.min(delegateRoot.pressScale, 0.86)
+                    to: 1
+                    duration: 320
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 1.5
+                }
+
+                function beginWorkspacePress(button) {
+                    if (button !== Qt.LeftButton || isActive || isPlaceholder)
+                        return;
+                    workspaceReleaseAnim.stop();
+                    workspacePressAnim.restart();
+                }
+
+                function endWorkspacePress() {
+                    if (!workspacePressAnim.running && Math.abs(pressScale - 1) < 0.001)
+                        return;
+                    workspacePressAnim.stop();
+                    workspaceReleaseAnim.restart();
+                }
 
                 property var loadedWorkspaceData: null
                 property bool loadedIsUrgent: false
@@ -1731,11 +1767,13 @@ Item {
                     property bool mousePressed: false
 
                     onPressed: mouse => {
+                        delegateRoot.beginWorkspacePress(mouse.button);
                         if (mouse.button === Qt.LeftButton && CompositorService.isNiri && SettingsData.workspaceDragReorder && !isPlaceholder) {
                             mousePressed = true;
                             dragHandler.dragStartPos = Qt.point(mouse.x, mouse.y);
                         }
                     }
+                    onCanceled: delegateRoot.endWorkspacePress()
 
                     onPositionChanged: mouse => {
                         if (!mousePressed || !CompositorService.isNiri || !SettingsData.workspaceDragReorder || isPlaceholder)
@@ -1770,6 +1808,7 @@ Item {
                     }
 
                     onReleased: mouse => {
+                        delegateRoot.endWorkspacePress();
                         const wasDragging = dragHandler.dragging;
                         const didReorder = wasDragging && root.dragTargetIndex >= 0 && root.dragTargetIndex !== root.dragSourceIndex;
 
@@ -1928,6 +1967,8 @@ Item {
                 Rectangle {
                     id: focusedBorderRing
                     visible: !root.isFullHeight
+                    scale: delegateRoot.pressScale
+                    transformOrigin: Item.Center
                     x: root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2
                     y: root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2
                     width: {
@@ -1992,6 +2033,8 @@ Item {
                     radius: root.isFullHeight ? 0 : Theme.cornerRadius
                     color: delegateRoot.displayColor
                     opacity: dragHandler.dragging ? 0.8 : 1.0
+                    scale: delegateRoot.pressScale
+                    transformOrigin: Item.Center
 
                     Rectangle {
                         id: hoverBg
@@ -2224,20 +2267,44 @@ Item {
                                             values: loadedIcons.slice(0, SettingsData.maxWorkspaceIcons)
                                         }
                                         delegate: Item {
+                                            id: rowApp
                                             width: root.appIconSize
                                             height: root.appIconSize
+                                            property real pressScale: 1
+                                            scale: pressScale
+                                            transformOrigin: Item.Center
                                             readonly property var windowId: modelData.windowId
                                             readonly property string windowSession: modelData.windowSession || ""
                                             readonly property bool appHighlightActive: SettingsData.workspaceActiveAppHighlightEnabled && modelData.active
                                             readonly property color appBorderColor: appHighlightActive ? focusedBorderColor : Theme.primarySelected
                                             readonly property color appGlyphColor: appHighlightActive ? focusedBorderColor : Theme.primary
-                                            readonly property real appOpacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                            readonly property real appOpacity: modelData.active ? 1.0 : (isActive && rowAppHover.hovered) ? 0.8 : 0.6
+
+                                            NumberAnimation {
+                                                id: rowAppPressAnim
+                                                target: rowApp
+                                                property: "pressScale"
+                                                to: 0.86
+                                                duration: 70
+                                                easing.type: Easing.OutQuad
+                                            }
+
+                                            NumberAnimation {
+                                                id: rowAppReleaseAnim
+                                                target: rowApp
+                                                property: "pressScale"
+                                                from: Math.min(rowApp.pressScale, 0.86)
+                                                to: 1
+                                                duration: 320
+                                                easing.type: Easing.OutBack
+                                                easing.overshoot: 1.5
+                                            }
 
                                             IconImage {
                                                 id: rowAppIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon || ""
-                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: !modelData.isQuickshell && !modelData.isSteamApp && status === Image.Ready
                                             }
 
@@ -2280,7 +2347,7 @@ Item {
                                                 id: rowQsIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon
-                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: modelData.isQuickshell
                                                 layer.enabled: true
                                                 layer.effect: MultiEffect {
@@ -2294,7 +2361,7 @@ Item {
                                                 id: rowSteamIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon
-                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: modelData.isSteamApp && modelData.icon
                                             }
 
@@ -2303,7 +2370,7 @@ Item {
                                                 size: root.appIconSize
                                                 name: "sports_esports"
                                                 color: appHighlightActive ? focusedBorderColor : Theme.widgetTextColor
-                                                opacity: modelData.active ? 1.0 : rowAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: modelData.isSteamApp && !modelData.icon
                                             }
 
@@ -2319,6 +2386,7 @@ Item {
 
                                             HoverHandler {
                                                 id: rowAppHover
+                                                enabled: isActive
                                             }
 
                                             MouseArea {
@@ -2328,6 +2396,22 @@ Item {
                                                 hoverEnabled: isActive
                                                 cursorShape: Qt.PointingHandCursor
                                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onPressed: mouse => {
+                                                    if (mouse.button !== Qt.LeftButton)
+                                                        return;
+                                                    rowAppReleaseAnim.stop();
+                                                    rowAppPressAnim.restart();
+                                                }
+                                                onReleased: mouse => {
+                                                    if (mouse.button !== Qt.LeftButton)
+                                                        return;
+                                                    rowAppPressAnim.stop();
+                                                    rowAppReleaseAnim.restart();
+                                                }
+                                                onCanceled: {
+                                                    rowAppPressAnim.stop();
+                                                    rowAppReleaseAnim.restart();
+                                                }
                                                 onEntered: root.scheduleAppPreview(rowAppMouseArea.parent, modelData, delegateRoot.workspaceModel)
                                                 onExited: {
                                                     if (appPreviewLoader.item && appPreviewLoader.item.hovered)
@@ -2414,20 +2498,44 @@ Item {
                                             values: loadedIcons.slice(0, SettingsData.maxWorkspaceIcons)
                                         }
                                         delegate: Item {
+                                            id: colApp
                                             width: root.appIconSize
                                             height: root.appIconSize
+                                            property real pressScale: 1
+                                            scale: pressScale
+                                            transformOrigin: Item.Center
                                             readonly property var windowId: modelData.windowId
                                             readonly property string windowSession: modelData.windowSession || ""
                                             readonly property bool appHighlightActive: SettingsData.workspaceActiveAppHighlightEnabled && modelData.active
                                             readonly property color appBorderColor: appHighlightActive ? focusedBorderColor : Theme.primarySelected
                                             readonly property color appGlyphColor: appHighlightActive ? focusedBorderColor : Theme.primary
-                                            readonly property real appOpacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                            readonly property real appOpacity: modelData.active ? 1.0 : (isActive && colAppHover.hovered) ? 0.8 : 0.6
+
+                                            NumberAnimation {
+                                                id: colAppPressAnim
+                                                target: colApp
+                                                property: "pressScale"
+                                                to: 0.86
+                                                duration: 70
+                                                easing.type: Easing.OutQuad
+                                            }
+
+                                            NumberAnimation {
+                                                id: colAppReleaseAnim
+                                                target: colApp
+                                                property: "pressScale"
+                                                from: Math.min(colApp.pressScale, 0.86)
+                                                to: 1
+                                                duration: 320
+                                                easing.type: Easing.OutBack
+                                                easing.overshoot: 1.5
+                                            }
 
                                             IconImage {
                                                 id: colAppIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon || ""
-                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: !modelData.isQuickshell && !modelData.isSteamApp && status === Image.Ready
                                             }
 
@@ -2470,7 +2578,7 @@ Item {
                                                 id: colQsIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon
-                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: modelData.isQuickshell
                                                 layer.enabled: true
                                                 layer.effect: MultiEffect {
@@ -2484,7 +2592,7 @@ Item {
                                                 id: colSteamIcon
                                                 anchors.fill: parent
                                                 source: modelData.icon
-                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: modelData.isSteamApp && modelData.icon
                                             }
 
@@ -2493,7 +2601,7 @@ Item {
                                                 size: root.appIconSize
                                                 name: "sports_esports"
                                                 color: appHighlightActive ? focusedBorderColor : Theme.widgetTextColor
-                                                opacity: modelData.active ? 1.0 : colAppHover.hovered ? 0.8 : 0.6
+                                                opacity: appOpacity
                                                 visible: modelData.isSteamApp && !modelData.icon
                                             }
 
@@ -2509,6 +2617,7 @@ Item {
 
                                             HoverHandler {
                                                 id: colAppHover
+                                                enabled: isActive
                                             }
 
                                             MouseArea {
@@ -2518,6 +2627,22 @@ Item {
                                                 hoverEnabled: isActive
                                                 cursorShape: Qt.PointingHandCursor
                                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                onPressed: mouse => {
+                                                    if (mouse.button !== Qt.LeftButton)
+                                                        return;
+                                                    colAppReleaseAnim.stop();
+                                                    colAppPressAnim.restart();
+                                                }
+                                                onReleased: mouse => {
+                                                    if (mouse.button !== Qt.LeftButton)
+                                                        return;
+                                                    colAppPressAnim.stop();
+                                                    colAppReleaseAnim.restart();
+                                                }
+                                                onCanceled: {
+                                                    colAppPressAnim.stop();
+                                                    colAppReleaseAnim.restart();
+                                                }
                                                 onEntered: root.scheduleAppPreview(colAppMouseArea.parent, modelData, delegateRoot.workspaceModel)
                                                 onExited: {
                                                     if (appPreviewLoader.item && appPreviewLoader.item.hovered)
