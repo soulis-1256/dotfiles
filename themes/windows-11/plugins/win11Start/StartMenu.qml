@@ -3218,7 +3218,7 @@ Item {
         Item {
             id: powerFlyout
 
-            width: Math.max(160, powerSleepRow.implicitWidth, powerRestartRow.implicitWidth, powerShutdownRow.implicitWidth, powerLockRow.implicitWidth) + 8
+            width: Math.max(140, powerLockRow.implicitWidth, powerSleepRow.implicitWidth, powerShutdownRow.implicitWidth, powerRestartRow.implicitWidth)
             height: powerCol.implicitHeight + 8
             x: parent.width - width - 12
             y: footerBar.y - height - 6
@@ -3250,21 +3250,22 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 4
-                    spacing: 2
+                    anchors.topMargin: 4
+                    anchors.bottomMargin: 4
+                    spacing: 0
 
                     PowerRow {
-                        id: powerSleepRow
-                        iconName: "bedtime"
-                        label: "Sleep"
-                        onClicked: root.doPower("suspend")
+                        id: powerLockRow
+                        iconName: "lock"
+                        label: "Lock"
+                        onClicked: root.doPower("lock")
                     }
 
                     PowerRow {
-                        id: powerRestartRow
-                        iconName: "restart_alt"
-                        label: "Restart"
-                        onClicked: root.doPower("reboot")
+                        id: powerSleepRow
+                        iconName: "sleep"
+                        label: "Sleep"
+                        onClicked: root.doPower("suspend")
                     }
 
                     PowerRow {
@@ -3275,10 +3276,10 @@ Item {
                     }
 
                     PowerRow {
-                        id: powerLockRow
-                        iconName: "lock"
-                        label: "Lock"
-                        onClicked: root.doPower("lock")
+                        id: powerRestartRow
+                        iconName: "restart_alt"
+                        label: "Restart"
+                        onClicked: root.doPower("reboot")
                     }
                 }
             }
@@ -3317,7 +3318,7 @@ Item {
         Item {
             id: userFlyout
 
-            width: Math.max(170, userAccountRow.implicitWidth, userLockRow.implicitWidth, userSignOutRow.implicitWidth) + 8
+            width: Math.max(220, userAccountRow.implicitWidth, userLockRow.implicitWidth, userSignOutRow.implicitWidth)
             height: userCol.implicitHeight + 8
             x: 16
             y: footerBar.y - height - 6
@@ -3349,13 +3350,14 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 4
-                    spacing: 2
+                    anchors.topMargin: 4
+                    anchors.bottomMargin: 4
+                    spacing: 0
 
                     PowerRow {
                         id: userAccountRow
                         iconName: "manage_accounts"
-                        label: "Account settings"
+                        label: "Change account settings"
                         onClicked: {
                             PopoutService.openSettingsWithTab("users");
                             root.closeMenu();
@@ -3630,28 +3632,30 @@ Item {
 
         property string iconName: ""
         property string label: ""
-        property real rowHeight: 32
-        property real iconSize: 16
+        property real rowHeight: 34
+        property real iconSize: 22
 
         signal clicked()
 
         width: parent.width
         height: rowHeight
-        implicitWidth: 12 + prIcon.implicitWidth + 12 + prLabel.implicitWidth + 16
+        implicitWidth: 12 + pr.iconSize + 9 + prLabel.contentWidth + 16
 
         Rectangle {
             anchors.fill: parent
-            anchors.leftMargin: 2
-            anchors.rightMargin: 2
+            anchors.leftMargin: 4
+            anchors.rightMargin: 4
+            anchors.topMargin: 2
+            anchors.bottomMargin: 2
             radius: root.winRadiusSmall
-            color: prHover.containsMouse ? root.winHover : "transparent"
+            color: prHover.pressed ? Qt.rgba(255, 255, 255, 0.05) : (prHover.containsMouse ? root.winHover : "transparent")
         }
 
         DankIcon {
             id: prIcon
 
             anchors.left: parent.left
-            anchors.leftMargin: 10
+            anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             name: pr.iconName
             size: pr.iconSize
@@ -3661,13 +3665,14 @@ Item {
         StyledText {
             id: prLabel
             anchors.left: prIcon.right
-            anchors.leftMargin: 12
+            anchors.leftMargin: 9
             anchors.right: parent.right
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             text: pr.label
             color: root.winText
             font.pixelSize: 13
+            wrapMode: Text.NoWrap
             elide: Text.ElideRight
         }
 
