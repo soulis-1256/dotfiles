@@ -79,7 +79,7 @@ Item {
                 const borderWidth = (barConfig?.widgetOutlineEnabled ?? false) ? (barConfig?.widgetOutlineThickness ?? 1) : 0;
                 return parent.height + borderWidth * 2;
             }
-            radius: (barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius
+            radius: (barConfig?.noBackground ?? false) ? 0 : (Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius)
             color: "transparent"
             border.width: {
                 if (barConfig?.widgetOutlineEnabled ?? false) {
@@ -110,7 +110,7 @@ Item {
             id: background
             anchors.fill: parent
             anchors.margins: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverMargin : 0
-            radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : ((barConfig?.noBackground ?? false) ? 0 : Theme.cornerRadius))
+            radius: (root.isFullHeight && Theme.barHoverInset) ? Theme.barHoverRadius : (root.isFullHeight ? 0 : ((barConfig?.noBackground ?? false) ? 0 : (Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius)))
             readonly property bool hoverShown: {
                 if (barConfig?.noBackground ?? false)
                     return false;

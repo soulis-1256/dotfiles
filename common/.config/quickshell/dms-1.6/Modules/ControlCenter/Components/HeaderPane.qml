@@ -25,11 +25,11 @@ Rectangle {
         active: root.visible && (root.Window.window?.visible ?? false)
     }
 
-    implicitHeight: 70
-    radius: Theme.cornerRadius
-    color: Theme.nestedSurface
+    implicitHeight: Theme.fluent ? 56 : 70
+    radius: Theme.fluent ? 0 : Theme.cornerRadius
+    color: Theme.fluent ? "transparent" : Theme.nestedSurface
     border.color: Theme.outlineMedium
-    border.width: Theme.layerOutlineWidth
+    border.width: Theme.fluent ? 0 : Theme.layerOutlineWidth
 
     MouseArea {
         anchors.fill: parent
@@ -48,8 +48,8 @@ Rectangle {
         DankCircularImage {
             id: avatarContainer
 
-            width: 60
-            height: 60
+            width: Theme.fluent ? 40 : 60
+            height: Theme.fluent ? 40 : 60
             imageSource: {
                 if (PortalService.profileImage === "")
                     return "";

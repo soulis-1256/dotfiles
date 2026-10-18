@@ -141,15 +141,6 @@ QtObject {
             "enabled": true
         },
         {
-            "id": "floatingMode",
-            "text": I18n.tr("Layout Mode"),
-            "description": I18n.tr("Tiled, Floating, or Mosaic layout"),
-            "icon": "layers",
-            "type": "action",
-            "enabled": CompositorService.isHyprland,
-            "warning": !CompositorService.isHyprland ? I18n.tr("Requires Hyprland") : undefined
-        },
-        {
             "id": "doNotDisturb",
             "text": I18n.tr("Do Not Disturb"),
             "description": I18n.tr("Block notifications"),
@@ -255,7 +246,7 @@ QtObject {
             "id": "builtin_vpn",
             "text": I18n.tr("VPN"),
             "description": I18n.tr("VPN Connections"),
-            "icon": "vpn_key",
+            "icon": "vpn_lock",
             "type": "builtin_plugin",
             "enabled": DMSNetworkService.available,
             "warning": !DMSNetworkService.available ? I18n.tr("VPN not available") : undefined,

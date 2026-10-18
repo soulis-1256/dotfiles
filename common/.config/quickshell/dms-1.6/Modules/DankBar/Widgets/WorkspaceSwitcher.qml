@@ -351,15 +351,11 @@ Item {
     }
 
     function workspacePreviewsEnabled(workspace) {
-        HyprlandService.floatingModeActive;
-        HyprlandService.floatingWorkspaces;
         HyprlandService.windowStateRevision;
         if (!CompositorService.isHyprland)
             return false;
         const id = workspace?.id !== undefined ? workspace.id : root.currentWorkspace;
-        if (HyprlandService.isWorkspaceFloating(id))
-            return true;
-        return HyprlandService.workspaceHasMixedFloatingAndTiled(id);
+        return HyprlandService.workspaceHasFloatingWindow(id);
     }
 
     function hideAppPreview() {
@@ -2839,14 +2835,6 @@ Item {
 
     Connections {
         target: HyprlandService
-        function onFloatingModeActiveChanged() {
-            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
-                root.hideAppPreview();
-        }
-        function onFloatingWorkspacesChanged() {
-            if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
-                root.hideAppPreview();
-        }
         function onWindowStateRevisionChanged() {
             if (!root.workspacePreviewsEnabled({ id: root.currentWorkspace }))
                 root.hideAppPreview();

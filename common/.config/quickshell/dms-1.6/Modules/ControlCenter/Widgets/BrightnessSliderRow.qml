@@ -93,8 +93,8 @@ Row {
         width: Theme.iconSize + Theme.spacingS * 2
         height: Theme.iconSize + Theme.spacingS * 2
         anchors.verticalCenter: parent.verticalCenter
-        radius: (Theme.iconSize + Theme.spacingS * 2) / 2
-        color: iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0)
+        radius: Theme.fluent ? Theme.controlCornerRadius : (Theme.iconSize + Theme.spacingS * 2) / 2
+        color: Theme.fluent ? "transparent" : (iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0))
 
         DankRipple {
             id: iconRipple
@@ -107,7 +107,10 @@ Row {
             hoverEnabled: true
             cursorShape: DisplayService.devices && DisplayService.devices.length > 1 ? Qt.PointingHandCursor : Qt.ArrowCursor
 
-            onPressed: mouse => iconRipple.trigger(mouse.x, mouse.y)
+            onPressed: mouse => {
+                if (!Theme.fluent)
+                    iconRipple.trigger(mouse.x, mouse.y);
+            }
             onClicked: {
                 if (DisplayService.devices && DisplayService.devices.length > 1) {
                     root.iconClicked();
@@ -127,7 +130,12 @@ Row {
                 anchors.centerIn: parent
                 name: DisplayService.brightnessAvailable && targetDevice ? DisplayService.brightnessIconName(targetDevice, targetBrightness) : "brightness_low"
                 size: Theme.iconSize
-                color: DisplayService.brightnessAvailable && targetDevice && targetBrightness > 0 ? Theme.primary : Theme.surfaceText
+                color: {
+                    const lit = DisplayService.brightnessAvailable && targetDevice && targetBrightness > 0;
+                    if (Theme.fluent)
+                        return lit ? Theme.surfaceText : Theme.surfaceVariantText;
+                    return lit ? Theme.primary : Theme.surfaceText;
+                }
             }
         }
     }

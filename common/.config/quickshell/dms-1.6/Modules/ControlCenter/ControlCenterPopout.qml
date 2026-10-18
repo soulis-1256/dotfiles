@@ -18,6 +18,9 @@ DankPopout {
     property bool editMode: false
     property int expandedWidgetIndex: -1
     property var expandedWidgetData: null
+    // While a detail is snapped shut offscreen, its height behavior must not
+    // queue and replay the collapse the next time the panel opens.
+    property bool suppressDetailAnimation: false
     property bool powerMenuOpen: powerMenuModalLoader?.item?.shouldBeVisible ?? false
     property real targetPopupHeight: 400
     property bool _heightUpdatePending: false
@@ -56,10 +59,23 @@ DankPopout {
     }
 
     function collapseAll() {
+        _clearExpanded(true);
+    }
+
+    function _clearExpanded(animated) {
+        if (!animated)
+            suppressDetailAnimation = true;
         expandedSection = "";
         expandedWidgetIndex = -1;
         expandedWidgetData = null;
-        queueTargetPopupHeightUpdate();
+        if (animated) {
+            queueTargetPopupHeightUpdate();
+            return;
+        }
+        updateTargetPopupHeight();
+        Qt.callLater(() => {
+            suppressDetailAnimation = false;
+        });
     }
 
     onEditModeChanged: {
@@ -70,10 +86,11 @@ DankPopout {
     }
 
     onVisibleChanged: {
-        if (!visible) {
-            collapseAll();
-        }
+        if (!visible)
+            _clearExpanded(false);
     }
+
+    onPopoutClosed: _clearExpanded(false)
 
     readonly property color _containerBg: Theme.nestedSurface
 
@@ -133,13 +150,13 @@ DankPopout {
 
     onShouldBeVisibleChanged: {
         if (shouldBeVisible) {
-            collapseAll();
             queueTargetPopupHeightUpdate();
             Qt.callLater(() => {
                 if (NetworkService.activeService)
                     NetworkService.activeService.autoRefreshEnabled = NetworkService.wifiEnabled;
             });
         } else {
+            _clearExpanded(false);
             Qt.callLater(() => {
                 if (NetworkService.activeService) {
                     NetworkService.activeService.autoRefreshEnabled = false;

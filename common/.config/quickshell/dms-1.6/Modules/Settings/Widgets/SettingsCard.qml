@@ -37,10 +37,10 @@ StyledRect {
             h += headerRow.height + Theme.spacingM;
         return h;
     }
-    radius: Theme.cornerRadius
-    color: Theme.floatingWindowNestedSurface
-    border.color: Theme.outlineMedium
-    border.width: Theme.layerOutlineWidth
+    radius: Theme.fluent ? Theme.overlayCornerRadius : Theme.cornerRadius
+    color: Theme.fluent ? Theme.fluentCardFill : Theme.floatingWindowNestedSurface
+    border.color: Theme.fluent ? Theme.fluentCardStroke : Theme.outlineMedium
+    border.width: Theme.fluent ? 1 : Theme.layerOutlineWidth
 
     readonly property bool collapsed: collapsible && !expanded
     readonly property bool hasHeader: root.title !== "" || root.iconName !== ""

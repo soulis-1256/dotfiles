@@ -138,11 +138,11 @@ Item {
                     id: clearAllButton
                     width: clearButtonContent.implicitWidth + Theme.spacingM * 2
                     height: Theme.iconSize + Theme.spacingS
-                    radius: Theme.cornerRadius
+                    radius: Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius
                     visible: root.currentTab === 0 ? NotificationService.notifications.length > 0 : NotificationService.historyList.length > 0
-                    color: clearArea.containsMouse ? Theme.primaryHoverLight : Theme.nestedSurface
-                    border.color: Theme.outlineMedium
-                    border.width: Theme.layerOutlineWidth
+                    color: Theme.fluent ? (clearArea.containsMouse ? Theme.fluentControlFillHover : Theme.fluentControlFill) : (clearArea.containsMouse ? Theme.primaryHoverLight : Theme.nestedSurface)
+                    border.color: Theme.fluent ? Theme.fluentControlStroke : Theme.outlineMedium
+                    border.width: Theme.fluent ? 1 : Theme.layerOutlineWidth
 
                     Row {
                         id: clearButtonContent
@@ -152,14 +152,14 @@ Item {
                         DankIcon {
                             name: "delete_sweep"
                             size: Theme.iconSizeSmall
-                            color: clearArea.containsMouse ? Theme.primary : Theme.surfaceText
+                            color: Theme.fluent ? Theme.surfaceText : (clearArea.containsMouse ? Theme.primary : Theme.surfaceText)
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         StyledText {
                             text: I18n.tr("Clear")
                             font.pixelSize: Theme.fontSizeSmall
-                            color: clearArea.containsMouse ? Theme.primary : Theme.surfaceText
+                            color: Theme.fluent ? Theme.surfaceText : (clearArea.containsMouse ? Theme.primary : Theme.surfaceText)
                             font.weight: Font.Medium
                             anchors.verticalCenter: parent.verticalCenter
                         }

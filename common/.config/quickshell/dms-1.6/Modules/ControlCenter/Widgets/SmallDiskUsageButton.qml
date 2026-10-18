@@ -32,7 +32,7 @@ Rectangle {
 
     width: parent ? ((parent.width - parent.spacing * 3) / 4) : 48
     height: 48
-    radius: Theme.cornerRadius + 4
+    radius: Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius + 4
 
     readonly property color _tileBg: Theme.ccPillInactiveBg
 

@@ -10,12 +10,13 @@ Rectangle {
     property int iconSize: Style.iconSizeSmall
     property bool hovered: mouseArea.containsMouse
     property bool pressed: mouseArea.pressed
-    property color backgroundColor: Style.buttonBg
-    property color textColor: Style.buttonText
+    readonly property bool fluent: Style.theme?.fluent ?? false
+    property color backgroundColor: fluent ? (Style.theme?.fluentControlFill ?? Style.buttonBg) : Style.buttonBg
+    property color textColor: fluent ? Style.surfaceText : Style.buttonText
     property int buttonHeight: 40
     property int horizontalPadding: Style.spacingL
     property bool enableScaleAnimation: false
-    property bool enableRipple: Style.enableRippleEffects
+    property bool enableRipple: Style.enableRippleEffects && !fluent
 
     signal clicked
 
@@ -23,6 +24,8 @@ Rectangle {
     height: buttonHeight
     radius: Style.cornerRadius
     color: backgroundColor
+    border.width: fluent ? 1 : 0
+    border.color: fluent ? (Style.theme?.fluentControlStroke ?? Style.outline) : "transparent"
     opacity: enabled ? 1 : 0.4
     scale: (enableScaleAnimation && pressed) ? 0.98 : 1.0
     activeFocusOnTab: enabled
@@ -56,6 +59,13 @@ Rectangle {
         anchors.fill: parent
         radius: parent.radius
         color: {
+            if (root.fluent) {
+                if (pressed)
+                    return Style.theme?.fluentSubtlePressed ?? Style.withAlpha(root.textColor, 0.04);
+                if (hovered)
+                    return Style.theme?.fluentSubtleFill ?? Style.withAlpha(root.textColor, 0.06);
+                return "transparent";
+            }
             if (pressed)
                 return Style.withAlpha(root.textColor, 0.20);
             if (hovered)
@@ -94,7 +104,7 @@ Rectangle {
         StyledText {
             text: root.text
             font.pixelSize: Style.fontSizeMedium
-            font.weight: Font.Medium
+            font.weight: root.fluent ? Font.Normal : Font.Medium
             color: root.textColor
             anchors.verticalCenter: parent.verticalCenter
         }

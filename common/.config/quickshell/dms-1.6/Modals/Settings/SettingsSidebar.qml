@@ -17,6 +17,9 @@ Rectangle {
     property var parentModal: null
 
     signal tabChangeRequested(int tabIndex)
+    signal categoryHubRequested(string categoryId)
+    property string activeCategoryId: ""
+    property string keyboardHighlightCategoryId: ""
     property string _expandedIds: ","
     property string _collapsedIds: ","
     property string _autoExpandedIds: ","
@@ -29,7 +32,48 @@ Rectangle {
         searchField.forceActiveFocus();
     }
 
+    function visibleCategories() {
+        var items = [];
+        for (var i = 0; i < categoryStructure.length; i++) {
+            var cat = categoryStructure[i];
+            if (!cat.separator && isCategoryVisible(cat))
+                items.push(cat);
+        }
+        return items;
+    }
+
+    function stepCategory(delta) {
+        var cats = visibleCategories();
+        if (cats.length === 0)
+            return;
+        var currentId = keyboardHighlightCategoryId !== "" ? keyboardHighlightCategoryId : activeCategoryId;
+        var pos = -1;
+        for (var i = 0; i < cats.length; i++) {
+            if (cats[i].id === currentId) {
+                pos = i;
+                break;
+            }
+        }
+        var next = pos === -1 ? (delta > 0 ? 0 : cats.length - 1) : (pos + delta + cats.length) % cats.length;
+        keyboardHighlightCategoryId = cats[next].id;
+    }
+
+    function activateCategory(cat) {
+        if (!cat)
+            return;
+        keyboardHighlightCategoryId = "";
+        activeCategoryId = cat.id;
+        if (cat.children && cat.children.length > 0)
+            categoryHubRequested(cat.id);
+        else if (cat.tabIndex !== undefined)
+            tabChangeRequested(cat.tabIndex);
+    }
+
     function highlightNext() {
+        if (Theme.fluent) {
+            stepCategory(1);
+            return;
+        }
         var flatItems = getFlatNavigableItems();
         if (flatItems.length === 0)
             return;
@@ -43,6 +87,10 @@ Rectangle {
     }
 
     function highlightPrevious() {
+        if (Theme.fluent) {
+            stepCategory(-1);
+            return;
+        }
         var flatItems = getFlatNavigableItems();
         if (flatItems.length === 0)
             return;
@@ -66,6 +114,16 @@ Rectangle {
     }
 
     function selectHighlighted() {
+        if (Theme.fluent && keyboardHighlightCategoryId !== "") {
+            var cats = visibleCategories();
+            for (var i = 0; i < cats.length; i++) {
+                if (cats[i].id === keyboardHighlightCategoryId) {
+                    activateCategory(cats[i]);
+                    Qt.callLater(searchField.forceActiveFocus);
+                    return;
+                }
+            }
+        }
         if (keyboardHighlightIndex < 0)
             return;
         var oldIndex = currentIndex;
@@ -212,6 +270,18 @@ Rectangle {
         return null;
     }
 
+    function categoryForTab(tabIndex) {
+        var parent = findParentCategory(tabIndex);
+        if (parent)
+            return parent;
+        for (var i = 0; i < categoryStructure.length; i++) {
+            var cat = categoryStructure[i];
+            if (cat.tabIndex === tabIndex)
+                return cat;
+        }
+        return null;
+    }
+
     function autoExpandForTab(tabIndex) {
         var parent = findParentCategory(tabIndex);
         if (!parent)
@@ -234,6 +304,17 @@ Rectangle {
     }
 
     function navigateNext() {
+        if (Theme.fluent) {
+            stepCategory(1);
+            var cats = visibleCategories();
+            for (var i = 0; i < cats.length; i++) {
+                if (cats[i].id === keyboardHighlightCategoryId) {
+                    activateCategory(cats[i]);
+                    return;
+                }
+            }
+            return;
+        }
         var flatItems = getFlatNavigableItems();
         var currentPos = flatItems.findIndex(item => item.tabIndex === currentIndex);
         var oldIndex = currentIndex;
@@ -250,6 +331,17 @@ Rectangle {
     }
 
     function navigatePrevious() {
+        if (Theme.fluent) {
+            stepCategory(-1);
+            var cats = visibleCategories();
+            for (var i = 0; i < cats.length; i++) {
+                if (cats[i].id === keyboardHighlightCategoryId) {
+                    activateCategory(cats[i]);
+                    return;
+                }
+            }
+            return;
+        }
         var flatItems = getFlatNavigableItems();
         var currentPos = flatItems.findIndex(item => item.tabIndex === currentIndex);
         var oldIndex = currentIndex;
@@ -333,6 +425,11 @@ Rectangle {
     Component.onCompleted: {
         root._expandedIds = SessionData.settingsSidebarExpandedIds;
         root._collapsedIds = SessionData.settingsSidebarCollapsedIds;
+        var cat = categoryForTab(currentIndex);
+        if (cat && activeCategoryId === "")
+            activeCategoryId = cat.id;
+        if (cat && parentModal && parentModal.fluentCategoryId === "")
+            parentModal.fluentCategoryId = cat.id;
         GreeterService.refresh();
     }
 
@@ -452,6 +549,7 @@ Rectangle {
                 placeholderText: I18n.tr("Search...")
                 leftIconName: "search"
                 leftIconSize: Theme.iconSize - 4
+                iconOnRight: Theme.fluent
                 showClearButton: text.length > 0
                 onTextChanged: {
                     SettingsSearchService.search(text);
@@ -540,8 +638,13 @@ Rectangle {
 
                         width: searchResultsColumn.width
                         height: resultContent.height + Theme.spacingM * 2
-                        radius: Theme.cornerRadius
+                        radius: Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius
                         color: {
+                            if (Theme.fluent) {
+                                if (root.searchSelectedIndex === index || resultMouseArea.containsMouse)
+                                    return Theme.fluentSubtleFill;
+                                return "transparent";
+                            }
                             if (root.searchSelectedIndex === index)
                                 return Theme.buttonBg;
                             if (resultMouseArea.containsMouse)
@@ -568,7 +671,7 @@ Rectangle {
                             DankIcon {
                                 name: resultDelegate.modelData.icon || "settings"
                                 size: Theme.iconSize - 2
-                                color: root.searchSelectedIndex === resultDelegate.index ? Theme.buttonText : Theme.surfaceText
+                                color: Theme.fluent ? (root.searchSelectedIndex === resultDelegate.index ? Theme.primary : Theme.surfaceText) : (root.searchSelectedIndex === resultDelegate.index ? Theme.buttonText : Theme.surfaceText)
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
@@ -581,7 +684,7 @@ Rectangle {
                                     text: resultDelegate.modelData.label
                                     font.pixelSize: Theme.fontSizeMedium
                                     font.weight: Font.Medium
-                                    color: root.searchSelectedIndex === resultDelegate.index ? Theme.buttonText : Theme.surfaceText
+                                    color: Theme.fluent ? Theme.surfaceText : (root.searchSelectedIndex === resultDelegate.index ? Theme.buttonText : Theme.surfaceText)
                                     width: parent.width
                                     wrapMode: Text.Wrap
                                     horizontalAlignment: Text.AlignLeft
@@ -590,7 +693,7 @@ Rectangle {
                                 StyledText {
                                     text: resultDelegate.modelData.category
                                     font.pixelSize: Theme.fontSizeSmall - 1
-                                    color: root.searchSelectedIndex === resultDelegate.index ? Theme.withAlpha(Theme.buttonText, 0.7) : Theme.surfaceVariantText
+                                    color: Theme.fluent ? Theme.surfaceVariantText : (root.searchSelectedIndex === resultDelegate.index ? Theme.withAlpha(Theme.buttonText, 0.7) : Theme.surfaceVariantText)
                                     width: parent.width
                                     wrapMode: Text.Wrap
                                     horizontalAlignment: Text.AlignLeft
@@ -664,18 +767,33 @@ Rectangle {
                         id: categoryRow
                         width: parent.width
                         height: Math.max(Theme.iconSize, Theme.fontSizeMedium) + Theme.spacingS * 2
-                        radius: Theme.cornerRadius
+                        radius: Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius
                         visible: categoryDelegate.modelData.separator !== true
 
                         readonly property bool hasTab: categoryDelegate.modelData.tabIndex !== undefined && !categoryDelegate.modelData.children
-                        readonly property bool isActive: hasTab && root.currentIndex === categoryDelegate.modelData.tabIndex
-                        readonly property bool isHighlighted: hasTab && root.keyboardHighlightIndex === categoryDelegate.modelData.tabIndex
+                        readonly property bool isActive: Theme.fluent ? root.activeCategoryId === categoryDelegate.modelData.id : (hasTab && root.currentIndex === categoryDelegate.modelData.tabIndex)
+                        readonly property bool isHighlighted: Theme.fluent ? root.keyboardHighlightCategoryId === categoryDelegate.modelData.id : (hasTab && root.keyboardHighlightIndex === categoryDelegate.modelData.tabIndex)
                         onIsHighlightedChanged: {
                             if (isHighlighted)
                                 Qt.callLater(root.ensureRowVisible, categoryRow);
                         }
 
+                        scale: (Theme.fluent && categoryMouseArea.pressed) ? 0.985 : 1.0
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: 100
+                                easing.type: Easing.OutQuad
+                            }
+                        }
+
                         color: {
+                            if (Theme.fluent) {
+                                if (categoryMouseArea.pressed)
+                                    return Theme.fluentSubtlePressed;
+                                if (isActive || isHighlighted || categoryMouseArea.containsMouse)
+                                    return Theme.fluentSubtleFill;
+                                return "transparent";
+                            }
                             if (isActive)
                                 return Theme.buttonBg;
                             if (isHighlighted)
@@ -683,6 +801,33 @@ Rectangle {
                             if (categoryMouseArea.containsMouse)
                                 return Theme.surfaceHover;
                             return "transparent";
+                        }
+
+                        Rectangle {
+                            id: categoryIndicator
+                            visible: Theme.fluent
+                            width: 3
+                            height: categoryRow.isActive ? 16 : 0
+                            opacity: categoryRow.isActive ? 1.0 : 0.0
+                            radius: 1.5
+                            anchors.left: parent.left
+                            anchors.leftMargin: 3
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Theme.primary
+
+                            Behavior on height {
+                                NumberAnimation {
+                                    duration: root.navigationStateDuration
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: 150
+                                    easing.type: Easing.OutQuad
+                                }
+                            }
                         }
 
                         DankRipple {
@@ -702,7 +847,7 @@ Rectangle {
                             DankIcon {
                                 name: categoryDelegate.modelData.icon || ""
                                 size: Theme.iconSize - 2
-                                color: categoryRow.isActive ? Theme.buttonText : Theme.surfaceText
+                                color: Theme.fluent ? (categoryRow.isActive ? Theme.primary : Theme.surfaceText) : (categoryRow.isActive ? Theme.buttonText : Theme.surfaceText)
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
@@ -710,7 +855,7 @@ Rectangle {
                                 text: categoryDelegate.modelData.text || ""
                                 font.pixelSize: Theme.fontSizeMedium
                                 font.weight: (categoryRow.isActive || root.isChildActive(categoryDelegate.modelData)) ? Font.Medium : Font.Normal
-                                color: categoryRow.isActive ? Theme.buttonText : Theme.surfaceText
+                                color: Theme.fluent ? Theme.surfaceText : (categoryRow.isActive ? Theme.buttonText : Theme.surfaceText)
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }
@@ -723,7 +868,7 @@ Rectangle {
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.spacingM
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: categoryDelegate.modelData.children !== undefined && categoryDelegate.modelData.children.length > 0
+                            visible: !Theme.fluent && categoryDelegate.modelData.children !== undefined && categoryDelegate.modelData.children.length > 0
                         }
 
                         MouseArea {
@@ -734,7 +879,9 @@ Rectangle {
                             onPressed: mouse => categoryRipple.trigger(mouse.x, mouse.y)
                             onClicked: {
                                 root.keyboardHighlightIndex = -1;
-                                if (categoryDelegate.modelData.children) {
+                                if (Theme.fluent) {
+                                    root.activateCategory(categoryDelegate.modelData);
+                                } else if (categoryDelegate.modelData.children) {
                                     root.toggleCategory(categoryDelegate.modelData.id);
                                 } else if (categoryDelegate.modelData.tabIndex !== undefined) {
                                     root.tabChangeRequested(categoryDelegate.modelData.tabIndex);
@@ -756,7 +903,7 @@ Rectangle {
                         id: childrenColumn
                         width: parent.width
                         spacing: Theme.spacingXXS
-                        visible: categoryDelegate.modelData.children !== undefined && root.isCategoryExpanded(categoryDelegate.modelData.id)
+                        visible: !Theme.fluent && categoryDelegate.modelData.children !== undefined && root.isCategoryExpanded(categoryDelegate.modelData.id)
                         clip: true
 
                         Repeater {
@@ -776,9 +923,24 @@ Rectangle {
 
                                 width: childrenColumn.width
                                 height: Math.max(Theme.iconSize - 4, Theme.fontSizeSmall + 1) + Theme.spacingS * 2
-                                radius: Theme.cornerRadius
+                                radius: Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius
                                 visible: root.isItemVisible(modelData)
+                                scale: (Theme.fluent && childMouseArea.pressed) ? 0.985 : 1.0
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 100
+                                        easing.type: Easing.OutQuad
+                                    }
+                                }
+
                                 color: {
+                                    if (Theme.fluent) {
+                                        if (childMouseArea.pressed)
+                                            return Theme.fluentSubtlePressed;
+                                        if (isActive || isHighlighted || childMouseArea.containsMouse)
+                                            return Theme.fluentSubtleFill;
+                                        return "transparent";
+                                    }
                                     if (isActive)
                                         return Theme.buttonBg;
                                     if (isHighlighted)
@@ -786,6 +948,33 @@ Rectangle {
                                     if (childMouseArea.containsMouse)
                                         return Theme.surfaceHover;
                                     return "transparent";
+                                }
+
+                                Rectangle {
+                                    id: childIndicator
+                                    visible: Theme.fluent
+                                    width: 3
+                                    height: childDelegate.isActive ? (parent.height - 12) : 0
+                                    opacity: childDelegate.isActive ? 1.0 : 0.0
+                                    radius: 1.5
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 3
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: Theme.primary
+
+                                    Behavior on height {
+                                        NumberAnimation {
+                                            duration: root.navigationStateDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
+
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: 150
+                                            easing.type: Easing.OutQuad
+                                        }
+                                    }
                                 }
 
                                 DankRipple {
@@ -805,7 +994,7 @@ Rectangle {
                                     DankIcon {
                                         name: childDelegate.modelData.icon || ""
                                         size: Theme.iconSize - 4
-                                        color: childDelegate.isActive ? Theme.buttonText : Theme.surfaceVariantText
+                                        color: Theme.fluent ? (childDelegate.isActive ? Theme.primary : Theme.surfaceVariantText) : (childDelegate.isActive ? Theme.buttonText : Theme.surfaceVariantText)
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
 
@@ -813,7 +1002,7 @@ Rectangle {
                                         text: childDelegate.modelData.text || ""
                                         font.pixelSize: Theme.fontSizeSmall + 1
                                         font.weight: childDelegate.isActive ? Font.Medium : Font.Normal
-                                        color: childDelegate.isActive ? Theme.buttonText : Theme.surfaceText
+                                        color: Theme.fluent ? Theme.surfaceText : (childDelegate.isActive ? Theme.buttonText : Theme.surfaceText)
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
                                 }

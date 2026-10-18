@@ -164,7 +164,6 @@ var SPEC = {
     controlCenterShowScreenSharingIcon: { def: true },
     controlCenterShowIdleInhibitorIcon: { def: false },
     controlCenterShowDoNotDisturbIcon: { def: false },
-    controlCenterShowFloatingModeIcon: { def: true },
 
     showPrivacyButton: { def: true },
     privacyShowMicIcon: { def: false },
@@ -179,8 +178,7 @@ var SPEC = {
             { id: "bluetooth", enabled: true, width: 50 },
             { id: "audioOutput", enabled: true, width: 50 },
             { id: "audioInput", enabled: true, width: 50 },
-            { id: "nightMode", enabled: true, width: 50 },
-            { id: "floatingMode", enabled: true, width: 50 }
+            { id: "nightMode", enabled: true, width: 50 }
         ]
     },
 
@@ -201,6 +199,7 @@ var SPEC = {
     workspaceActiveAppHighlightEnabled: { def: false },
     workspaceIndicatorStyle: { def: "full" },
     barHoverStyle: { def: "full" },
+    chromeStyle: { def: "material" },
     workspaceColorMode: { def: "default" },
     workspaceFocusedCustomColor: { def: "#6750A4" },
     workspaceOccupiedColorMode: { def: "none" },

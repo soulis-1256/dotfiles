@@ -136,31 +136,18 @@ Private API keys, tokens, or machine-specific configurations should remain uncom
 
 ---
 
-## Floating mode and window state
+## Tiling and floating windows
 
-Global floating mode (`SUPER + Z`, or the Control Center tile) floats every window. Restore is binary, per application class:
+Hyprland dwindle is the tiling layout. `general.layout` is `dwindle` in `hyprland.lua`, and `float-maximize.lua` pins the same layout onto workspaces that used to carry a `lua:mosaic` rule.
 
-- **Maximized** if the window was last maximized by dragging to the top edge or by the hyprbar maximize button.
-- **Otherwise** a fixed 1280×800 window (clamped to the work area), centered on the current monitor.
+`SUPER+F` toggles the focused window between floating and tiled. `SUPER+right-click` is Hyprland's resize. There is no mosaic layout, no float-everything mode, and no Control Center tile for either.
 
-Hyprland does **not** currently expose enough for this to be native:
+Two custom behaviors stay:
 
-| What exists | Why it is not enough |
-| --- | --- |
-| Live `size` / `at` / `floating` / `fullscreen` on the window object | Only for mapped windows. Gone after close. |
-| `fullscreen` 0/1/2/3 (`fullscreen_state_client` / `_internal`) | XDG / Hyprland maximize and fullscreen. Drag-to-top in this rice is custom geometry, so `fullscreen` stays 0. |
-| Window rule `persistent_size` | Session-only, size only, matches class **and** title. No position, no maximized bit, nothing written to disk. |
-| Internal last-floating size used by `togglefloating` | Per window instance, not queryable from Lua, not persisted. |
+- Drag a floating window to the top edge to maximize it, and drag it down to restore. The gesture is `themes/shared/plugins/snap` plus `common/.config/hypr/dms/snap.lua`. `float-maximize.lua` only supplies the helpers that gesture calls: xdg maximize for client-side decorations, geometry maximize for hyprbar windows, and transient windows (picture-in-picture) so a child does not unmaximize its parent.
+- The workspace switcher shows an app hover preview when that workspace has at least one native floating window.
 
-This repo therefore keeps `~/.cache/hypr_app_float_state.json` (`{ "class": { "maximized": true } }`).
-
-A Hyprland PR would still be worth it. The useful surface is small:
-
-- `window.maximized` (boolean, distinct from fullscreen) covering both xdg maximize and a compositor-side “fills the work area” maximize.
-- `window.last_floating_size` and `window.last_floating_position` on the Lua window object (and over IPC).
-- Optionally persist those across close (or a `persistent_state` rule that stores size, position, and maximized — not only size).
-
-Without that, every rice that wants Windows-style reopen has to reverse-engineer maximize from geometry and keep its own cache.
+`~/.cache/hypr_app_float_state.json` still records the maximized bit when snap sets it. Nothing reads that file to float or resize a window on open.
 
 ---
 

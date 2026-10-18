@@ -93,7 +93,25 @@ ListView {
         }
     }
 
+    property real targetContentY: contentY
+
+    NumberAnimation {
+        id: smoothScrollAnim
+        target: listView
+        property: "contentY"
+        duration: 220
+        easing.type: Easing.OutCubic
+        onRunningChanged: {
+            if (!running) {
+                isUserScrolling = false;
+                vbar.hideTimer.restart();
+            }
+        }
+    }
+
     onMovementStarted: {
+        smoothScrollAnim.stop();
+        targetContentY = contentY;
         isUserScrolling = true;
         vbar._scrollBarActive = true;
         vbar.hideTimer.stop();
@@ -101,6 +119,10 @@ ListView {
     onMovementEnded: {
         isUserScrolling = false;
         vbar.hideTimer.restart();
+    }
+    onFlickStarted: {
+        smoothScrollAnim.stop();
+        targetContentY = contentY;
     }
 
     onContentYChanged: {
@@ -142,7 +164,8 @@ ListView {
             const kind = WheelInput.verticalKind(event);
             const deltaY = event.angleDelta.y;
 
-            if (kind === WheelInput.Kind.wheel) {
+            if (kind === WheelInput.Kind.wheel || kind === WheelInput.Kind.highResWheel) {
+                isUserScrolling = true;
                 sessionUsedMouseWheel = true;
                 momentumAnim.running = false;
                 isMomentumActive = false;
@@ -150,38 +173,35 @@ ListView {
                 momentum = 0;
                 momentumVelocity = 0;
 
-                const lines = Math.round(Math.abs(deltaY) / 120);
-                const scrollAmount = (deltaY > 0 ? -lines : lines) * mouseWheelSpeed;
-                let newY = listView.contentY + scrollAmount;
-                const maxY = Math.max(0, listView.contentHeight - listView.height + listView.originY);
-                newY = Math.max(listView.originY, Math.min(maxY, newY));
+                let scrollAmount = 0;
+                if (kind === WheelInput.Kind.wheel) {
+                    const lines = Math.max(1, Math.round(Math.abs(deltaY) / 120));
+                    scrollAmount = (deltaY > 0 ? -lines : lines) * mouseWheelSpeed;
+                } else {
+                    scrollAmount = -(deltaY / 8) * touchpadSpeed;
+                }
+
+                const minY = listView.originY !== undefined ? listView.originY : 0;
+                const maxY = Math.max(minY, listView.contentHeight - listView.height + minY);
+                const currentTarget = smoothScrollAnim.running ? targetContentY : listView.contentY;
+                let newTarget = currentTarget + scrollAmount;
+                newTarget = Math.max(minY, Math.min(maxY, newTarget));
+                targetContentY = newTarget;
 
                 if (listView.flicking) {
                     listView.cancelFlick();
                 }
 
-                listView.contentY = newY;
-                savedY = newY;
-            } else if (kind === WheelInput.Kind.highResWheel) {
-                sessionUsedMouseWheel = true;
-                momentumAnim.running = false;
-                isMomentumActive = false;
-                velocitySamples = [];
-                momentum = 0;
-                momentumVelocity = 0;
-
-                let delta = deltaY / 8 * touchpadSpeed;
-                let newY = listView.contentY - delta;
-                const maxY = Math.max(0, listView.contentHeight - listView.height + listView.originY);
-                newY = Math.max(listView.originY, Math.min(maxY, newY));
-
-                if (listView.flicking) {
-                    listView.cancelFlick();
-                }
-
-                listView.contentY = newY;
-                savedY = newY;
+                smoothScrollAnim.stop();
+                smoothScrollAnim.from = listView.contentY;
+                smoothScrollAnim.to = newTarget;
+                const dist = Math.abs(newTarget - listView.contentY);
+                smoothScrollAnim.duration = Math.min(280, Math.max(160, dist * 0.7));
+                smoothScrollAnim.start();
+                savedY = newTarget;
             } else if (kind === WheelInput.Kind.touchpad) {
+                smoothScrollAnim.stop();
+                targetContentY = listView.contentY;
                 sessionUsedMouseWheel = false;
                 momentumAnim.running = false;
                 isMomentumActive = false;

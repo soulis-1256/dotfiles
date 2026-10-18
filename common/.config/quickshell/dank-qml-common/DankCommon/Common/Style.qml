@@ -99,7 +99,8 @@ Singleton {
     readonly property int smallBreakpoint: theme?.smallBreakpoint ?? 480
     readonly property int mediumBreakpoint: theme?.mediumBreakpoint ?? 768
 
-    readonly property real cornerRadius: theme?.cornerRadius ?? 12
+    readonly property real cornerRadius: theme?.controlCornerRadius ?? theme?.cornerRadius ?? 12
+    readonly property real overlayCornerRadius: theme?.overlayCornerRadius ?? cornerRadius
     readonly property real spacingXXS: theme?.spacingXXS ?? 2
     readonly property real spacingXS: theme?.spacingXS ?? 4
     readonly property real spacingS: theme?.spacingS ?? 8
@@ -150,6 +151,7 @@ Singleton {
 
     readonly property bool elevationEnabled: theme?.elevationEnabled ?? true
     readonly property string elevationLightDirection: theme?.elevationLightDirection ?? "top"
+    readonly property bool fluent: theme?.fluent ?? false
     readonly property var elevationLevel2: theme?.elevationLevel2 ?? ({
             blurPx: 8,
             offsetX: 0,

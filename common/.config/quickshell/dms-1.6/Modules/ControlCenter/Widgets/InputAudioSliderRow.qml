@@ -20,8 +20,8 @@ Row {
         width: Theme.iconSize + Theme.spacingS * 2
         height: Theme.iconSize + Theme.spacingS * 2
         anchors.verticalCenter: parent.verticalCenter
-        radius: (Theme.iconSize + Theme.spacingS * 2) / 2
-        color: iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0)
+        radius: Theme.fluent ? Theme.controlCornerRadius : (Theme.iconSize + Theme.spacingS * 2) / 2
+        color: Theme.fluent ? "transparent" : (iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0))
 
         DankRipple {
             id: iconRipple
@@ -34,7 +34,10 @@ Row {
             visible: defaultSource !== null
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onPressed: mouse => iconRipple.trigger(mouse.x, mouse.y)
+            onPressed: mouse => {
+                if (!Theme.fluent)
+                    iconRipple.trigger(mouse.x, mouse.y);
+            }
             onClicked: {
                 if (defaultSource?.audio) {
                     SessionData.suppressOSDTemporarily();
@@ -57,7 +60,12 @@ Row {
                 return "mic";
             }
             size: Theme.iconSize
-            color: defaultSource?.audio && !defaultSource.audio.muted && defaultSource.audio.volume > 0 ? Theme.primary : Theme.surfaceText
+            color: {
+                const audible = defaultSource?.audio && !defaultSource.audio.muted && defaultSource.audio.volume > 0;
+                if (Theme.fluent)
+                    return audible ? Theme.surfaceText : Theme.surfaceVariantText;
+                return audible ? Theme.primary : Theme.surfaceText;
+            }
         }
     }
 

@@ -34,6 +34,7 @@ StyledRect {
     property int leftIconSize: Style.iconSize
     property color leftIconColor: Style.surfaceVariantText
     property color leftIconFocusedColor: Style.primary
+    property bool iconOnRight: false
     property bool showClearButton: false
     property bool showPasswordToggle: false
     property real rightAccessoryWidth: 0
@@ -43,12 +44,13 @@ StyledRect {
     property color focusedBorderColor: usePopupTransparency ? Style.popupFieldFocusedBorderColor : Style.floatingWindowFieldFocusedBorderColor
     property color normalBorderColor: usePopupTransparency ? Style.popupFieldBorderColor : Style.floatingWindowFieldBorderColor
     property color placeholderColor: Style.outlineButton
-    property bool hidePlaceholderOnFocus: true
+    property bool hidePlaceholderOnFocus: !(Style.theme?.fluent ?? false)
     property real borderWidth: 1
-    property real focusedBorderWidth: 2
+    property real focusedBorderWidth: (Style.theme?.fluent ?? false) ? 1 : 2
     property real cornerRadius: Style.cornerRadius
+    readonly property bool fluentField: Style.theme?.fluent ?? false
 
-    readonly property real leftPadding: Style.spacingM + (leftIconName ? leftIconSize + Style.spacingM : 0)
+    readonly property real leftPadding: Style.spacingM + ((!iconOnRight && leftIconName) ? leftIconSize + Style.spacingM : 0)
     readonly property real rightPadding: {
         let p = Style.spacingS + rightAccessoryWidth;
         if (showPasswordToggle)
@@ -94,11 +96,21 @@ StyledRect {
     readonly property bool placeholderVisible: textInput.text.length === 0 && !textInput.inputMethodComposing && (!hidePlaceholderOnFocus || !textInput.activeFocus)
 
     width: 200
-    height: labelText !== "" ? Math.round(Style.fontSizeMedium * 3) + labelBandHeight : Math.round(Style.fontSizeMedium * 3)
+    height: labelText !== "" ? (fluentField ? 32 + labelBandHeight : Math.round(Style.fontSizeMedium * 3) + labelBandHeight) : (fluentField ? 32 : Math.round(Style.fontSizeMedium * 3))
     radius: cornerRadius
     color: backgroundColor
-    border.color: textInput.activeFocus ? focusedBorderColor : normalBorderColor
-    border.width: textInput.activeFocus ? focusedBorderWidth : borderWidth
+    border.color: fluentField ? normalBorderColor : (textInput.activeFocus ? focusedBorderColor : normalBorderColor)
+    border.width: fluentField ? borderWidth : (textInput.activeFocus ? focusedBorderWidth : borderWidth)
+
+    // WinUI text box keeps the stroke and draws the accent as a bottom edge.
+    Rectangle {
+        visible: root.fluentField && textInput.activeFocus
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 2
+        color: root.focusedBorderColor
+    }
 
     DankIcon {
         id: leftIcon
@@ -108,8 +120,8 @@ StyledRect {
         anchors.verticalCenter: textInput.verticalCenter
         name: leftIconName
         size: leftIconSize
-        color: textInput.activeFocus ? leftIconFocusedColor : leftIconColor
-        visible: leftIconName !== ""
+        color: (!root.fluentField && textInput.activeFocus) ? leftIconFocusedColor : leftIconColor
+        visible: leftIconName !== "" && !root.iconOnRight
     }
 
     StyledText {
@@ -122,7 +134,7 @@ StyledRect {
         text: root.labelText
         visible: root.labelText !== ""
         font.pixelSize: Style.fontSizeSmall
-        color: textInput.activeFocus ? Style.primary : Style.surfaceVariantText
+        color: (!root.fluentField && textInput.activeFocus) ? Style.primary : Style.surfaceVariantText
         elide: Text.ElideRight
     }
 
@@ -230,7 +242,15 @@ StyledRect {
         anchors.rightMargin: Style.spacingS + root.rightAccessoryWidth
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.spacingXS
-        visible: showPasswordToggle || (showClearButton && text.length > 0)
+        visible: showPasswordToggle || (showClearButton && text.length > 0) || (root.iconOnRight && root.leftIconName !== "")
+
+        DankIcon {
+            visible: root.iconOnRight && root.leftIconName !== ""
+            name: root.leftIconName
+            size: root.leftIconSize
+            color: root.leftIconColor
+            anchors.verticalCenter: parent.verticalCenter
+        }
 
         StyledRect {
             id: passwordToggleButton

@@ -501,8 +501,7 @@ Item {
             widgetObj.showScreenSharingIcon = SettingsData.controlCenterShowScreenSharingIcon;
             widgetObj.showIdleInhibitorIcon = SettingsData.controlCenterShowIdleInhibitorIcon;
             widgetObj.showDoNotDisturbIcon = SettingsData.controlCenterShowDoNotDisturbIcon;
-            widgetObj.showFloatingModeIcon = SettingsData.controlCenterShowFloatingModeIcon;
-            widgetObj.controlCenterGroupOrder = ["network", "vpn", "bluetooth", "audio", "floatingMode", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"];
+            widgetObj.controlCenterGroupOrder = ["network", "vpn", "bluetooth", "audio", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"];
         }
         if (widgetId === "battery") {
             widgetObj.showBatteryPercent = SettingsData.showBatteryPercent;
@@ -1064,8 +1063,6 @@ Item {
                     item.showIdleInhibitorIcon = widget.showIdleInhibitorIcon;
                 if (widget.showDoNotDisturbIcon !== undefined)
                     item.showDoNotDisturbIcon = widget.showDoNotDisturbIcon;
-                if (widget.showFloatingModeIcon !== undefined)
-                    item.showFloatingModeIcon = widget.showFloatingModeIcon;
                 if (widget.controlCenterGroupOrder !== undefined)
                     item.controlCenterGroupOrder = widget.controlCenterGroupOrder;
                 if (widget.minimumWidth !== undefined)

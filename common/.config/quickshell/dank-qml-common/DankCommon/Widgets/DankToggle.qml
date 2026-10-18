@@ -21,10 +21,11 @@ Item {
     signal toggleCompleted(bool checked)
 
     readonly property bool showText: text && !hideText
+    readonly property bool fluent: Style.theme?.fluent ?? false
 
-    readonly property int trackWidth: 52
-    readonly property int trackHeight: 30
-    readonly property int insetCircle: 24
+    readonly property int trackWidth: fluent ? 40 : 52
+    readonly property int trackHeight: fluent ? 20 : 30
+    readonly property int insetCircle: fluent ? 14 : 24
 
     width: showText ? parent.width : trackWidth
     height: showText ? Math.max(trackHeight, textColumn.implicitHeight + Style.spacingM * 2) : trackHeight
@@ -58,7 +59,7 @@ Item {
         StateLayer {
             visible: showText
             disabled: !toggle.enabled
-            stateColor: Style.primary
+            stateColor: toggle.fluent ? Style.surfaceText : Style.primary
             cornerRadius: parent.radius
             onClicked: toggle.handleClick()
         }
@@ -108,14 +109,26 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: showText ? Style.spacingM : 0
         anchors.verticalCenter: parent.verticalCenter
-        radius: Style.cornerRadius
+        radius: toggle.fluent ? height / 2 : Style.cornerRadius
 
         // Distinguish disabled checked vs unchecked so unchecked disabled switches don't look enabled
-        color: !toggle.enabled ? (toggle.checked ? Qt.alpha(Style.surfaceText, 0.12) : Style.withAlpha(Qt.alpha(Style.surfaceText, 0.12), 0)) : (toggle.checked ? Style.primary : Style.surfaceVariantAlpha)
+        color: {
+            if (toggle.fluent) {
+                if (!toggle.enabled)
+                    return toggle.checked ? Style.withAlpha(Style.primary, 0.40) : "transparent";
+                return toggle.checked ? Style.primary : "transparent";
+            }
+            return !toggle.enabled ? (toggle.checked ? Qt.alpha(Style.surfaceText, 0.12) : Style.withAlpha(Qt.alpha(Style.surfaceText, 0.12), 0)) : (toggle.checked ? Style.primary : Style.surfaceVariantAlpha);
+        }
         opacity: toggle.toggling ? 0.6 : 1
 
         // M3 disabled unchecked border: on surface 12% opacity
-        border.color: toggle.checked ? Style.withAlpha(Style.outline, 0) : (!toggle.enabled ? Qt.alpha(Style.surfaceText, 0.12) : Style.outline)
+        border.width: toggle.fluent ? (toggle.checked ? 0 : 1) : 1
+        border.color: {
+            if (toggle.fluent)
+                return toggle.checked ? "transparent" : (Style.theme?.fluentControlStroke ?? Style.outline);
+            return toggle.checked ? Style.withAlpha(Style.outline, 0) : (!toggle.enabled ? Qt.alpha(Style.surfaceText, 0.12) : Style.outline);
+        }
 
         readonly property int pad: Math.round((height - thumb.width) / 2)
         readonly property int edgeLeft: pad
@@ -124,18 +137,23 @@ Item {
         StyledRect {
             id: thumb
 
-            width: toggle.checked ? insetCircle : insetCircle - 4
-            height: toggle.checked ? insetCircle : insetCircle - 4
-            radius: Style.cornerRadius
+            width: toggle.fluent ? toggle.insetCircle : (toggle.checked ? insetCircle : insetCircle - 4)
+            height: toggle.fluent ? toggle.insetCircle : (toggle.checked ? insetCircle : insetCircle - 4)
+            radius: toggle.fluent ? width / 2 : Style.cornerRadius
             anchors.verticalCenter: parent.verticalCenter
 
             // M3 disabled thumb:
             // checked = solid surface | unchecked = outlined off-state thumb
-            color: !toggle.enabled ? (toggle.checked ? Style.surface : Style.withAlpha(Style.surface, 0)) : (toggle.checked ? Style.surface : Style.outline)
-            border.color: !toggle.enabled ? (toggle.checked ? Style.withAlpha(Qt.alpha(Style.surfaceText, 0.38), 0) : Qt.alpha(Style.surfaceText, 0.38)) : Style.outline
-            border.width: (toggle.checked && toggle.enabled) ? 1 : 2
+            color: {
+                if (toggle.fluent)
+                    return toggle.checked ? "#ffffff" : Style.surfaceText;
+                return !toggle.enabled ? (toggle.checked ? Style.surface : Style.withAlpha(Style.surface, 0)) : (toggle.checked ? Style.surface : Style.outline);
+            }
+            border.color: toggle.fluent ? "transparent" : (!toggle.enabled ? (toggle.checked ? Style.withAlpha(Qt.alpha(Style.surfaceText, 0.38), 0) : Qt.alpha(Style.surfaceText, 0.38)) : Style.outline)
+            border.width: toggle.fluent ? 0 : ((toggle.checked && toggle.enabled) ? 1 : 2)
 
             x: toggle.checked ? toggleTrack.edgeRight : toggleTrack.edgeLeft
+
 
             Behavior on x {
                 SequentialAnimation {
@@ -176,7 +194,8 @@ Item {
                 // M3 disabled icon: on surface 38%
                 color: toggle.enabled ? Style.surfaceText : Qt.alpha(Style.surfaceText, 0.38)
                 filled: true
-                opacity: (toggle.checked && toggle.enabled) ? 1 : 0
+                visible: !toggle.fluent
+                opacity: (!toggle.fluent && toggle.checked && toggle.enabled) ? 1 : 0
                 scale: (toggle.checked && toggle.enabled) ? 1 : 0.6
 
                 Behavior on opacity {
@@ -198,7 +217,7 @@ Item {
 
         StateLayer {
             disabled: !toggle.enabled
-            stateColor: Style.primary
+            stateColor: toggle.fluent ? Style.surfaceText : Style.primary
             cornerRadius: parent.radius
             onClicked: toggle.handleClick()
         }

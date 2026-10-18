@@ -50,7 +50,7 @@ StyledRect {
     StateLayer {
         id: stateLayer
         disabled: !root.enabled
-        stateColor: Style.primary
+        stateColor: (Style.theme?.fluent ?? false) ? Style.surfaceText : Style.primary
         cornerRadius: root.radius
         onClicked: root.clicked()
         onEntered: root.entered()

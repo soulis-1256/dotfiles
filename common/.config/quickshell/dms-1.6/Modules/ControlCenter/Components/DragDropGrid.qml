@@ -14,6 +14,7 @@ Column {
     property bool editMode: false
     property string expandedSection: ""
     property int expandedWidgetIndex: -1
+    property bool detailAnimationsEnabled: true
     property var model: null
     property var expandedWidgetData: null
     property var bluetoothCodecSelector: null
@@ -114,17 +115,12 @@ Column {
             {
                 if (NetworkService.wifiToggling)
                     return "sync";
-                if (NetworkService.isConnecting && !NetworkService.ethernetConnected)
+                if (NetworkService.isWifiConnecting)
                     return NetworkService.wifiSignalIcon;
-                const status = NetworkService.networkStatus;
-                if (status === "ethernet")
-                    return "settings_ethernet";
-                if (status === "cellular")
-                    return "network_cell";
-                if (status === "vpn")
-                    return NetworkService.ethernetConnected ? "settings_ethernet" : (NetworkService.cellularConnected ? "network_cell" : NetworkService.wifiSignalIcon);
-                if (status === "wifi")
+                if (NetworkService.wifiConnected)
                     return NetworkService.wifiSignalIcon;
+                if (!NetworkService.wifiEnabled)
+                    return "wifi_off";
                 return "wifi";
             }
         case "bluetooth":
@@ -150,15 +146,6 @@ Column {
             {
                 if (NetworkService.wifiToggling)
                     return false;
-                const status = NetworkService.networkStatus;
-                if (status === "ethernet")
-                    return true;
-                if (status === "cellular")
-                    return true;
-                if (status === "vpn")
-                    return NetworkService.ethernetConnected || NetworkService.wifiConnected || NetworkService.cellularConnected;
-                if (status === "wifi")
-                    return true;
                 return NetworkService.wifiEnabled;
             }
         case "bluetooth":
@@ -176,7 +163,7 @@ Column {
         switch (id) {
         case "wifi":
             {
-                if (NetworkService.networkStatus !== "ethernet" && NetworkService.networkStatus !== "cellular" && !NetworkService.wifiToggling) {
+                if (!NetworkService.wifiToggling) {
                     NetworkService.toggleWifiRadio();
                 }
                 break;
@@ -247,8 +234,6 @@ Column {
         case "audioOutput":
         case "audioInput":
             return widgetWidth <= 25 ? smallCompoundComponent : compoundPillComponent;
-        case "floatingMode":
-            return widgetWidth <= 25 ? smallLayoutModeComponent : layoutModeDropdownComponent;
         case "volumeSlider":
             return audioSliderComponent;
         case "brightnessSlider":
@@ -419,6 +404,7 @@ Column {
                 // targetValue-based direction: `active` can be stale when the behavior triggers
                 Behavior on height {
                     id: detailHeightBehavior
+                    enabled: root.detailAnimationsEnabled
                     NumberAnimation {
                         readonly property bool growing: (detailHeightBehavior.targetValue ?? 0) >= detailHost.height
                         duration: Theme.variantDuration(Theme.popoutAnimationDuration, growing)
@@ -474,27 +460,11 @@ Column {
                     {
                         if (NetworkService.wifiToggling)
                             return NetworkService.wifiEnabled ? I18n.tr("Disabling WiFi...", "network status") : I18n.tr("Enabling WiFi...", "network status");
-                        if (NetworkService.isConnecting && !NetworkService.ethernetConnected)
+                        if (NetworkService.isWifiConnecting)
                             return NetworkService.connectingSSID || I18n.tr("Connecting...", "network status");
-
-                        const status = NetworkService.networkStatus;
-                        if (status === "ethernet")
-                            return I18n.tr("Ethernet", "network status");
-                        if (status === "cellular")
-                            return I18n.tr("Cellular", "network status");
-                        if (status === "vpn") {
-                            if (NetworkService.ethernetConnected)
-                                return I18n.tr("Ethernet", "network status");
-                            if (NetworkService.cellularConnected)
-                                return I18n.tr("Cellular", "network status");
-                            if (NetworkService.wifiConnected && NetworkService.currentWifiSSID)
-                                return NetworkService.currentWifiSSID;
-                        }
-                        if (status === "wifi" && NetworkService.currentWifiSSID)
+                        if (NetworkService.wifiConnected && NetworkService.currentWifiSSID)
                             return NetworkService.currentWifiSSID;
-                        if (NetworkService.wifiEnabled)
-                            return I18n.tr("Not connected", "network status");
-                        return I18n.tr("WiFi off", "network status");
+                        return I18n.tr("Wi-Fi", "network status");
                     }
                 case "bluetooth":
                     {
@@ -520,27 +490,13 @@ Column {
                     {
                         if (NetworkService.wifiToggling)
                             return I18n.tr("Please wait...", "network status");
-                        if (NetworkService.isConnecting && !NetworkService.ethernetConnected)
+                        if (NetworkService.isWifiConnecting)
                             return I18n.tr("Connecting...", "network status");
-
-                        const status = NetworkService.networkStatus;
-                        if (status === "ethernet")
-                            return I18n.tr("Connected", "network status");
-                        if (status === "cellular")
-                            return NetworkService.cellularIP || I18n.tr("Connected", "network status");
-                        if (status === "vpn") {
-                            if (NetworkService.ethernetConnected)
-                                return I18n.tr("Connected", "network status");
-                            if (NetworkService.cellularConnected)
-                                return NetworkService.cellularIP || I18n.tr("Connected", "network status");
-                            if (NetworkService.wifiConnected)
-                                return NetworkService.wifiSignalStrength > 0 ? NetworkService.wifiSignalStrength + "%" : I18n.tr("Connected", "network status");
-                        }
-                        if (status === "wifi")
+                        if (NetworkService.wifiConnected)
                             return NetworkService.wifiSignalStrength > 0 ? NetworkService.wifiSignalStrength + "%" : I18n.tr("Connected", "network status");
                         if (NetworkService.wifiEnabled)
-                            return I18n.tr("Select network", "network status");
-                        return "";
+                            return I18n.tr("Available", "network status");
+                        return I18n.tr("Off", "network status");
                     }
                 case "bluetooth":
                     {
@@ -626,12 +582,12 @@ Column {
             property var widgetData: parent.widgetData || {}
             property int widgetIndex: parent.widgetIndex || 0
             width: parent.width
-            height: 16
+            height: parent.height
 
             AudioSliderRow {
                 anchors.centerIn: parent
                 width: parent.width
-                height: 14
+                height: parent.height
                 sliderTrackColor: Theme.ccSliderTrackColor
                 sliderTrackOpacity: Theme.ccSliderTrackOpacity
             }
@@ -644,13 +600,13 @@ Column {
             property var widgetData: parent.widgetData || {}
             property int widgetIndex: parent.widgetIndex || 0
             width: parent.width
-            height: 16
+            height: parent.height
 
             BrightnessSliderRow {
                 id: brightnessSliderRow
                 anchors.centerIn: parent
                 width: parent.width
-                height: 14
+                height: parent.height
                 deviceName: widgetData.deviceName || ""
                 instanceId: widgetData.instanceId || ""
                 screenName: root.screenName
@@ -673,12 +629,12 @@ Column {
             property var widgetData: parent.widgetData || {}
             property int widgetIndex: parent.widgetIndex || 0
             width: parent.width
-            height: 16
+            height: parent.height
 
             InputAudioSliderRow {
                 anchors.centerIn: parent
                 width: parent.width
-                height: 14
+                height: parent.height
                 sliderTrackColor: Theme.ccSliderTrackColor
                 sliderTrackOpacity: Theme.ccSliderTrackOpacity
             }
@@ -747,8 +703,6 @@ Column {
                     return DisplayService.nightModeEnabled ? "nightlight" : "dark_mode";
                 case "darkMode":
                     return "contrast";
-                case "floatingMode":
-                    return HyprlandService.floatingModeActive ? "layers" : "grid_view";
                 case "idleInhibitor":
                     return "motion_sensor_active";
                 default:
@@ -788,8 +742,6 @@ Column {
                     return DisplayService.nightModeEnabled || false;
                 case "darkMode":
                     return !SessionData.isLightMode;
-                case "floatingMode":
-                    return HyprlandService.floatingModeActive || false;
                 case "idleInhibitor":
                     return SessionService.idleInhibited || false;
                 default:
@@ -797,7 +749,7 @@ Column {
                 }
             }
 
-            enabled: !root.editMode && (widgetData.id !== "floatingMode" || CompositorService.isHyprland)
+            enabled: !root.editMode
 
             onClicked: {
                 if (root.editMode)
@@ -816,89 +768,11 @@ Column {
                         Theme.setLightMode(newMode);
                         break;
                     }
-                case "floatingMode":
-                    {
-                        HyprlandService.toggleFloatingMode();
-                        break;
-                    }
                 case "idleInhibitor":
                     {
                         SessionService.toggleIdleInhibit();
                         break;
                     }
-                }
-            }
-        }
-    }
-
-    Component {
-        id: layoutModeDropdownComponent
-        CompoundPill {
-            property var widgetData: parent.widgetData || {}
-            property int widgetIndex: parent.widgetIndex || 0
-            width: parent.width
-            height: 60
-            iconName: {
-                switch (HyprlandService.currentLayoutMode) {
-                case "mosaic":
-                    return "view_quilt";
-                case "floating":
-                    return "layers";
-                default:
-                    return "grid_view";
-                }
-            }
-            primaryText: I18n.tr("Layout Mode")
-            secondaryText: {
-                switch (HyprlandService.currentLayoutMode) {
-                case "mosaic":
-                    return I18n.tr("Mosaic");
-                case "floating":
-                    return I18n.tr("Floating");
-                default:
-                    return I18n.tr("Tiled");
-                }
-            }
-            isActive: HyprlandService.currentLayoutMode !== "tiled"
-            showExpandArea: true
-            enabled: !root.editMode && CompositorService.isHyprland
-
-            onToggled: {
-                if (!root.editMode) {
-                    root.expandClicked(widgetData, widgetIndex);
-                }
-            }
-            onExpandClicked: {
-                if (!root.editMode) {
-                    root.expandClicked(widgetData, widgetIndex);
-                }
-            }
-        }
-    }
-
-    Component {
-        id: smallLayoutModeComponent
-        SmallToggleButton {
-            property var widgetData: parent.widgetData || {}
-            property int widgetIndex: parent.widgetIndex || 0
-            width: parent.width
-            height: 48
-            iconName: {
-                switch (HyprlandService.currentLayoutMode) {
-                case "mosaic":
-                    return "view_quilt";
-                case "floating":
-                    return "layers";
-                default:
-                    return "grid_view";
-                }
-            }
-            isActive: HyprlandService.currentLayoutMode !== "tiled"
-            enabled: !root.editMode && CompositorService.isHyprland
-
-            onClicked: {
-                if (!root.editMode) {
-                    root.expandClicked(widgetData, widgetIndex);
                 }
             }
         }
@@ -918,8 +792,6 @@ Column {
                     return DisplayService.nightModeEnabled ? "nightlight" : "dark_mode";
                 case "darkMode":
                     return "contrast";
-                case "floatingMode":
-                    return HyprlandService.floatingModeActive ? "layers" : "grid_view";
                 case "doNotDisturb":
                     return "do_not_disturb_on";
                 case "idleInhibitor":
@@ -944,8 +816,6 @@ Column {
                     return DisplayService.nightModeEnabled || false;
                 case "darkMode":
                     return !SessionData.isLightMode;
-                case "floatingMode":
-                    return HyprlandService.floatingModeActive || false;
                 case "doNotDisturb":
                     return SessionData.doNotDisturb || false;
                 case "idleInhibitor":
@@ -955,7 +825,7 @@ Column {
                 }
             }
 
-            enabled: !root.editMode && (widgetData.id !== "floatingMode" || CompositorService.isHyprland)
+            enabled: !root.editMode
 
             onClicked: {
                 if (root.editMode)
@@ -972,11 +842,6 @@ Column {
                         const newMode = !SessionData.isLightMode;
                         Theme.screenTransition();
                         Theme.setLightMode(newMode);
-                        break;
-                    }
-                case "floatingMode":
-                    {
-                        HyprlandService.toggleFloatingMode();
                         break;
                     }
                 case "doNotDisturb":

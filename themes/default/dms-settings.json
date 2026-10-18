@@ -130,7 +130,6 @@
   "controlCenterShowScreenSharingIcon": true,
   "controlCenterShowIdleInhibitorIcon": false,
   "controlCenterShowDoNotDisturbIcon": false,
-  "controlCenterShowFloatingModeIcon": true,
   "showPrivacyButton": true,
   "privacyShowMicIcon": false,
   "privacyShowCameraIcon": false,
@@ -170,11 +169,6 @@
       "showMountPath": true
     },
     {
-      "id": "floatingMode",
-      "enabled": true,
-      "width": 50
-    },
-    {
       "id": "builtin_tailscale",
       "enabled": true,
       "width": 50
@@ -197,6 +191,7 @@
   "workspaceActiveAppHighlightEnabled": false,
   "workspaceIndicatorStyle": "full",
   "barHoverStyle": "full",
+  "chromeStyle": "material",
   "workspaceColorMode": "default",
   "workspaceFocusedCustomColor": "#6750A4",
   "workspaceOccupiedColorMode": "none",
@@ -717,7 +712,6 @@
           "enabled": true,
           "controlCenterGroupOrder": [
             "network",
-            "floatingMode",
             "vpn",
             "bluetooth",
             "audio",
@@ -801,7 +795,6 @@
           "enabled": true,
           "controlCenterGroupOrder": [
             "network",
-            "floatingMode",
             "vpn",
             "bluetooth",
             "audio",

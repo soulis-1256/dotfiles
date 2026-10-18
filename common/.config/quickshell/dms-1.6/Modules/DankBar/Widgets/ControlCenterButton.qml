@@ -28,7 +28,6 @@ BasePill {
     property bool showScreenSharingIcon: widgetData?.showScreenSharingIcon !== undefined ? widgetData.showScreenSharingIcon : SettingsData.controlCenterShowScreenSharingIcon
     property bool showIdleInhibitorIcon: widgetData?.showIdleInhibitorIcon !== undefined ? widgetData.showIdleInhibitorIcon : SettingsData.controlCenterShowIdleInhibitorIcon
     property bool showDoNotDisturbIcon: widgetData?.showDoNotDisturbIcon !== undefined ? widgetData.showDoNotDisturbIcon : SettingsData.controlCenterShowDoNotDisturbIcon
-    property bool showFloatingModeIcon: widgetData?.showFloatingModeIcon !== undefined ? widgetData.showFloatingModeIcon : SettingsData.controlCenterShowFloatingModeIcon
     property real touchpadThreshold: 100
     property real micAccumulator: 0
     property real volumeAccumulator: 0
@@ -43,7 +42,7 @@ BasePill {
     property var _vBrightness: null
     property var _vMic: null
     property var _interactionDelegates: []
-    readonly property var defaultControlCenterGroupOrder: ["network", "vpn", "bluetooth", "audio", "floatingMode", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"]
+    readonly property var defaultControlCenterGroupOrder: ["network", "vpn", "bluetooth", "audio", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"]
     readonly property var effectiveControlCenterGroupOrder: getEffectiveControlCenterGroupOrder()
     readonly property var controlCenterRenderModel: getControlCenterRenderModel()
 
@@ -334,8 +333,6 @@ BasePill {
             return root.showBluetoothIcon && BluetoothService.available && BluetoothService.enabled;
         case "audio":
             return root.showAudioIcon;
-        case "floatingMode":
-            return root.showFloatingModeIcon && CompositorService.isHyprland;
         case "microphone":
             return root.showMicIcon;
         case "brightness":
@@ -358,13 +355,11 @@ BasePill {
     }
 
     function getControlCenterRenderModel() {
-        const model = root.effectiveControlCenterGroupOrder.map(groupId => ({
+        return root.effectiveControlCenterGroupOrder.map(groupId => ({
                     "id": groupId,
                     "visible": root.isGroupVisible(groupId),
                     "composite": root.isCompositeGroup(groupId)
                 }));
-        // Pin the layout-mode indicator first so the active mode reads leftmost.
-        return model.filter(entry => entry.id === "floatingMode").concat(model.filter(entry => entry.id !== "floatingMode"));
     }
 
     function clearInteractionRefs() {
@@ -505,8 +500,6 @@ BasePill {
                                     return "vpn_lock";
                                 case "bluetooth":
                                     return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
-                                case "floatingMode":
-                                    return HyprlandService.currentLayoutMode === "mosaic" ? "view_quilt" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
@@ -680,8 +673,6 @@ BasePill {
                                     return "vpn_lock";
                                 case "bluetooth":
                                     return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
-                                case "floatingMode":
-                                    return HyprlandService.currentLayoutMode === "mosaic" ? "view_quilt" : (HyprlandService.currentLayoutMode === "floating" ? "layers" : "grid_view");
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":

@@ -14,7 +14,7 @@ PluginComponent {
     readonly property bool vpnActivating: DMSNetworkService.vpnIsBusy || DMSNetworkService.activeState === "activating"
     readonly property bool vpnActivated: DMSNetworkService.connected && DMSNetworkService.activeState === "activated"
 
-    ccWidgetIcon: "vpn_key"
+    ccWidgetIcon: "vpn_lock"
     ccWidgetPrimaryText: I18n.tr("VPN")
     ccWidgetSecondaryText: {
         if (vpnActivating)

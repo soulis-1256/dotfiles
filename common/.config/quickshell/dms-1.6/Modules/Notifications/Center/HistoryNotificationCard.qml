@@ -59,7 +59,7 @@ Rectangle {
 
     width: parent ? parent.width : 400
     height: baseCardHeight + contentItem.extraHeight
-    radius: Theme.cornerRadius
+    radius: Theme.fluent ? Theme.overlayCornerRadius : Theme.cornerRadius
     clip: false
     readonly property bool shadowsAllowed: Theme.elevationEnabled && Quickshell.env("DMS_DISABLE_LAYER") !== "true" && Quickshell.env("DMS_DISABLE_LAYER") !== "1"
 
@@ -86,14 +86,14 @@ Rectangle {
             return Theme.withAlpha(Theme.primary, 0.5);
         if (historyItem.urgency === 2)
             return Theme.primarySelected;
-        return Theme.outlineMedium;
+        return Theme.fluent ? Theme.fluentCardStroke : Theme.outlineMedium;
     }
     border.width: {
         if (isSelected && keyboardNavigationActive)
             return 1.5;
         if (historyItem.urgency === 2)
             return 2;
-        return Theme.layerOutlineWidth;
+        return Theme.fluent ? 1 : Theme.layerOutlineWidth;
     }
 
     Behavior on border.color {

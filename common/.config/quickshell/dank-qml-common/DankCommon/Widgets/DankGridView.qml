@@ -18,11 +18,32 @@ GridView {
     pressDelay: 0
     flickableDirection: Flickable.VerticalFlick
 
+    property real targetContentY: contentY
+
+    NumberAnimation {
+        id: smoothScrollAnim
+        target: gridView
+        property: "contentY"
+        duration: 220
+        easing.type: Easing.OutCubic
+        onRunningChanged: {
+            if (!running) {
+                vbar.hideTimer.restart();
+            }
+        }
+    }
+
     onMovementStarted: {
+        smoothScrollAnim.stop();
+        targetContentY = contentY;
         vbar._scrollBarActive = true;
         vbar.hideTimer.stop();
     }
     onMovementEnded: vbar.hideTimer.restart()
+    onFlickStarted: {
+        smoothScrollAnim.stop();
+        targetContentY = contentY;
+    }
 
     WheelHandler {
         id: wheelHandler
@@ -52,7 +73,7 @@ GridView {
             const kind = WheelInput.verticalKind(event);
             const deltaY = event.angleDelta.y;
 
-            if (kind === WheelInput.Kind.wheel) {
+            if (kind === WheelInput.Kind.wheel || kind === WheelInput.Kind.highResWheel) {
                 sessionUsedMouseWheel = true;
                 momentumAnim.running = false;
                 isMomentumActive = false;
@@ -60,34 +81,33 @@ GridView {
                 momentum = 0;
                 momentumVelocity = 0;
 
-                const lines = Math.round(Math.abs(deltaY) / 120);
-                const scrollAmount = (deltaY > 0 ? -lines : lines) * cellHeight * 0.35;
-                let newY = contentY + scrollAmount;
-                newY = Math.max(0, Math.min(contentHeight - height, newY));
+                let scrollAmount = 0;
+                if (kind === WheelInput.Kind.wheel) {
+                    const lines = Math.max(1, Math.round(Math.abs(deltaY) / 120));
+                    scrollAmount = (deltaY > 0 ? -lines : lines) * cellHeight * 0.35;
+                } else {
+                    scrollAmount = -(deltaY / 120) * cellHeight * 1.2;
+                }
+
+                const maxY = Math.max(0, contentHeight - height);
+                const currentTarget = smoothScrollAnim.running ? targetContentY : contentY;
+                let newY = currentTarget + scrollAmount;
+                newY = Math.max(0, Math.min(maxY, newY));
+                targetContentY = newY;
 
                 if (flicking) {
                     cancelFlick();
                 }
 
-                contentY = newY;
-            } else if (kind === WheelInput.Kind.highResWheel) {
-                sessionUsedMouseWheel = true;
-                momentumAnim.running = false;
-                isMomentumActive = false;
-                velocitySamples = [];
-                momentum = 0;
-                momentumVelocity = 0;
-
-                let delta = deltaY / 120 * cellHeight * 1.2;
-                let newY = contentY - delta;
-                newY = Math.max(0, Math.min(contentHeight - height, newY));
-
-                if (flicking) {
-                    cancelFlick();
-                }
-
-                contentY = newY;
+                smoothScrollAnim.stop();
+                smoothScrollAnim.from = contentY;
+                smoothScrollAnim.to = newY;
+                const dist = Math.abs(newY - contentY);
+                smoothScrollAnim.duration = Math.min(280, Math.max(160, dist * 0.7));
+                smoothScrollAnim.start();
             } else if (kind === WheelInput.Kind.touchpad) {
+                smoothScrollAnim.stop();
+                targetContentY = contentY;
                 sessionUsedMouseWheel = false;
                 momentumAnim.running = false;
                 isMomentumActive = false;

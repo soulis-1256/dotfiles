@@ -21,6 +21,21 @@ Flickable {
     pressDelay: 0
     flickableDirection: Flickable.VerticalFlick
 
+    property real targetContentY: contentY
+
+    NumberAnimation {
+        id: smoothScrollAnim
+        target: flickable
+        property: "contentY"
+        duration: 220
+        easing.type: Easing.OutCubic
+        onRunningChanged: {
+            if (!running) {
+                vbar.hideTimer.restart();
+            }
+        }
+    }
+
     WheelHandler {
         id: wheelHandler
 
@@ -49,7 +64,7 @@ Flickable {
             const kind = WheelInput.verticalKind(event);
             const deltaY = event.angleDelta.y;
 
-            if (kind === WheelInput.Kind.wheel) {
+            if (kind === WheelInput.Kind.wheel || kind === WheelInput.Kind.highResWheel) {
                 sessionUsedMouseWheel = true;
                 momentumAnim.running = false;
                 flickable.isMomentumActive = false;
@@ -57,34 +72,33 @@ Flickable {
                 momentum = 0;
                 flickable.momentumVelocity = 0;
 
-                const lines = Math.round(Math.abs(deltaY) / 120);
-                const scrollAmount = (deltaY > 0 ? -lines : lines) * flickable.mouseWheelSpeed;
-                let newY = flickable.contentY + scrollAmount;
-                newY = Math.max(0, Math.min(flickable.contentHeight - flickable.height, newY));
+                let scrollAmount = 0;
+                if (kind === WheelInput.Kind.wheel) {
+                    const lines = Math.max(1, Math.round(Math.abs(deltaY) / 120));
+                    scrollAmount = (deltaY > 0 ? -lines : lines) * flickable.mouseWheelSpeed;
+                } else {
+                    scrollAmount = -(deltaY / 8) * touchpadSpeed;
+                }
+
+                const maxY = Math.max(0, flickable.contentHeight - flickable.height);
+                const currentTarget = smoothScrollAnim.running ? flickable.targetContentY : flickable.contentY;
+                let newY = currentTarget + scrollAmount;
+                newY = Math.max(0, Math.min(maxY, newY));
+                flickable.targetContentY = newY;
 
                 if (flickable.flicking) {
                     flickable.cancelFlick();
                 }
 
-                flickable.contentY = newY;
-            } else if (kind === WheelInput.Kind.highResWheel) {
-                sessionUsedMouseWheel = true;
-                momentumAnim.running = false;
-                flickable.isMomentumActive = false;
-                velocitySamples = [];
-                momentum = 0;
-                flickable.momentumVelocity = 0;
-
-                let delta = deltaY / 8 * touchpadSpeed;
-                let newY = flickable.contentY - delta;
-                newY = Math.max(0, Math.min(flickable.contentHeight - flickable.height, newY));
-
-                if (flickable.flicking) {
-                    flickable.cancelFlick();
-                }
-
-                flickable.contentY = newY;
+                smoothScrollAnim.stop();
+                smoothScrollAnim.from = flickable.contentY;
+                smoothScrollAnim.to = newY;
+                const dist = Math.abs(newY - flickable.contentY);
+                smoothScrollAnim.duration = Math.min(280, Math.max(160, dist * 0.7));
+                smoothScrollAnim.start();
             } else if (kind === WheelInput.Kind.touchpad) {
+                smoothScrollAnim.stop();
+                flickable.targetContentY = flickable.contentY;
                 sessionUsedMouseWheel = false;
                 momentumAnim.running = false;
                 flickable.isMomentumActive = false;
@@ -138,10 +152,16 @@ Flickable {
     }
 
     onMovementStarted: {
+        smoothScrollAnim.stop();
+        targetContentY = flickable.contentY;
         vbar._scrollBarActive = true;
         vbar.hideTimer.stop();
     }
     onMovementEnded: vbar.hideTimer.restart()
+    onFlickStarted: {
+        smoothScrollAnim.stop();
+        targetContentY = flickable.contentY;
+    }
 
     FrameAnimation {
         id: momentumAnim

@@ -61,6 +61,7 @@ Item {
     property color focusedBorderColor: usePopupTransparency ? Style.popupFieldFocusedBorderColor : Style.floatingWindowFieldFocusedBorderColor
     property var transientSurfaceTracker: null
     property bool menuBlurEnabled: true
+    readonly property bool fluent: Style.theme?.fluent ?? false
 
     signal valueChanged(string value)
 
@@ -246,8 +247,17 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         radius: Style.cornerRadius
         color: dropdownArea.containsMouse || dropdownMenu.visible ? root.hoverBackgroundColor : root.backgroundColor
-        border.color: dropdownMenu.visible || root.activeFocus ? root.focusedBorderColor : root.normalBorderColor
-        border.width: dropdownMenu.visible || root.activeFocus ? 2 : 1
+        border.color: root.fluent ? root.normalBorderColor : (dropdownMenu.visible || root.activeFocus ? root.focusedBorderColor : root.normalBorderColor)
+        border.width: root.fluent ? 1 : (dropdownMenu.visible || root.activeFocus ? 2 : 1)
+
+        Rectangle {
+            visible: root.fluent && (dropdownMenu.visible || root.activeFocus)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 2
+            color: root.focusedBorderColor
+        }
 
         MouseArea {
             id: dropdownArea
@@ -400,7 +410,7 @@ Item {
             y: menuContainer.y
             width: menuContainer.width
             height: menuContainer.height
-            radius: Style.cornerRadius
+            radius: Style.overlayCornerRadius
         }
 
         // Full-host dismiss surface (same pattern as launcher/clipboard context menus).
@@ -458,7 +468,7 @@ Item {
                 color: "transparent"
                 border.color: "transparent"
                 border.width: 0
-                radius: Style.cornerRadius
+                radius: Style.overlayCornerRadius
                 opacity: dropdownMenu.visible && !dropdownMenu.closing ? 1 : 0
                 scale: dropdownMenu.visible && !dropdownMenu.closing ? 1 : 0.9
 
@@ -617,7 +627,12 @@ Item {
                             width: ListView.view.width
                             height: 32
                             radius: Style.cornerRadius
-                            color: isSelected ? Style.primaryHover : optionArea.containsMouse ? Style.primaryHoverLight : Style.withAlpha(Style.primaryHoverLight, 0)
+                            color: {
+                                const fluent = Style.theme?.fluent ?? false;
+                                if (fluent)
+                                    return (isSelected || optionArea.containsMouse || isCurrentValue) ? Style.surfaceHover : "transparent";
+                                return isSelected ? Style.primaryHover : optionArea.containsMouse ? Style.primaryHoverLight : Style.withAlpha(Style.primaryHoverLight, 0);
+                            }
 
                             Row {
                                 anchors.left: parent.left

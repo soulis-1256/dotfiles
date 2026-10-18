@@ -714,25 +714,9 @@ hl.layer_rule({
         }
     }
 
-    property bool floatingModeActive: false
-    property var floatingWorkspaces: ({})
     property int windowStateRevision: 0
 
-    function isWorkspaceFloating(id) {
-        if (id === undefined || id === null)
-            return root.floatingModeActive;
-        const map = root.floatingWorkspaces || {};
-        let override = map[String(id)];
-        if (override === undefined)
-            override = map[id];
-        if (override === true)
-            return true;
-        if (override === false)
-            return false;
-        return root.floatingModeActive;
-    }
-
-    function workspaceHasMixedFloatingAndTiled(id) {
+    function workspaceHasFloatingWindow(id) {
         root.windowStateRevision;
         if (id === undefined || id === null)
             return false;
@@ -740,8 +724,6 @@ hl.layer_rule({
         if (!Number.isFinite(want))
             return false;
         const values = Hyprland.toplevels?.values || [];
-        let hasFloating = false;
-        let hasTiled = false;
         for (let i = 0; i < values.length; i++) {
             const t = values[i];
             if (!t)
@@ -753,70 +735,13 @@ hl.layer_rule({
             if (Number(wsId) !== want)
                 continue;
             if (ipc.floating)
-                hasFloating = true;
-            else
-                hasTiled = true;
-            if (hasFloating && hasTiled)
                 return true;
         }
         return false;
     }
 
-    FileView {
-        id: floatingModeFile
-        path: "file:///tmp/hypr_floating_mode"
-        watchChanges: true
-        printErrors: false
-        blockLoading: false
-        preload: true
-
-        function syncFromFile() {
-            const raw = (text() || "").trim();
-            root.floatingModeActive = raw.length > 0 && raw.charAt(0) === "1";
-        }
-
-        onLoaded: syncFromFile()
-        onFileChanged: reload()
-        onLoadFailed: root.floatingModeActive = false
-    }
-
-    FileView {
-        id: floatingWorkspaceFile
-        path: "file:///tmp/hypr_floating_workspaces.json"
-        watchChanges: true
-        printErrors: false
-        blockLoading: false
-        preload: true
-
-        function syncFromFile() {
-            const raw = (text() || "").trim();
-            if (!raw) {
-                root.floatingWorkspaces = {};
-                return;
-            }
-            try {
-                const parsed = JSON.parse(raw);
-                if (parsed && typeof parsed.active === "boolean")
-                    root.floatingModeActive = parsed.active;
-                root.floatingWorkspaces = parsed && parsed.workspaces ? parsed.workspaces : {};
-            } catch (e) {
-                log.warn("failed to parse floating workspace state:", e);
-            }
-        }
-
-        onLoaded: syncFromFile()
-        onFileChanged: reload()
-        onLoadFailed: root.floatingWorkspaces = {}
-    }
-
-    property string currentLayoutMode: "mosaic"
-
     Connections {
         target: Hyprland
-        function onFocusedWorkspaceChanged() {
-            layoutModeFile.reload();
-            floatingModeFile.reload();
-        }
         function onRawEvent(event) {
             switch (event.name) {
             case "changefloatingmode":
@@ -829,47 +754,5 @@ hl.layer_rule({
                 break;
             }
         }
-    }
-
-    FileView {
-        id: layoutModeFile
-        path: "file:///tmp/hypr_layout_mode"
-        watchChanges: true
-        printErrors: false
-        blockLoading: false
-        preload: true
-
-        function syncFromFile() {
-            const raw = (text() || "").trim().toLowerCase();
-            if (raw === "mosaic" || raw === "floating" || raw === "tiled") {
-                root.currentLayoutMode = raw;
-                root.floatingModeActive = (raw === "floating");
-            }
-        }
-
-        onLoaded: syncFromFile()
-        onFileChanged: reload()
-        onLoadFailed: root.currentLayoutMode = root.floatingModeActive ? "floating" : "mosaic"
-    }
-
-    function setLayoutMode(mode) {
-        mode = (mode || "mosaic").toLowerCase();
-        root.currentLayoutMode = mode;
-        root.floatingModeActive = (mode === "floating");
-        Proc.runCommand("hypr-layout-mode-set", ["hyprctl", "eval", `_G.set_workspace_layout_mode("${mode}")`], (output, exitCode) => {
-            if (exitCode !== 0)
-                log.warn("layout mode set failed:", output);
-            layoutModeFile.reload();
-            floatingModeFile.reload();
-        });
-    }
-
-    function toggleFloatingMode() {
-        if (root.currentLayoutMode === "mosaic")
-            setLayoutMode("floating");
-        else if (root.currentLayoutMode === "floating")
-            setLayoutMode("tiled");
-        else
-            setLayoutMode("mosaic");
     }
 }

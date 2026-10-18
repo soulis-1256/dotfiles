@@ -11,7 +11,16 @@ DankFloatingWindow {
     property var profileBrowser: profileBrowserLoader.item
     property var wallpaperBrowser: wallpaperBrowserLoader.item
 
-    Component.onCompleted: MultimediaService.ensureProbed()
+    Component.onCompleted: {
+        MultimediaService.ensureProbed();
+        if (Theme.fluent && fluentCategoryId === "") {
+            var cat = sidebar.categoryForTab(currentTabIndex);
+            if (cat) {
+                fluentCategoryId = cat.id;
+                sidebar.activeCategoryId = cat.id;
+            }
+        }
+    }
 
     function openProfileBrowser(allowStacking) {
         profileBrowserLoader.active = true;
@@ -32,6 +41,24 @@ DankFloatingWindow {
     }
     property alias sidebar: sidebar
     property int currentTabIndex: 10
+    property string fluentCategoryId: ""
+    property bool fluentInPage: false
+    readonly property bool fluentHubVisible: {
+        if (!Theme.fluent || fluentInPage || fluentCategoryId === "")
+            return false;
+        var structure = SettingsTabs.structure;
+        for (var i = 0; i < structure.length; i++) {
+            if (structure[i].id === fluentCategoryId)
+                return !!(structure[i].children && structure[i].children.length > 0);
+        }
+        return false;
+    }
+    readonly property bool fluentCanBack: {
+        if (!Theme.fluent || !fluentInPage)
+            return false;
+        var cat = sidebar.categoryForTab(currentTabIndex);
+        return !!(cat && cat.children && cat.children.length > 0);
+    }
     property bool shouldHaveFocus: visible
     property bool allowFocusOverride: false
     property alias shouldBeVisible: settingsModal.visible
@@ -67,6 +94,23 @@ DankFloatingWindow {
             return;
         currentTabIndex = tabIndex;
         sidebar.autoExpandForTab(tabIndex);
+        if (Theme.fluent) {
+            var cat = sidebar.categoryForTab(tabIndex);
+            if (cat) {
+                fluentCategoryId = cat.id;
+                sidebar.activeCategoryId = cat.id;
+            }
+            fluentInPage = true;
+        }
+    }
+
+    function fluentBack() {
+        var cat = sidebar.categoryForTab(currentTabIndex);
+        if (cat) {
+            fluentCategoryId = cat.id;
+            sidebar.activeCategoryId = cat.id;
+        }
+        fluentInPage = false;
     }
 
     function showWithTab(tabIndex: int) {
@@ -230,7 +274,38 @@ DankFloatingWindow {
                         }
                     }
 
+                    Item {
+                        width: settingsModal.fluentCanBack ? (Theme.iconSize + Theme.spacingS) : 0
+                        height: Theme.iconSize
+                        clip: true
+                        visible: width > 0
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Behavior on width {
+                            NumberAnimation {
+                                duration: (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations) ? 0 : 180
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+
+                        DankActionButton {
+                            anchors.centerIn: parent
+                            circular: false
+                            iconName: I18n.isRtl ? "arrow_forward" : "arrow_back"
+                            iconSize: Theme.iconSize - 4
+                            iconColor: Theme.surfaceText
+                            opacity: settingsModal.fluentCanBack ? 1.0 : 0.0
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations) ? 0 : 150
+                                }
+                            }
+                            onClicked: settingsModal.fluentBack()
+                        }
+                    }
+
                     DankIcon {
+                        visible: !Theme.fluent
                         name: "settings"
                         size: Theme.iconSize
                         color: Theme.primary
@@ -368,7 +443,16 @@ DankFloatingWindow {
                     parentModal: settingsModal
                     currentIndex: settingsModal.currentTabIndex
                     onTabChangeRequested: tabIndex => {
-                        settingsModal.currentTabIndex = tabIndex;
+                        settingsModal.setTabIndex(tabIndex);
+                        if (settingsModal.isCompactMode) {
+                            settingsModal.enableAnimations = true;
+                            settingsModal.menuVisible = false;
+                        }
+                    }
+                    onCategoryHubRequested: categoryId => {
+                        settingsModal.fluentCategoryId = categoryId;
+                        settingsModal.fluentInPage = false;
+                        settingsModal.sidebar.activeCategoryId = categoryId;
                         if (settingsModal.isCompactMode) {
                             settingsModal.enableAnimations = true;
                             settingsModal.menuVisible = false;
@@ -377,17 +461,92 @@ DankFloatingWindow {
                 }
 
                 Item {
+                    id: mainContentArea
                     anchors.left: settingsModal.isCompactMode ? (settingsModal.menuVisible ? sidebar.right : parent.left) : sidebar.right
                     anchors.right: parent.right
                     height: parent.height
                     clip: true
 
-                    SettingsContent {
-                        id: content
-
+                    Item {
+                        id: hubHost
                         anchors.fill: parent
-                        parentModal: settingsModal
-                        currentIndex: settingsModal.currentTabIndex
+                        visible: opacity > 0.001
+                        opacity: settingsModal.fluentHubVisible ? 1.0 : 0.0
+                        transform: Translate {
+                            id: hubTranslate
+                            y: 0
+                        }
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations) ? 0 : (settingsModal.fluentHubVisible ? 220 : 100)
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+
+                        SettingsCategoryHub {
+                            anchors.fill: parent
+                            parentModal: settingsModal
+                            categoryId: settingsModal.fluentCategoryId
+                        }
+                    }
+
+                    Item {
+                        id: contentHost
+                        anchors.fill: parent
+                        visible: opacity > 0.001
+                        opacity: !settingsModal.fluentHubVisible ? 1.0 : 0.0
+                        transform: Translate {
+                            id: contentTranslate
+                            y: 0
+                        }
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations) ? 0 : (!settingsModal.fluentHubVisible ? 220 : 100)
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+
+                        SettingsContent {
+                            id: content
+                            anchors.fill: parent
+                            parentModal: settingsModal
+                            currentIndex: settingsModal.currentTabIndex
+                        }
+                    }
+
+                    NumberAnimation {
+                        id: hubTranslateAnim
+                        target: hubTranslate
+                        property: "y"
+                        from: -16
+                        to: 0
+                        duration: (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations) ? 0 : 220
+                        easing.type: Easing.OutCubic
+                    }
+
+                    NumberAnimation {
+                        id: contentTranslateAnim
+                        target: contentTranslate
+                        property: "y"
+                        from: 20
+                        to: 0
+                        duration: (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations) ? 0 : 220
+                        easing.type: Easing.OutCubic
+                    }
+
+                    Connections {
+                        target: settingsModal
+                        function onFluentHubVisibleChanged() {
+                            if (Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None || !settingsModal.enableAnimations || !settingsModal.visible)
+                                return;
+                            if (settingsModal.fluentHubVisible) {
+                                hubTranslateAnim.restart();
+                            } else {
+                                contentTranslateAnim.restart();
+                            }
+                        }
                     }
                 }
             }

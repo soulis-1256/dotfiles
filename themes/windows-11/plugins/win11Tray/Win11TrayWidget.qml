@@ -1340,6 +1340,11 @@ BasePill {
                 clip: true
                 interactive: root.useSingleLineOverflowPopup && (menuContainer.popupUsesVerticalLine ? contentHeight > height : contentWidth > width)
 
+                SmoothScrollHandler {
+                    id: trayOverflowScroller
+                    stepSize: 60
+                }
+
                 Grid {
                     id: menuGrid
                     anchors.verticalCenter: menuContainer.popupUsesVerticalLine ? undefined : parent.verticalCenter

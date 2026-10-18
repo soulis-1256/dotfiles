@@ -29,18 +29,188 @@ FocusScope {
         pendingPluginId = "";
     }
 
+    readonly property var currentCategory: {
+        if (parentModal && parentModal.sidebar)
+            return parentModal.sidebar.categoryForTab(currentIndex);
+        return null;
+    }
+
+    readonly property var currentSubCategory: {
+        var cat = currentCategory;
+        if (cat && cat.children) {
+            for (var i = 0; i < cat.children.length; i++) {
+                if (cat.children[i].tabIndex === currentIndex)
+                    return cat.children[i];
+            }
+        }
+        return cat;
+    }
+
+    readonly property bool hasParentCategory: {
+        return !!(currentCategory && currentSubCategory && currentCategory !== currentSubCategory);
+    }
+
+    readonly property int contentMaxWidth: {
+        if (currentIndex === 8)
+            return 600;
+        if (currentIndex === 38)
+            return 650;
+        if (currentIndex === 35)
+            return 600;
+        return 550;
+    }
+
+    transform: Translate {
+        id: pageContentTranslate
+        y: 0
+    }
+
+    ParallelAnimation {
+        id: pageTransitionAnim
+
+        NumberAnimation {
+            target: contentAreaItem
+            property: "opacity"
+            from: 0.1
+            to: 1.0
+            duration: Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None ? 0 : 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: pageContentTranslate
+            property: "y"
+            from: 12
+            to: 0
+            duration: Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None ? 0 : 220
+            easing.type: Easing.OutCubic
+        }
+    }
+
     onCurrentIndexChanged: {
         if (currentIndex === 12 && pendingPluginId)
             Qt.callLater(applyPendingPluginSettings);
+        if (Theme.currentAnimationSpeed !== SettingsData.AnimationSpeed.None) {
+            if (!parentModal || !parentModal.fluentHubVisible) {
+                pageTransitionAnim.restart();
+            }
+        }
     }
 
-    Rectangle {
+    Item {
+        id: contentAreaItem
         anchors.fill: parent
-        anchors.leftMargin: Theme.spacingS
-        anchors.rightMargin: (parentModal && parentModal.isCompactMode) ? Theme.spacingS : (32 + Theme.spacingS)
-        anchors.bottomMargin: 0
-        anchors.topMargin: 0
-        color: "transparent"
+
+        Item {
+            id: headerContainer
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: Theme.spacingS
+            anchors.rightMargin: (parentModal && parentModal.isCompactMode) ? Theme.spacingS : (32 + Theme.spacingS)
+            height: subCategoryHeader.implicitHeight + Theme.spacingM
+            z: 20
+            visible: !!currentSubCategory
+
+            Column {
+                id: subCategoryHeader
+                width: Math.min(root.contentMaxWidth, parent.width - Theme.spacingL * 2)
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                spacing: Theme.spacingXS
+
+                Row {
+                    spacing: Theme.spacingXS
+                    visible: root.hasParentCategory
+
+                    Rectangle {
+                        id: breadcrumbParent
+                        height: 22
+                        width: parentRow.implicitWidth + Theme.spacingS * 2
+                        radius: Theme.fluent ? Theme.controlCornerRadius : Theme.cornerRadius
+                        color: parentMouseArea.pressed ? (Theme.fluent ? Theme.fluentSubtlePressed : Theme.surfacePressed) : (parentMouseArea.containsMouse ? (Theme.fluent ? Theme.fluentSubtleFill : Theme.surfaceHover) : "transparent")
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+
+                        Row {
+                            id: parentRow
+                            anchors.centerIn: parent
+                            spacing: Theme.spacingXS
+
+                            StyledText {
+                                text: root.currentCategory ? (root.currentCategory.text || "") : ""
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.weight: Font.Normal
+                                color: parentMouseArea.containsMouse ? Theme.primary : Theme.surfaceVariantText
+                                anchors.verticalCenter: parent.verticalCenter
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: parentMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (Theme.fluent && root.parentModal && typeof root.parentModal.fluentBack === "function") {
+                                    root.parentModal.fluentBack();
+                                } else if (root.parentModal && root.parentModal.sidebar) {
+                                    root.parentModal.sidebar.activateCategory(root.currentCategory);
+                                }
+                            }
+                        }
+                    }
+
+                    DankIcon {
+                        name: I18n.isRtl ? "chevron_left" : "chevron_right"
+                        size: 12
+                        color: Theme.surfaceVariantText
+                        opacity: 0.6
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    StyledText {
+                        text: root.currentSubCategory ? (root.currentSubCategory.text || "") : ""
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.weight: Font.Normal
+                        color: Theme.surfaceVariantText
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                StyledText {
+                    width: parent.width
+                    text: root.currentSubCategory ? (root.currentSubCategory.text || "") : ""
+                    font.pixelSize: 28
+                    font.weight: Font.Normal
+                    color: Theme.surfaceText
+                    anchors.left: parent.left
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        Rectangle {
+            id: tabLoadersArea
+            anchors.top: headerContainer.bottom
+            anchors.topMargin: Theme.spacingS
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: Theme.spacingS
+            anchors.rightMargin: (parentModal && parentModal.isCompactMode) ? Theme.spacingS : (32 + Theme.spacingS)
+            anchors.bottomMargin: 0
+            color: "transparent"
+            clip: true
 
         Loader {
             id: wallpaperLoader
@@ -805,5 +975,6 @@ FocusScope {
                     Qt.callLater(() => item.forceActiveFocus());
             }
         }
+    }
     }
 }

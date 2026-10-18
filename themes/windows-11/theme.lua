@@ -19,6 +19,7 @@ hl.config({
 			size = 5,
 			passes = 2,
 			vibrancy = 0.15,
+			noise = 0.035,
 		},
 		shadow = {
 			enabled = true,

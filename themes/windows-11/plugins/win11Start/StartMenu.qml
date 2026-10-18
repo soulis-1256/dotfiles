@@ -1774,11 +1774,19 @@ Item {
             visible: !root.isSearchMode
             clip: true
 
+            readonly property real folderTransition: (typeof folderOverlayContainer !== "undefined" && folderOverlayContainer)
+                ? folderOverlayContainer.openProgress
+                : (root.openFolderId !== "" ? 1.0 : 0.0)
+            readonly property var openFolderObj: root.openFolderId !== "" ? PinGrid.findFolder([root.group1Tiles, root.group2Tiles], root.openFolderId) : null
+            readonly property string openFolderTitle: (openFolderObj && openFolderObj.name) ? openFolderObj.name : "Folder"
+
             Item {
+                id: titleContainer
                 anchors.left: parent.left
+                anchors.right: allAppsButton.left
+                anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                width: 140
-                height: 24
+                height: 28
 
                 StyledText {
                     id: pinnedTitleText
@@ -1788,7 +1796,7 @@ Item {
                     color: root.winText
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
-                    opacity: Math.max(0, 1.0 - root.allAppsTransition * 1.6)
+                    opacity: Math.max(0, (1.0 - root.allAppsTransition * 1.6) * (1.0 - pinnedHeader.folderTransition))
                     visible: opacity > 0
                     transform: Translate {
                         x: -Math.round(20 * root.allAppsTransition)
@@ -1807,6 +1815,67 @@ Item {
                     visible: opacity > 0
                     transform: Translate {
                         x: Math.round(20 * (1.0 - root.allAppsTransition))
+                    }
+                }
+
+                // Nested category (folder) header
+                Item {
+                    id: folderTitleItem
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 28
+                    opacity: Math.max(0, pinnedHeader.folderTransition * (1.0 - root.allAppsTransition))
+                    visible: opacity > 0
+
+                    Row {
+                        id: folderTitleRow
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+
+                        Rectangle {
+                            id: folderBackBtn
+                            width: 26
+                            height: 26
+                            radius: 4
+                            color: (folderBackMouse.containsMouse || folderTitleMouse.containsMouse) ? root.winHover : "transparent"
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            DankIcon {
+                                name: "chevron_left"
+                                size: 16
+                                color: root.winText
+                                anchors.centerIn: parent
+                            }
+
+                            MouseArea {
+                                id: folderBackMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.closeActiveFolder()
+                            }
+                        }
+
+                        StyledText {
+                            id: folderTitleText
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: pinnedHeader.openFolderTitle
+                            color: folderTitleMouse.containsMouse ? "#ffffff" : root.winText
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                            width: Math.min(implicitWidth, titleContainer.width - folderBackBtn.width - 8)
+
+                            MouseArea {
+                                id: folderTitleMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.closeActiveFolder()
+                            }
+                        }
                     }
                 }
             }
@@ -3149,7 +3218,7 @@ Item {
         Item {
             id: powerFlyout
 
-            width: Math.max(powerSleepRow.implicitWidth, powerRestartRow.implicitWidth, powerShutdownRow.implicitWidth, powerLockRow.implicitWidth) + 8
+            width: Math.max(160, powerSleepRow.implicitWidth, powerRestartRow.implicitWidth, powerShutdownRow.implicitWidth, powerLockRow.implicitWidth) + 8
             height: powerCol.implicitHeight + 8
             x: parent.width - width - 12
             y: footerBar.y - height - 6
@@ -3182,7 +3251,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 4
-                    spacing: 0
+                    spacing: 2
 
                     PowerRow {
                         id: powerSleepRow
@@ -3248,7 +3317,7 @@ Item {
         Item {
             id: userFlyout
 
-            width: Math.max(userAccountRow.implicitWidth, userLockRow.implicitWidth, userSignOutRow.implicitWidth) + 8
+            width: Math.max(170, userAccountRow.implicitWidth, userLockRow.implicitWidth, userSignOutRow.implicitWidth) + 8
             height: userCol.implicitHeight + 8
             x: 16
             y: footerBar.y - height - 6
@@ -3281,7 +3350,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 4
-                    spacing: 0
+                    spacing: 2
 
                     PowerRow {
                         id: userAccountRow
@@ -3561,15 +3630,19 @@ Item {
 
         property string iconName: ""
         property string label: ""
+        property real rowHeight: 32
+        property real iconSize: 16
 
         signal clicked()
 
         width: parent.width
-        height: 38
-        implicitWidth: 12 + prIcon.implicitWidth + 10 + prLabel.implicitWidth + 12
+        height: rowHeight
+        implicitWidth: 12 + prIcon.implicitWidth + 12 + prLabel.implicitWidth + 16
 
         Rectangle {
             anchors.fill: parent
+            anchors.leftMargin: 2
+            anchors.rightMargin: 2
             radius: root.winRadiusSmall
             color: prHover.containsMouse ? root.winHover : "transparent"
         }
@@ -3578,17 +3651,17 @@ Item {
             id: prIcon
 
             anchors.left: parent.left
-            anchors.leftMargin: 12
+            anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             name: pr.iconName
-            size: 18
+            size: pr.iconSize
             color: root.winText
         }
 
         StyledText {
             id: prLabel
             anchors.left: prIcon.right
-            anchors.leftMargin: 10
+            anchors.leftMargin: 12
             anchors.right: parent.right
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter

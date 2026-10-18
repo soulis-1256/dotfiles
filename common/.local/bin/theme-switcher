@@ -246,27 +246,38 @@ def theme_pill_order(theme):
 
 
 def apply_theme_control_center(base, theme):
-    """Stale theme-state snapshots predate the pill reorder and still
-    ship a darkMode tile. Theme chrome owns both of those."""
+    """Theme chrome owns the control-center pill order. Drop the retired
+    layout-mode tile so an old snapshot cannot put it back."""
     if not isinstance(base, dict) or not isinstance(theme, dict):
         return base
 
     order = theme_pill_order(theme)
     if order:
+        order = [group for group in order if group != "floatingMode"]
+
         def fill_order(widget):
             if widget.get("id") == "controlCenterButton":
                 widget["controlCenterGroupOrder"] = list(order)
 
         walk_widgets(base, fill_order)
 
-    theme_tiles = theme.get("controlCenterWidgets")
-    base_tiles = base.get("controlCenterWidgets")
-    if isinstance(theme_tiles, list) and isinstance(base_tiles, list):
-        theme_ids = {tile.get("id") for tile in theme_tiles if isinstance(tile, dict)}
-        if "floatingMode" in theme_ids:
-            for tile in base_tiles:
-                if isinstance(tile, dict) and tile.get("id") == "darkMode":
-                    tile["id"] = "floatingMode"
+    tiles = base.get("controlCenterWidgets")
+    if isinstance(tiles, list):
+        base["controlCenterWidgets"] = [
+            tile for tile in tiles
+            if not (isinstance(tile, dict) and tile.get("id") == "floatingMode")
+        ]
+    base.pop("controlCenterShowFloatingModeIcon", None)
+
+    def drop_layout_mode(widget):
+        if not isinstance(widget, dict):
+            return
+        group_order = widget.get("controlCenterGroupOrder")
+        if isinstance(group_order, list):
+            widget["controlCenterGroupOrder"] = [group for group in group_order if group != "floatingMode"]
+        widget.pop("showFloatingModeIcon", None)
+
+    walk_widgets(base, drop_layout_mode)
     return base
 
 
@@ -652,6 +663,7 @@ LAYOUT_KEYS = [
     "systemTrayIconTintMode",
     "systemTrayIconTintSaturation",
     "systemTrayIconTintStrength",
+    "chromeStyle",
 ]
 # DMS 1.6 omits a key from settings.json when it equals the spec default.
 # For these chrome keys, a missing live value means that default. Only

@@ -112,13 +112,18 @@ Row {
             width: {
                 const natural = Math.max(contentNaturalWidth + root.buttonPadding * 2, root.minButtonWidth);
                 const capped = root._segmentCap > 0 ? Math.min(natural, Math.max(root._segmentCap, root.minButtonWidth)) : natural;
-                return capped + (selected ? 4 : 0);
+                return capped + ((selected && !(Style.theme?.fluent ?? false)) ? 4 : 0);
             }
             height: root.buttonHeight
 
-            color: selected ? Style.buttonBg : (root.usePopupTransparency ? Style.withAlpha(Style.surfaceVariant, Style.popupTransparency) : Style.surfaceVariant)
-            border.color: "transparent"
-            border.width: 0
+            color: {
+                const fluent = Style.theme?.fluent ?? false;
+                if (fluent)
+                    return selected ? Style.primary : (Style.theme?.fluentControlFill ?? Style.surfaceVariant);
+                return selected ? Style.buttonBg : (root.usePopupTransparency ? Style.withAlpha(Style.surfaceVariant, Style.popupTransparency) : Style.surfaceVariant);
+            }
+            border.color: (Style.theme?.fluent ?? false) && !selected ? (Style.theme?.fluentControlStroke ?? "transparent") : "transparent"
+            border.width: (Style.theme?.fluent ?? false) && !selected ? 1 : 0
 
             topLeftRadius: (visualFirst || selected) ? Style.cornerRadius : Math.min(4, Style.cornerRadius)
             bottomLeftRadius: (visualFirst || selected) ? Style.cornerRadius : Math.min(4, Style.cornerRadius)
@@ -216,8 +221,8 @@ Row {
                         id: checkIcon
                         name: "check"
                         size: root.checkIconSize
-                        color: segment.selected ? Style.buttonText : Style.surfaceVariantText
-                        visible: root.checkEnabled && segment.selected
+                        color: segment.selected ? ((Style.theme?.fluent ?? false) ? Style.onPrimary : Style.buttonText) : Style.surfaceVariantText
+                        visible: root.checkEnabled && segment.selected && !(Style.theme?.fluent ?? false)
                         opacity: segment.selected ? 1 : 0
                         scale: segment.selected ? 1 : 0.6
                         anchors.verticalCenter: parent.verticalCenter
@@ -252,7 +257,7 @@ Row {
                         text: typeof modelData === "string" ? modelData : modelData.text || ""
                         font.pixelSize: root.textSize
                         font.weight: segment.selected ? Font.Medium : Font.Normal
-                        color: segment.selected ? Style.buttonText : Style.surfaceVariantText
+                        color: (Style.theme?.fluent ?? false) ? (segment.selected ? Style.onPrimary : Style.surfaceText) : (segment.selected ? Style.buttonText : Style.surfaceVariantText)
                         anchors.verticalCenter: parent.verticalCenter
                         width: capAvailable < 0 ? implicitWidth : Math.min(implicitWidth, capAvailable)
                         maximumLineCount: 1

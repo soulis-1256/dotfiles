@@ -35,6 +35,7 @@ Item {
     property color trackColor: enabled ? Style.outline : Style.outline
     property bool usePopupTransparency: !checkParentDisablesTransparency()
     property real trackOpacity: usePopupTransparency ? Style.popupTransparency : 1.0
+    readonly property bool fluent: Style.theme?.fluent ?? false
 
     signal sliderValueChanged(int newValue)
     signal sliderDragFinished(int finalValue)
@@ -80,23 +81,26 @@ Item {
             property int rightIconWidth: slider.rightIcon.length > 0 ? Style.iconSize : 0
 
             width: parent.width - (leftIconWidth + rightIconWidth + (slider.leftIcon.length > 0 ? Style.spacingM : 0) + (slider.rightIcon.length > 0 ? Style.spacingM : 0))
-            height: 12
-            radius: Style.cornerRadius
-            color: Style.withAlpha(slider.trackColor, slider.trackOpacity)
+            height: slider.fluent ? 4 : 12
+            radius: slider.fluent ? 2 : Style.cornerRadius
+            color: slider.fluent ? Style.withAlpha("#ffffff", sliderMouseArea.containsMouse ? 0.65 : 0.50) : Style.withAlpha(slider.trackColor, slider.trackOpacity)
             anchors.verticalCenter: parent.verticalCenter
             clip: false
 
             StyledRect {
                 id: sliderFill
                 height: parent.height
-                radius: Style.cornerRadius
-                topRightRadius: 0
-                bottomRightRadius: 0
+                radius: slider.fluent ? 2 : Style.cornerRadius
+                topRightRadius: slider.fluent ? 2 : 0
+                bottomRightRadius: slider.fluent ? 2 : 0
                 width: {
                     const range = slider.maximum - slider.minimum;
                     const rawRatio = range === 0 ? 0 : (slider.value - slider.minimum) / range;
                     const ratio = slider.centerMinimum ? (0.5 + rawRatio * 0.5) : rawRatio;
                     const travel = sliderTrack.width - sliderHandle.width;
+                    if (slider.fluent) {
+                        return Math.max(0, Math.min(sliderTrack.width, travel * ratio + sliderHandle.width / 2));
+                    }
                     const handleLeft = travel * ratio;
                     const endPoint = handleLeft - 3;
                     return Math.max(0, Math.min(sliderTrack.width, endPoint));
@@ -109,9 +113,9 @@ Item {
 
                 property bool active: sliderMouseArea.containsMouse || sliderMouseArea.pressed || slider.isDragging
 
-                width: 4
-                height: 20
-                radius: Style.cornerRadius
+                width: slider.fluent ? 14 : 4
+                height: slider.fluent ? 14 : 20
+                radius: slider.fluent ? 7 : Style.cornerRadius
                 x: {
                     const range = slider.maximum - slider.minimum;
                     const rawRatio = range === 0 ? 0 : (slider.value - slider.minimum) / range;
@@ -120,15 +124,26 @@ Item {
                     return Math.max(0, Math.min(travel, travel * ratio));
                 }
                 anchors.verticalCenter: parent.verticalCenter
-                color: slider.enabled ? Style.primary : Style.withAlpha(Style.onSurface, 0.12)
-                border.width: 0
-                border.color: slider.thumbOutlineColor
+                color: slider.fluent ? (slider.enabled ? Style.primary : Style.withAlpha(Style.onSurface, 0.38)) : (slider.enabled ? Style.primary : Style.withAlpha(Style.onSurface, 0.12))
+                border.width: slider.fluent ? 1 : 0
+                border.color: slider.fluent ? Style.withAlpha("#ffffff", 0.35) : slider.thumbOutlineColor
+
+                ElevationShadow {
+                    anchors.fill: parent
+                    z: -1
+                    targetRadius: sliderHandle.radius
+                    targetColor: "transparent"
+                    shadowBlurPx: 6
+                    shadowOffsetY: 2
+                    shadowColor: Qt.rgba(0, 0, 0, 0.60)
+                    shadowEnabled: true
+                }
 
                 StyledRect {
                     anchors.fill: parent
-                    radius: Style.cornerRadius
+                    radius: parent.radius
                     color: Style.onPrimary
-                    opacity: slider.enabled ? (sliderMouseArea.pressed ? 0.16 : (sliderMouseArea.containsMouse ? 0.08 : 0)) : 0
+                    opacity: !slider.fluent && slider.enabled ? (sliderMouseArea.pressed ? 0.16 : (sliderMouseArea.containsMouse ? 0.08 : 0)) : 0
                     visible: opacity > 0
                 }
 
@@ -180,18 +195,18 @@ Item {
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
                     onPressedChanged: {
-                        if (pressed && slider.enabled) {
+                        if (pressed && slider.enabled && !slider.fluent) {
                             ripple.start();
                         }
                     }
                 }
 
-                scale: active ? 1.05 : 1.0
+                scale: slider.fluent ? (sliderMouseArea.pressed || slider.isDragging ? 0.85 : (sliderMouseArea.containsMouse ? 1.15 : 1.0)) : (active ? 1.05 : 1.0)
 
                 Behavior on scale {
                     NumberAnimation {
-                        duration: Style.shortDuration
-                        easing.type: Style.standardEasing
+                        duration: 120
+                        easing.type: Easing.OutCubic
                     }
                 }
             }

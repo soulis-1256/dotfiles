@@ -47,8 +47,8 @@ Rectangle {
     width: parent ? parent.width : 400
     height: expanded ? (expandedContent.height + cardPadding * 2) : (baseCardHeight + collapsedContent.extraHeight)
     readonly property real targetHeight: expanded ? (expandedContent.height + cardPadding * 2) : (baseCardHeight + collapsedContent.extraHeight)
-    radius: connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius
-    scale: lightweight ? 1 : (cardHoverHandler.hovered ? 1.004 : 1.0) * listLevelAdjacentScaleInfluence
+    radius: Theme.fluent ? Theme.overlayCornerRadius : (connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius)
+    scale: (lightweight || Theme.fluent) ? 1 : (cardHoverHandler.hovered ? 1.004 : 1.0) * listLevelAdjacentScaleInfluence
     readonly property bool shadowsAllowed: !lightweight && Theme.elevationEnabled && Quickshell.env("DMS_DISABLE_LAYER") !== "true" && Quickshell.env("DMS_DISABLE_LAYER") !== "1"
     readonly property var shadowElevation: Theme.elevationLevel1
     readonly property real baseShadowBlurPx: (shadowElevation && shadowElevation.blurPx !== undefined) ? shadowElevation.blurPx : 4
@@ -166,7 +166,7 @@ Rectangle {
         if (notificationGroup?.latestNotification?.urgency === NotificationUrgency.Critical) {
             return Theme.primarySelected;
         }
-        return Theme.outlineMedium;
+        return Theme.fluent ? Theme.fluentCardStroke : Theme.outlineMedium;
     }
     border.width: {
         if (isGroupSelected && keyboardNavigationActive) {
@@ -178,7 +178,7 @@ Rectangle {
         if (notificationGroup?.latestNotification?.urgency === NotificationUrgency.Critical) {
             return 2;
         }
-        return Theme.layerOutlineWidth;
+        return Theme.fluent ? 1 : Theme.layerOutlineWidth;
     }
     clip: _clipAnimatedContent
 

@@ -80,8 +80,7 @@ function resetToDefault() {
         {"id": "bluetooth", "enabled": true, "width": 50},
         {"id": "audioOutput", "enabled": true, "width": 50},
         {"id": "audioInput", "enabled": true, "width": 50},
-        {"id": "nightMode", "enabled": true, "width": 50},
-        {"id": "floatingMode", "enabled": true, "width": 50}
+        {"id": "nightMode", "enabled": true, "width": 50}
     ]
     SettingsData.set("controlCenterWidgets", defaultWidgets)
 }

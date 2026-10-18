@@ -103,6 +103,7 @@ Rectangle {
                 expandedSection: root.host.expandedSection
                 expandedWidgetIndex: root.host.expandedWidgetIndex
                 expandedWidgetData: root.host.expandedWidgetData
+                detailAnimationsEnabled: !root.host.suppressDetailAnimation
                 model: widgetModel
                 bluetoothCodecSelector: bluetoothCodecSelector
                 audioPortSelector: audioPortSelector

@@ -12,19 +12,9 @@ hl.unbind("SUPER + SHIFT + parenright")
 hl.bind("SUPER + SHIFT + parenright", hl.dsp.window.move({ workspace = "10" }), { description = "Move to workspace 10" })
 hl.unbind("SUPER + T")
 hl.unbind("SUPER + grave")
--- Crowded mosaic workspaces spill: switch-then-wait-then-spawn via mosaic_exec
--- so the terminal maps directly onto the hole (no open-here-switch-move flash).
--- Falls back to plain exec when mosaic is unavailable (e.g. hyprctl reload race).
-local function spawn_ghostty()
-	if _G.mosaic_exec then
-		_G.mosaic_exec("ghostty")
-	else
-		hl.dispatch(hl.dsp.exec_cmd("ghostty"))
-	end
-end
-hl.bind("SUPER + grave", spawn_ghostty, { description = "Terminal (ghostty)" })
+hl.bind("SUPER + grave", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
 hl.unbind("SUPER + asciitilde")
-hl.bind("SUPER + asciitilde", spawn_ghostty, { description = "Terminal (ghostty)" })
+hl.bind("SUPER + asciitilde", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
 local function addr_of(w)
 	if not w or not w.address then
 		return nil
@@ -86,89 +76,7 @@ hl.bind("ALT + TAB", function()
 	alt_tab(false)
 end, { description = "Switch to next window" })
 local function toggle_floating()
-	local w = hl.get_active_window()
-	if not w then
-		hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
-		return
-	end
-	local ws_id = w.workspace and w.workspace.id
-	if not ws_id then
-		local aws = hl.get_active_workspace()
-		ws_id = aws and aws.id
-	end
-	local is_mosaic = false
-	pcall(function()
-		if _G.mosaic_is_active then
-			is_mosaic = _G.mosaic_is_active(ws_id)
-		elseif _G.mosaic_mode and _G.mosaic_mode.is_active then
-			is_mosaic = _G.mosaic_mode.is_active(ws_id)
-		end
-	end)
-
-	if is_mosaic then
-		local was_floating = w.floating
-		local addr = nil
-		pcall(function()
-			if w.address then
-				addr = tostring(w.address):lower()
-				if not addr:find("^0x") then addr = "0x" .. addr end
-			end
-		end)
-
-		if not was_floating then
-			-- Tiling -> Floating
-			_G.mosaic_explicit_floats = _G.mosaic_explicit_floats or {}
-			_G.mosaic_user_tiled = _G.mosaic_user_tiled or {}
-			if addr then
-				_G.mosaic_explicit_floats[addr] = true
-				_G.mosaic_user_tiled[addr] = nil
-			end
-			hl.dispatch(hl.dsp.window.float({ window = w, action = "set" }))
-			if _G.mosaic_enforce_float_geometry then
-				_G.mosaic_enforce_float_geometry(w)
-				hl.timer(function()
-					if not addr or not _G.mosaic_enforce_float_geometry then
-						return
-					end
-					local ok, live = pcall(function()
-						return hl.get_window("address:" .. addr)
-					end)
-					if ok and live then
-						_G.mosaic_enforce_float_geometry(live)
-					end
-				end, { timeout = 50, type = "oneshot" })
-			end
-			-- Poke mosaic to retile remaining tiled windows immediately
-			hl.timer(function()
-				if _G.mosaic_poke_workspace then
-					_G.mosaic_poke_workspace(ws_id)
-				elseif _G.mosaic_apply then
-					_G.mosaic_apply(ws_id)
-				end
-			end, { timeout = 30, type = "oneshot" })
-		else
-			-- Floating -> Tiling. Remember this so the layout does not
-			-- immediately pull a utility back out of the grid.
-			_G.mosaic_user_tiled = _G.mosaic_user_tiled or {}
-			if addr then
-				_G.mosaic_user_tiled[addr] = true
-				if _G.mosaic_explicit_floats then
-					_G.mosaic_explicit_floats[addr] = nil
-				end
-			end
-			hl.dispatch(hl.dsp.window.float({ window = w, action = "unset" }))
-			-- Poke mosaic to retile with the newly tiled window
-			hl.timer(function()
-				if _G.mosaic_poke_workspace then
-					_G.mosaic_poke_workspace(ws_id)
-				elseif _G.mosaic_apply then
-					_G.mosaic_apply(ws_id)
-				end
-			end, { timeout = 40, type = "oneshot" })
-		end
-	else
-		hl.dispatch(hl.dsp.window.float({ window = w, action = "toggle" }))
-	end
+	hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
 end
 
 hl.unbind("SUPER + F")
@@ -195,59 +103,10 @@ hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/soulis/.local/bin/dms-game-ove
 
 hl.unbind("SUPER + z")
 hl.unbind("SUPER + Z")
-local function toggle_floating()
-	if _G.floating_mode_toggle then
-		_G.floating_mode_toggle()
-	end
-end
-hl.bind("SUPER + z", toggle_floating, { description = "Toggle global floating mode" })
-
 hl.unbind("SUPER + x")
 hl.unbind("SUPER + X")
-local function toggle_workspace_floating()
-	if _G.workspace_floating_toggle then
-		_G.workspace_floating_toggle()
-	end
-end
-hl.bind("SUPER + x", toggle_workspace_floating, { description = "Toggle workspace floating mode" })
-
 hl.unbind("SUPER + m")
 hl.unbind("SUPER + M")
-local function toggle_mosaic()
-	if _G.mosaic_toggle then
-		_G.mosaic_toggle()
-	end
-end
-hl.bind("SUPER + m", toggle_mosaic, { description = "Toggle workspace mosaic layout mode" })
 
-hl.unbind("SUPER + up")
-hl.unbind("SUPER + down")
-hl.bind("SUPER + up", function()
-	if _G.floating_mode_maximize_active then
-		_G.floating_mode_maximize_active()
-	end
-end, { description = "Maximize window (floating mode)" })
-hl.bind("SUPER + down", function()
-	if _G.floating_mode_restore_active then
-		_G.floating_mode_restore_active()
-	end
-end, { description = "Restore window size (floating mode)" })
-
--- Mosaic Super+RMB resize: mosaic_resize_begin dispatches window.resize()
--- so Hyprland shows the native drag cursor and grabs pointer motion for both
--- tiled and floating windows, while lua:mosaic tracks the cell splits for tiled mode.
-hl.unbind("SUPER + mouse:273")
-hl.bind("SUPER + mouse:273", function()
-	if _G.mosaic_resize_begin then
-		_G.mosaic_resize_begin()
-	else
-		hl.dispatch(hl.dsp.window.resize())
-	end
-end, { mouse = true, description = "Resize window" })
-hl.bind("SUPER + mouse:273", function()
-	if _G.mosaic_resize_end then
-		_G.mosaic_resize_end()
-	end
-end, { mouse = true, release = true, description = "Resize window end" })
 
 

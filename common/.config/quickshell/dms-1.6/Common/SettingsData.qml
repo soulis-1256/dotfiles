@@ -417,7 +417,6 @@ Singleton {
     property bool controlCenterShowScreenSharingIcon: true
     property bool controlCenterShowIdleInhibitorIcon: false
     property bool controlCenterShowDoNotDisturbIcon: false
-    property bool controlCenterShowFloatingModeIcon: true
     property bool showPrivacyButton: true
     property bool privacyShowMicIcon: false
     property bool privacyShowCameraIcon: false
@@ -458,11 +457,6 @@ Singleton {
             "id": "nightMode",
             "enabled": true,
             "width": 50
-        },
-        {
-            "id": "floatingMode",
-            "enabled": true,
-            "width": 50
         }
     ]
 
@@ -483,6 +477,7 @@ Singleton {
     property bool workspaceActiveAppHighlightEnabled: false
     property string workspaceIndicatorStyle: "full"
     property string barHoverStyle: "full"
+    property string chromeStyle: "material"
     property string workspaceColorMode: "default"
     property string workspaceFocusedCustomColor: "#6750A4"
     property string workspaceOccupiedColorMode: "none"

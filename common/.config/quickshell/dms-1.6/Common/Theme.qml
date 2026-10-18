@@ -444,9 +444,9 @@ Singleton {
 
     property color secondaryHover: withAlpha(secondary, 0.08)
 
-    property color surfaceHover: withAlpha(surfaceVariant, 0.08)
-    property color surfacePressed: withAlpha(surfaceVariant, 0.12)
-    property color surfaceSelected: withAlpha(surfaceVariant, 0.15)
+    property color surfaceHover: fluent ? fluentSubtleFill : withAlpha(surfaceVariant, 0.08)
+    property color surfacePressed: fluent ? fluentSubtlePressed : withAlpha(surfaceVariant, 0.12)
+    property color surfaceSelected: fluent ? fluentSubtleFill : withAlpha(surfaceVariant, 0.15)
     property color surfaceLight: withAlpha(surfaceVariant, transparentBlurLayers ? 0.3 : 0.1)
     property color surfaceVariantAlpha: withAlpha(surfaceVariant, 0.2)
 
@@ -491,9 +491,9 @@ Singleton {
             return Math.max(foregroundLayerTransparency, 0.62);
         return popupTransparency;
     }
-    readonly property color popupFieldColor: withAlpha(surfaceContainerHigh, popupFieldAlpha)
-    readonly property color popupFieldBorderColor: withAlpha(outline, blurLayersActive ? 0.16 : layerOutlineOpacity)
-    readonly property color popupFieldFocusedBorderColor: withAlpha(primary, blurLayersActive ? 0.72 : 1.0)
+    readonly property color popupFieldColor: fluent ? fluentFieldFill : withAlpha(surfaceContainerHigh, popupFieldAlpha)
+    readonly property color popupFieldBorderColor: fluent ? fluentControlStroke : withAlpha(outline, blurLayersActive ? 0.16 : layerOutlineOpacity)
+    readonly property color popupFieldFocusedBorderColor: fluent ? primary : withAlpha(primary, blurLayersActive ? 0.72 : 1.0)
     readonly property color floatingWindowFieldBorderColor: popupFieldBorderColor
     readonly property color floatingWindowFieldFocusedBorderColor: popupFieldFocusedBorderColor
     property color surfaceTextHover: withAlpha(surfaceText, 0.08)
@@ -570,8 +570,8 @@ Singleton {
     }
 
     readonly property color ccTileInactiveBg: transparentBlurLayers ? withAlpha(surfaceContainerHigh, 0.16) : (foregroundLayers ? withAlpha(surfaceContainerHigh, blurLayersActive ? Math.min(popupTransparency, 0.24) : popupTransparency) : withAlpha(surfaceContainer, 0))
-    readonly property color ccPillInactiveBg: transparentBlurLayers ? withAlpha(surfaceContainerHigh, 0.08) : nestedSurface
-    readonly property color ccPillInactiveHoverBg: transparentBlurLayers ? withAlpha(primary, 0.10) : primaryPressed
+    readonly property color ccPillInactiveBg: fluent ? fluentControlFill : (transparentBlurLayers ? withAlpha(surfaceContainerHigh, 0.08) : nestedSurface)
+    readonly property color ccPillInactiveHoverBg: fluent ? fluentControlFillHover : (transparentBlurLayers ? withAlpha(primary, 0.10) : primaryPressed)
     readonly property color ccSliderTrackColor: transparentBlurLayers ? surfaceText : surfaceContainerHigh
     readonly property real ccSliderTrackOpacity: transparentBlurLayers ? 0.18 : popupTransparency
 
@@ -589,6 +589,8 @@ Singleton {
     }
 
     readonly property color ccTileInactiveIcon: {
+        if (fluent)
+            return surfaceText;
         switch (SettingsData.controlCenterTileColorMode) {
         case "primaryContainer":
             return primary;
@@ -1143,6 +1145,19 @@ Singleton {
         }
         return typeof SettingsData !== "undefined" ? SettingsData.cornerRadius : 12;
     }
+
+    // WinUI chrome. Material themes leave every token on the values above.
+    readonly property bool fluent: typeof SettingsData !== "undefined" && SettingsData.chromeStyle === "fluent"
+    readonly property real controlCornerRadius: fluent ? 4 : cornerRadius
+    readonly property real overlayCornerRadius: fluent ? Math.max(8, cornerRadius) : cornerRadius
+    readonly property color fluentControlFill: isLightMode ? Qt.rgba(1, 1, 1, 0.70) : Qt.rgba(1, 1, 1, 0.0605)
+    readonly property color fluentControlFillHover: isLightMode ? Qt.rgba(0.961, 0.961, 0.961, 0.50) : Qt.rgba(1, 1, 1, 0.0837)
+    readonly property color fluentControlStroke: isLightMode ? Qt.rgba(0, 0, 0, 0.0578) : Qt.rgba(1, 1, 1, 0.0933)
+    readonly property color fluentSubtleFill: isLightMode ? Qt.rgba(0, 0, 0, 0.0373) : Qt.rgba(1, 1, 1, 0.0605)
+    readonly property color fluentSubtlePressed: isLightMode ? Qt.rgba(0, 0, 0, 0.0241) : Qt.rgba(1, 1, 1, 0.0419)
+    readonly property color fluentCardFill: isLightMode ? Qt.rgba(1, 1, 1, 0.70) : Qt.rgba(1, 1, 1, 0.051)
+    readonly property color fluentCardStroke: isLightMode ? Qt.rgba(0, 0, 0, 0.0578) : Qt.rgba(1, 1, 1, 0.0837)
+    readonly property color fluentFieldFill: isLightMode ? Qt.rgba(1, 1, 1, 0.70) : Qt.rgba(0, 0, 0, 0.30)
 
     property string fontFamily: {
         if (typeof SessionData !== "undefined" && SessionData.isGreeterMode && typeof GreetdSettings !== "undefined") {

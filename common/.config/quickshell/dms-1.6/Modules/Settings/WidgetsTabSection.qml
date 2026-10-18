@@ -2297,16 +2297,6 @@ Column {
                 ]
             },
             {
-                id: "floatingMode",
-                rows: [
-                    {
-                        icon: "layers",
-                        label: I18n.tr("Floating Mode"),
-                        setting: "showFloatingModeIcon"
-                    }
-                ]
-            },
-            {
                 id: "microphone",
                 rows: [
                     {
@@ -2547,8 +2537,6 @@ Column {
                                 return wd?.showAudioIcon ?? SettingsData.controlCenterShowAudioIcon;
                             case "showAudioPercent":
                                 return wd?.showAudioPercent ?? SettingsData.controlCenterShowAudioPercent;
-                            case "showFloatingModeIcon":
-                                return wd?.showFloatingModeIcon ?? SettingsData.controlCenterShowFloatingModeIcon;
                             case "showMicIcon":
                                 return wd?.showMicIcon ?? SettingsData.controlCenterShowMicIcon;
                             case "showMicPercent":

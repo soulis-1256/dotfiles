@@ -21,22 +21,32 @@ Rectangle {
     signal expandClicked
     signal wheelEvent(var wheelEvent)
 
+    readonly property bool fluent: Theme.fluent
+    readonly property bool showChevron: fluent && showExpandArea
+
     width: parent ? parent.width : 220
     height: 60
-    radius: Theme.cornerRadius
+    radius: fluent ? Theme.controlCornerRadius : Theme.cornerRadius
 
     readonly property color _containerBg: Theme.ccPillInactiveBg
 
     color: {
+        if (fluent) {
+            if (isActive)
+                return _tileBgActive;
+            if (bodyMouse.containsMouse || tileMouse.containsMouse)
+                return Theme.fluentControlFillHover;
+            return Theme.fluentControlFill;
+        }
         const baseColor = bodyMouse.containsMouse ? Theme.ccPillInactiveHoverBg : _containerBg;
         return baseColor;
     }
-    border.color: Theme.outlineMedium
-    border.width: Theme.layerOutlineWidth
+    border.color: fluent ? (isActive ? "transparent" : Theme.fluentControlStroke) : Theme.outlineMedium
+    border.width: fluent ? (isActive ? 0 : 1) : Theme.layerOutlineWidth
     antialiasing: true
 
-    readonly property color _labelPrimary: Theme.surfaceText
-    readonly property color _labelSecondary: Theme.surfaceVariantText
+    readonly property color _labelPrimary: (fluent && isActive) ? _tileIconActive : Theme.surfaceText
+    readonly property color _labelSecondary: (fluent && isActive) ? Theme.withAlpha(_tileIconActive, 0.8) : Theme.surfaceVariantText
     readonly property color _tileBgActive: Theme.ccTileActiveBg
     readonly property color _tileBgInactive: {
         return Theme.ccTileInactiveBg;
@@ -75,19 +85,19 @@ Rectangle {
         id: row
         anchors.fill: parent
         anchors.leftMargin: _padH
-        anchors.rightMargin: Theme.spacingM
+        anchors.rightMargin: showChevron ? 36 : Theme.spacingM
         spacing: Theme.spacingM
 
         Rectangle {
             id: iconTile
             z: 1
-            width: _tileSize
-            height: _tileSize
+            width: root.fluent ? Theme.iconSize : _tileSize
+            height: root.fluent ? Theme.iconSize : _tileSize
             anchors.verticalCenter: parent.verticalCenter
-            radius: _tileRadius
-            color: isActive ? _tileBgActive : _tileBgInactive
-            border.color: isActive ? _tileRingActive : Theme.outlineMedium
-            border.width: isActive ? 1 : Theme.layerOutlineWidth
+            radius: root.fluent ? 0 : _tileRadius
+            color: root.fluent ? "transparent" : (isActive ? _tileBgActive : _tileBgInactive)
+            border.color: root.fluent ? "transparent" : (isActive ? _tileRingActive : Theme.outlineMedium)
+            border.width: root.fluent ? 0 : (isActive ? 1 : Theme.layerOutlineWidth)
             antialiasing: true
 
             Rectangle {
@@ -109,7 +119,7 @@ Rectangle {
                 anchors.centerIn: parent
                 name: iconName
                 size: Theme.iconSize
-                color: isActive ? _tileIconActive : _tileIconInactive
+                color: isActive ? _tileIconActive : (root.fluent ? Theme.surfaceText : _tileIconInactive)
 
                 DankBlink {
                     target: pillIcon
@@ -171,6 +181,8 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onEntered: {
+                    if (root.fluent)
+                        return;
                     rightHoverOverlay.visible = true;
                     rightHoverOverlay.opacity = 0.08;
                 }
@@ -181,14 +193,57 @@ Rectangle {
                 onPressed: mouse => {
                     const pos = mapToItem(root, mouse.x, mouse.y);
                     bodyRipple.trigger(pos.x, pos.y);
-                    rightHoverOverlay.opacity = 0.16;
+                    if (!root.fluent)
+                        rightHoverOverlay.opacity = 0.16;
                 }
                 onReleased: rightHoverOverlay.opacity = containsMouse ? 0.08 : 0.0
-                onClicked: root.expandClicked()
+                onClicked: {
+                    if (root.fluent)
+                        root.toggled();
+                    else
+                        root.expandClicked();
+                }
                 onWheel: function (ev) {
                     root.wheelEvent(ev);
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: chevronSegment
+        visible: root.showChevron
+        z: 2
+        width: 36
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        color: chevronMouse.containsMouse ? Theme.withAlpha(root.isActive ? root._tileIconActive : Theme.surfaceText, 0.1) : "transparent"
+
+        Rectangle {
+            width: 1
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 10
+            anchors.bottomMargin: 10
+            color: root.isActive ? Theme.withAlpha(root._tileIconActive, 0.35) : Theme.fluentControlStroke
+        }
+
+        DankIcon {
+            anchors.centerIn: parent
+            anchors.horizontalCenterOffset: 1
+            name: I18n.isRtl ? "chevron_left" : "chevron_right"
+            size: Theme.iconSize - 8
+            color: root.isActive ? root._tileIconActive : Theme.surfaceVariantText
+        }
+
+        MouseArea {
+            id: chevronMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.expandClicked()
         }
     }
 

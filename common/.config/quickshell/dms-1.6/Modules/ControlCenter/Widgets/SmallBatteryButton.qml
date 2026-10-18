@@ -19,6 +19,8 @@ Rectangle {
     radius: {
         if (Theme.cornerRadius === 0)
             return 0;
+        if (Theme.fluent)
+            return Theme.controlCornerRadius;
         return isActive ? Theme.cornerRadius : Theme.cornerRadius + 4;
     }
 
