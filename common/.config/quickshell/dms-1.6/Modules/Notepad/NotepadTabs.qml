@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -20,6 +19,57 @@ Column {
     signal tabSwitched(int tabIndex)
     signal tabClosed(int tabIndex)
     signal newTabRequested
+
+    function ensureTabVisible(index) {
+        const item = tabRepeater.itemAt(index);
+        const maxX = Math.max(0, tabScroll.contentWidth - tabScroll.width);
+        if (!item) {
+            tabScroll.contentX = Math.max(0, Math.min(maxX, tabScroll.contentX));
+            return;
+        }
+        const left = item.x;
+        const right = item.x + item.width;
+        let next = tabScroll.contentX;
+        if (left < next)
+            next = left;
+        else if (right > next + tabScroll.width)
+            next = right - tabScroll.width;
+        tabScroll.contentX = Math.max(0, Math.min(maxX, next));
+    }
+
+    function _scrollTabs(event) {
+        const px = event.pixelDelta.x;
+        const py = event.pixelDelta.y;
+        let delta = 0;
+        if (px !== 0 || py !== 0) {
+            const primary = Math.abs(px) >= Math.abs(py) ? px : py;
+            delta = -primary;
+        } else {
+            const ax = event.angleDelta.x;
+            const ay = event.angleDelta.y;
+            const ang = Math.abs(ax) >= Math.abs(ay) ? ax : ay;
+            if (ang === 0)
+                return;
+            delta = -(ang / 120) * root.tabItemSize;
+        }
+        if (delta === 0)
+            return;
+        if (tabScroll.flicking)
+            tabScroll.cancelFlick();
+        const maxX = Math.max(0, tabScroll.contentWidth - tabScroll.width);
+        tabScroll.contentX = Math.max(0, Math.min(maxX, tabScroll.contentX + delta));
+        event.accepted = true;
+    }
+
+    Connections {
+        target: NotepadStorageService
+        function onCurrentTabIndexChanged() {
+            Qt.callLater(() => root.ensureTabVisible(NotepadStorageService.currentTabIndex));
+        }
+        function onTabsChanged() {
+            Qt.callLater(() => root.ensureTabVisible(NotepadStorageService.currentTabIndex));
+        }
+    }
 
     function commitRename(index, newTitle) {
         if (index >= 0)
@@ -51,19 +101,34 @@ Column {
             return Math.max(128, Math.min(300, raw));
         }
 
-        ScrollView {
+        Flickable {
             id: tabScroll
             width: parent.width - newTabButton.width - Theme.spacingXS
             height: parent.height
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.HorizontalFlick
+            contentWidth: tabStrip.implicitWidth
+            contentHeight: height
+            interactive: true
 
-            ScrollBar.horizontal.visible: false
-            ScrollBar.vertical.visible: false
+            onWidthChanged: Qt.callLater(() => root.ensureTabVisible(NotepadStorageService.currentTabIndex))
+            Component.onCompleted: Qt.callLater(() => root.ensureTabVisible(NotepadStorageService.currentTabIndex))
+
+            // The strip only overflows sideways. A vertical wheel would
+            // otherwise do nothing, and the scrollbar was hidden.
+            WheelHandler {
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: event => root._scrollTabs(event)
+            }
 
             Row {
+                id: tabStrip
                 spacing: Theme.spacingXS
+                height: parent.height
 
                 Repeater {
+                    id: tabRepeater
                     model: NotepadStorageService.tabs
 
                     delegate: Item {

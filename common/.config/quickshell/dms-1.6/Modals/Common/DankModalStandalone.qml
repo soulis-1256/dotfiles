@@ -44,6 +44,10 @@ Item {
     property bool shouldBeVisible: false
     property bool isClosing: false
     property bool shouldHaveFocus: shouldBeVisible
+    // Stays false for one turn after the surface maps so the layer comes up
+    // with keyboard None. OnDemand on map makes Hyprland steal the pointer,
+    // and a grab that starts while the mode is None never receives keys.
+    property bool _keyboardReady: false
     property bool allowFocusOverride: false
     property bool allowStacking: false
     property bool keepContentLoaded: false
@@ -89,19 +93,30 @@ Item {
         }
     }
 
+    function _armKeyboard() {
+        if (!root.shouldBeVisible)
+            return;
+        root.shouldHaveFocus = Qt.binding(() => root.shouldBeVisible);
+        root._keyboardReady = true;
+    }
+
     function _finishOpen() {
         ModalManager.openModal(modalHandle);
+        // Break the shouldHaveFocus binding before the window maps, or the
+        // surface appears already OnDemand and the pointer is stolen.
+        root._keyboardReady = false;
+        root.shouldHaveFocus = false;
         shouldBeVisible = true;
         if (!useSingleWindow)
             clickCatcher.visible = true;
         contentWindow.visible = true;
         opened();
-        shouldHaveFocus = false;
-        Qt.callLater(() => shouldHaveFocus = Qt.binding(() => shouldBeVisible));
+        Qt.callLater(() => root._armKeyboard());
     }
 
     function close() {
         isClosing = true;
+        root._keyboardReady = false;
         shouldBeVisible = false;
         shouldHaveFocus = false;
         ModalManager.closeModal(modalHandle);
@@ -111,6 +126,7 @@ Item {
     function instantClose() {
         animationsEnabled = false;
         isClosing = false;
+        root._keyboardReady = false;
         shouldBeVisible = false;
         shouldHaveFocus = false;
         ModalManager.closeModal(modalHandle);
@@ -276,7 +292,7 @@ Item {
             "error": true
         })
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(shouldHaveFocus, customKeyboardFocus)
+        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(shouldHaveFocus && root._keyboardReady, customKeyboardFocus)
 
         anchors {
             left: true

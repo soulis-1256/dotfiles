@@ -278,8 +278,15 @@ Item {
     }
 
     DankFocusGrab {
+        id: launcherKeyboardGrab
+        retryStartup: true
         clientWindows: [launcherWindow].concat(transientSurfaces.focusWindows)
         wanted: KeyboardFocus.wantsGrab(root.keyboardActive, null)
+        onKeyboardGrabbed: {
+            const field = root.spotlightContent?.searchField ?? null;
+            if (root.keyboardActive && field)
+                KeyboardFocus.focusSoon(field);
+        }
     }
 
     Connections {

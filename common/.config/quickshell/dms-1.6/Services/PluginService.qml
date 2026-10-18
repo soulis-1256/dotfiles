@@ -93,6 +93,38 @@ Singleton {
         Qt.callLater(checkPluginDirectoryExists);
     }
 
+    // Manifests are often parsed before plugin_settings.json is loaded or
+    // rewritten by a theme switch. The enabled flag is only checked once
+    // unless this runs again when those settings change.
+    Connections {
+        target: SettingsData
+        function onPluginSettingsChanged() {
+            root._syncEnabledPlugins();
+        }
+    }
+
+    function _pluginShouldRun(pluginId) {
+        const plugin = availablePlugins[pluginId];
+        if (!plugin)
+            return false;
+        const surfaces = plugin.surfaces || [];
+        const isPureDesktop = surfaces.length === 1 && surfaces[0] === "desktop";
+        return isPureDesktop || SettingsData.getPluginSetting(pluginId, "enabled", false);
+    }
+
+    function _syncEnabledPlugins() {
+        const ids = Object.keys(availablePlugins);
+        for (let i = 0; i < ids.length; i++) {
+            const pluginId = ids[i];
+            const should = _pluginShouldRun(pluginId);
+            const loaded = isPluginLoaded(pluginId);
+            if (should && !loaded)
+                runStartupGate(pluginId);
+            else if (!should && loaded)
+                unloadPlugin(pluginId);
+        }
+    }
+
     FolderListModel {
         id: userWatcher
         showDirs: true

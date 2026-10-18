@@ -59,10 +59,36 @@ Item {
         anchors.fill: parent
     }
 
-    // Hyprland OnDemand grab delivers keyboard focus to the modal content surface.
+    readonly property bool surfaceKeyboardReady: impl.item ? impl.item._keyboardReady : false
+
+    function _keyContent() {
+        return contentLoader?.item ?? directContent ?? null;
+    }
+
+    function _reapplyQtFocus() {
+        if (!root.shouldBeVisible || !root.shouldHaveFocus) {
+            KeyboardFocus.cancelFocusSoon(root._keyContent());
+            KeyboardFocus.cancelFocusSoon(root.modalFocusScope);
+            return;
+        }
+        const content = root._keyContent();
+        if (KeyboardFocus.focusWithin(content))
+            return;
+        const target = (content && content.focus) ? content : root.modalFocusScope;
+        if (!target || KeyboardFocus.focusWithin(target))
+            return;
+        KeyboardFocus.focusSoon(target);
+    }
+
+    // Hyprland OnDemand grab. The menu surface is the first whitelist entry.
+    // Dismiss layers on the other monitor join only after this grab is active,
+    // so a pointer over there cannot take Enter and Escape.
     DankFocusGrab {
+        id: modalKeyboardGrab
+        retryStartup: true
         clientWindows: (root.contentWindow ? [root.contentWindow] : []).concat(root.transientSurfaceTracker?.focusWindows ?? [])
-        wanted: KeyboardFocus.wantsGrab(root.shouldHaveFocus, root.customKeyboardFocus)
+        wanted: KeyboardFocus.wantsGrab(root.shouldHaveFocus && root.surfaceKeyboardReady, root.customKeyboardFocus)
+        onKeyboardGrabbed: root._reapplyQtFocus()
     }
     readonly property var contentWindow: impl.item ? impl.item.contentWindow : null
     readonly property var effectiveScreen: impl.item ? impl.item.effectiveScreen : null

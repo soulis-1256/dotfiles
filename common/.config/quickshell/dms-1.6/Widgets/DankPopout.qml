@@ -79,6 +79,7 @@ Item {
 
     function _scheduleGrabArm() {
         if (!root.shouldBeVisible) {
+            KeyboardFocus.cancelFocusSoon(root.contentLoader?.item ?? null);
             root._grabGeneration++;
             root.grabArmed = false;
             root._grabFocusLocked = false;
@@ -92,6 +93,7 @@ Item {
             return;
         if (!KeyboardFocus.wantsGrab(true, root.customKeyboardFocus)) {
             root.keyboardGrabbed();
+            root._focusContent();
             return;
         }
         if (root._armPending)
@@ -112,6 +114,19 @@ Item {
         popoutKeyboardGrab._compositorCleared = false;
         root._grabFocusLocked = true;
         root.keyboardGrabbed();
+        root._focusContent();
+    }
+
+    // Content with focus:true is the key surface (clipboard, start menu).
+    // Focusing a plain container would steal a text field that already has
+    // the chain. Retry until the layer is the active window.
+    function _focusContent() {
+        if (!root.shouldBeVisible)
+            return;
+        const item = root.contentLoader?.item ?? null;
+        if (!item || !item.focus)
+            return;
+        KeyboardFocus.focusSoon(item);
     }
 
     function _kickGrab(generation) {

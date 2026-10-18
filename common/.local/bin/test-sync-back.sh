@@ -113,6 +113,38 @@ OUT2="$(bash "$SWITCHER" sync-back --theme windows-11)"
 echo "$OUT2" | grep -qi "already in sync" || fail "second run should report clean"
 echo "PASS: second run clean (idempotent)"
 
+# 5b. A tray tint left at the DMS default is omitted from sparse settings.json.
+# sync-back must still write that default over the theme file's old value.
+python3 - "$PACK" "$LIVE" <<'PY'
+import json, sys
+pack_path, live_path = sys.argv[1:]
+pack = json.load(open(pack_path))
+live = json.load(open(live_path))
+pack["systemTrayIconTintMode"] = "primary"
+pack["systemTrayIconTintSaturation"] = 50
+pack["systemTrayIconTintStrength"] = 135
+live.pop("systemTrayIconTintMode", None)
+live.pop("systemTrayIconTintSaturation", None)
+live.pop("systemTrayIconTintStrength", None)
+json.dump(pack, open(pack_path, "w"), indent=2)
+open(pack_path, "a").write("\n")
+json.dump(live, open(live_path, "w"), indent=2)
+open(live_path, "a").write("\n")
+PY
+OUT_TINT="$(bash "$SWITCHER" sync-back --theme windows-11 --layout-only)"
+echo "$OUT_TINT" | grep -q "systemTrayIconTintMode" || fail "sparse default tint should be reported"
+echo "$OUT_TINT" | grep -q "primary" || fail "sparse default tint should show the old value"
+echo "$OUT_TINT" | grep -q "none" || fail "sparse default tint should show none"
+bash "$SWITCHER" sync-back --theme windows-11 --apply --layout-only > /dev/null
+python3 - "$PACK" <<'PY'
+import json, sys
+pack = json.load(open(sys.argv[1]))
+assert pack["systemTrayIconTintMode"] == "none", pack["systemTrayIconTintMode"]
+assert pack["systemTrayIconTintSaturation"] == 50
+assert pack["systemTrayIconTintStrength"] == 135
+print("PASS: omitted live tint syncs back as none")
+PY
+
 # 6. Unknown theme errors out.
 if bash "$SWITCHER" sync-back --theme nope-theme > /dev/null 2>&1; then
     fail "unknown theme should error"

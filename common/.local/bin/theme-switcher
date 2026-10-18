@@ -517,10 +517,18 @@ apply_theme() {
         saved_ws="$(cat /tmp/hypr_floating_workspaces.json 2>/dev/null || true)"
     fi
 
-    # Stop DMS first so it does not hot-reload a partial settings write
-    # (that retriggers greeter auto-login sync).
-    if is_live_run && command -v dms &>/dev/null; then
-        dms kill &>/dev/null || systemctl --user stop dms.service &>/dev/null || true
+    # Stop the unit before rewriting settings or plugins. `dms kill` is
+    # SIGKILL, and Restart=on-failure starts a new shell about a second
+    # later, while plugin symlinks and plugin_settings.json are still the
+    # previous theme. That shell parses the new start plugin as disabled
+    # and never loads the start menu.
+    if is_live_run && command -v systemctl >/dev/null; then
+        systemctl --user stop dms.service &>/dev/null || true
+        if systemctl --user is-active --quiet dms.service; then
+            systemctl --user stop dms.service &>/dev/null || true
+        fi
+    elif is_live_run && command -v dms &>/dev/null; then
+        dms kill &>/dev/null || true
     fi
 
     if [[ -f "${theme_path}/theme.lua" ]]; then
@@ -641,7 +649,19 @@ LAYOUT_KEYS = [
     "widgetColorMode",
     "controlCenterTileColorMode",
     "buttonColorMode",
+    "systemTrayIconTintMode",
+    "systemTrayIconTintSaturation",
+    "systemTrayIconTintStrength",
 ]
+# DMS 1.6 omits a key from settings.json when it equals the spec default.
+# For these chrome keys, a missing live value means that default. Only
+# rewrite a theme that already stores the key, so an older theme file is
+# not filled with keys it never tracked.
+SPARSE_DEFAULTS = {
+    "systemTrayIconTintMode": "none",
+    "systemTrayIconTintSaturation": 50,
+    "systemTrayIconTintStrength": 135,
+}
 COLOR_KEYS = [
     "currentThemeName",
     "currentThemeCategory",
@@ -681,8 +701,11 @@ theme = load_obj(theme_file)
 
 changes = {}
 for key in only:
-    if key in live and live.get(key) != theme.get(key):
-        changes[key] = live[key]
+    if key in live:
+        if live.get(key) != theme.get(key):
+            changes[key] = live[key]
+    elif key in SPARSE_DEFAULTS and key in theme and theme.get(key) != SPARSE_DEFAULTS[key]:
+        changes[key] = SPARSE_DEFAULTS[key]
 
 theme_name = theme_file.parent.name
 if not changes:

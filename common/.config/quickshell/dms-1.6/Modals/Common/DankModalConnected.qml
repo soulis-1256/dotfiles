@@ -77,6 +77,7 @@ Item {
     property alias modalFocusScope: focusScope
     property bool shouldBeVisible: false
     property bool shouldHaveFocus: shouldBeVisible
+    property bool _keyboardReady: false
     property bool allowFocusOverride: false
     property bool allowStacking: false
     property bool keepContentLoaded: false
@@ -232,6 +233,8 @@ Item {
             contentWindow.screen = focusedScreen;
         }
 
+        root._keyboardReady = false;
+        root.shouldHaveFocus = false;
         ModalManager.openModal(modalHandle);
         if (Theme.isDirectionalEffect || root.useBackground) {
             contentWindow.visible = true;
@@ -243,9 +246,15 @@ Item {
             if (!contentWindow.visible)
                 contentWindow.visible = true;
             opened();
-            shouldHaveFocus = false;
-            Qt.callLater(() => shouldHaveFocus = Qt.binding(() => shouldBeVisible));
+            Qt.callLater(() => root._armKeyboard());
         });
+    }
+
+    function _armKeyboard() {
+        if (!root.shouldBeVisible)
+            return;
+        root.shouldHaveFocus = Qt.binding(() => root.shouldBeVisible);
+        root._keyboardReady = true;
     }
 
     function close() {
@@ -253,6 +262,7 @@ Item {
             frozenMotionOffsetX = modalContainer.offsetX;
             frozenMotionOffsetY = modalContainer.offsetY;
         }
+        root._keyboardReady = false;
         shouldBeVisible = false;
         shouldHaveFocus = false;
         ModalManager.closeModal(modalHandle);
@@ -261,6 +271,7 @@ Item {
 
     function instantClose() {
         animationsEnabled = false;
+        root._keyboardReady = false;
         shouldBeVisible = false;
         shouldHaveFocus = false;
         ModalManager.closeModal(modalHandle);
@@ -405,7 +416,7 @@ Item {
         WlrLayershell.namespace: root.layerNamespace
         WlrLayershell.layer: root.effectiveModalLayer
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(shouldHaveFocus, customKeyboardFocus)
+        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(shouldHaveFocus && root._keyboardReady, customKeyboardFocus)
 
         anchors {
             left: true

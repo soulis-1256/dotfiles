@@ -110,6 +110,7 @@ PanelWindow {
     }
 
     DankFocusGrab {
+        retryStartup: true
         windows: [root]
         wanted: KeyboardFocus.wantsGrab(controller.keyboardDismissRequested && !controller.keyboardYielded, null)
     }

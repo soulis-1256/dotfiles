@@ -1175,6 +1175,7 @@ BasePill {
         color: "transparent"
 
         DankFocusGrab {
+            retryStartup: true
             windows: [overflowMenu].concat(KeyboardFocus.barWindows)
             wanted: root.useOverflowPopup && KeyboardFocus.wantsGrab(root.menuOpen, null)
         }
@@ -1717,6 +1718,7 @@ BasePill {
                 color: "transparent"
 
                 DankFocusGrab {
+                    retryStartup: true
                     windows: [menuWindow].concat(KeyboardFocus.barWindows)
                     wanted: KeyboardFocus.wantsGrab(menuRoot.showMenu, null)
                 }
