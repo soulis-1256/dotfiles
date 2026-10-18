@@ -2427,7 +2427,7 @@ Item {
                                                         if (!winId)
                                                             return;
                                                         if (CompositorService.isHyprland)
-                                                            Hyprland.dispatch("focuswindow address:" + winId);
+                                                            HyprlandService.focusWindow(winId);
                                                     }
                                                 }
                                             }
@@ -2658,7 +2658,7 @@ Item {
                                                         if (!winId)
                                                             return;
                                                         if (CompositorService.isHyprland)
-                                                            Hyprland.dispatch("focuswindow address:" + winId);
+                                                            HyprlandService.focusWindow(winId);
                                                     }
                                                 }
                                             }
