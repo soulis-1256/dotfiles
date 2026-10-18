@@ -732,8 +732,8 @@ Item {
             visible: false
             x: contentContainer.x
             y: contentContainer.y
-            width: contentWindow.closeVisualActive ? root.alignedWidth : 0
-            height: contentWindow.closeVisualActive ? root.renderedAlignedHeight : 0
+            width: root.shouldBeVisible ? root.alignedWidth : 0
+            height: root.shouldBeVisible ? root.renderedAlignedHeight : 0
         }
 
         Item {
@@ -854,13 +854,26 @@ Item {
             Item {
                 id: directionalClipMask
 
-                readonly property bool shouldClip: root.fluidStandaloneActive
+                readonly property bool shouldClip: root.fluidStandaloneActive && morph.value < 0.999
+                readonly property real clipOversize: 1000
 
                 clip: shouldClip
-                x: shouldClip ? contentContainer.revealX : 0
-                y: shouldClip ? contentContainer.revealY : 0
-                width: shouldClip ? contentContainer.revealWidth : parent.width
-                height: shouldClip ? contentContainer.revealHeight : parent.height
+                x: shouldClip ? (contentContainer.barLeft ? 0 : (contentContainer.barRight ? contentContainer.revealX : -clipOversize)) : 0
+                y: shouldClip ? (contentContainer.barTop ? 0 : (contentContainer.barBottom ? (contentContainer.revealY - clipOversize) : -clipOversize)) : 0
+                width: {
+                    if (!shouldClip)
+                        return parent.width;
+                    if (contentContainer.barLeft || contentContainer.barRight)
+                        return contentContainer.revealWidth + clipOversize;
+                    return parent.width + clipOversize * 2;
+                }
+                height: {
+                    if (!shouldClip)
+                        return parent.height;
+                    if (contentContainer.barTop || contentContainer.barBottom)
+                        return contentContainer.revealHeight + clipOversize;
+                    return parent.height + clipOversize * 2;
+                }
 
                 Item {
                     id: rollOutAdjuster
@@ -878,9 +891,9 @@ Item {
                         width: rollOutAdjuster.baseWidth
                         height: rollOutAdjuster.baseHeight
                         opacity: contentWrapper.publishedOpacity
-                        scale: root.fluidStandaloneActive ? 1 : contentWrapper.scale
-                        x: root.fluidStandaloneActive ? 0 : contentWrapper.x
-                        y: root.fluidStandaloneActive ? 0 : contentWrapper.y
+                        scale: contentWrapper.scale
+                        x: contentWrapper.x
+                        y: contentWrapper.y
                         level: root.shadowLevel
                         direction: root.effectiveShadowDirection
                         fallbackOffset: root.shadowFallbackOffset
@@ -963,10 +976,10 @@ Item {
                     Rectangle {
                         width: rollOutAdjuster.baseWidth
                         height: rollOutAdjuster.baseHeight
-                        x: root.fluidStandaloneActive ? 0 : contentWrapper.x
-                        y: root.fluidStandaloneActive ? 0 : contentWrapper.y
+                        x: contentWrapper.x
+                        y: contentWrapper.y
                         opacity: contentWrapper.publishedOpacity
-                        scale: root.fluidStandaloneActive ? 1 : contentWrapper.scale
+                        scale: contentWrapper.scale
                         visible: contentWrapper.visible
                         radius: Theme.cornerRadius
                         color: "transparent"
