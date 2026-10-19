@@ -136,42 +136,29 @@
   "privacyShowScreenShareIcon": false,
   "controlCenterWidgets": [
     {
-      "id": "volumeSlider",
-      "enabled": true,
-      "width": 50
-    },
-    {
-      "id": "inputVolumeSlider",
-      "enabled": true,
-      "width": 50
-    },
-    {
       "id": "wifi",
       "enabled": true,
       "width": 50
     },
     {
-      "id": "audioOutput",
+      "id": "builtin_vpn",
       "enabled": true,
       "width": 50
-    },
-    {
-      "id": "audioInput",
-      "enabled": true,
-      "width": 50
-    },
-    {
-      "id": "diskUsage",
-      "enabled": true,
-      "width": 50,
-      "instanceId": "mtbcnt5p47d2j1q4dvj6rtcalnyow7",
-      "mountPath": "/",
-      "showMountPath": true
     },
     {
       "id": "builtin_tailscale",
       "enabled": true,
       "width": 50
+    },
+    {
+      "id": "volumeSlider",
+      "enabled": true,
+      "width": 100
+    },
+    {
+      "id": "inputVolumeSlider",
+      "enabled": true,
+      "width": 100
     }
   ],
   "showWorkspaceIndex": true,
@@ -711,14 +698,14 @@
       "bottomGap": 0,
       "transparency": 0.5,
       "widgetTransparency": 0,
-      "squareCorners": false,
+      "squareCorners": true,
       "fullHeightWidgets": true,
       "barHeight": 52,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
       "gothCornerRadiusValue": 12,
-      "borderEnabled": false,
+      "borderEnabled": true,
       "borderColor": "surfaceText",
       "borderOpacity": 0.22,
       "borderThickness": 1,
@@ -820,14 +807,14 @@
       "bottomGap": 0,
       "transparency": 0.5,
       "widgetTransparency": 0,
-      "squareCorners": false,
+      "squareCorners": true,
       "fullHeightWidgets": true,
       "barHeight": 52,
       "noBackground": false,
       "gothCornersEnabled": false,
       "gothCornerRadiusOverride": false,
       "gothCornerRadiusValue": 12,
-      "borderEnabled": false,
+      "borderEnabled": true,
       "borderColor": "surfaceText",
       "borderOpacity": 0.22,
       "borderThickness": 1,

@@ -108,7 +108,7 @@ DankPopout {
         StateUtils.toggleSection(root, section);
     }
 
-    popupWidth: 550
+    popupWidth: Theme.fluent ? 420 : 550
     popupHeight: targetPopupHeight
     triggerWidth: 80
     positioning: ""

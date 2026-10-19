@@ -12,16 +12,20 @@ Row {
     property var defaultSource: AudioService.source
     property color sliderTrackColor: "transparent"
     property real sliderTrackOpacity: Theme.ccSliderTrackOpacity
+    property bool showChevron: true
+    property bool isExpanded: false
+    signal chevronClicked()
 
     height: 40
-    spacing: 0
+    spacing: Theme.spacingS
 
     Rectangle {
-        width: Theme.iconSize + Theme.spacingS * 2
-        height: Theme.iconSize + Theme.spacingS * 2
+        id: iconBtn
+        width: 36
+        height: 36
         anchors.verticalCenter: parent.verticalCenter
         radius: Theme.fluent ? Theme.controlCornerRadius : (Theme.iconSize + Theme.spacingS * 2) / 2
-        color: Theme.fluent ? "transparent" : (iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0))
+        color: Theme.fluent ? (iconArea.pressed ? Theme.withAlpha(Theme.surfaceText, 0.05) : (iconArea.containsMouse ? Theme.withAlpha(Theme.surfaceText, 0.08) : "transparent")) : (iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0))
 
         DankRipple {
             id: iconRipple
@@ -70,10 +74,12 @@ Row {
     }
 
     DankSlider {
+        id: micSlider
+
         readonly property real actualVolumePercent: defaultSource?.audio ? Math.round(defaultSource.audio.volume * 100) : 0
 
         anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - (Theme.iconSize + Theme.spacingS * 2)
+        width: parent.width - iconBtn.width - (root.showChevron ? (chevronBtn.width + parent.spacing) : 0) - parent.spacing
         enabled: defaultSource?.audio != null
         minimum: 0
         maximum: 100
@@ -92,6 +98,40 @@ Row {
                     defaultSource.audio.muted = false;
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: chevronBtn
+        visible: root.showChevron
+        width: 36
+        height: 36
+        anchors.verticalCenter: parent.verticalCenter
+        radius: Theme.controlCornerRadius
+        color: chevronArea.pressed ? Theme.withAlpha(Theme.surfaceText, 0.05) : (chevronArea.containsMouse ? Theme.withAlpha(Theme.surfaceText, 0.08) : "transparent")
+
+        DankIcon {
+            id: chevronIcon
+            anchors.centerIn: parent
+            name: I18n.isRtl ? "chevron_left" : "chevron_right"
+            size: Theme.iconSize - 6
+            color: chevronArea.containsMouse ? Theme.surfaceText : Theme.surfaceVariantText
+            rotation: root.isExpanded ? 90 : 0
+            Behavior on rotation {
+                NumberAnimation {
+                    duration: Theme.shortDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.variantPopoutEnterCurve
+                }
+            }
+        }
+
+        MouseArea {
+            id: chevronArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.chevronClicked()
         }
     }
 }

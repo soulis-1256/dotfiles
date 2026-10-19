@@ -48,7 +48,7 @@ Column {
                 const id = w.id || "";
                 return id === "volumeSlider" || id === "brightnessSlider" || id === "inputVolumeSlider";
             });
-            totalRowHeight += sliderOnly ? 36 : 60;
+            totalRowHeight += sliderOnly ? 36 : (Theme.fluent ? 88 : 60);
         }
         const rowSpacing = Math.max(0, rows.length - 1) * spacing;
         return Math.max(100, maxPopoutHeight - totalRowHeight - rowSpacing);
@@ -65,7 +65,7 @@ Column {
                 const id = w.id || "";
                 return id === "volumeSlider" || id === "brightnessSlider" || id === "inputVolumeSlider";
             });
-            totalHeight += sliderOnly ? (editMode ? 56 : 36) : 60;
+            totalHeight += sliderOnly ? (editMode ? 56 : 36) : (Theme.fluent ? 88 : 60);
             if (expandedSection !== "" && i === expandedRowIndex)
                 totalHeight += detailHeightForSection(expandedSection) + Theme.spacingS;
         }
@@ -298,6 +298,9 @@ Column {
                         width: {
                             const baseWidth = root.width;
                             const spacing = Theme.spacingS;
+                            if (Theme.fluent && widgetWidth <= 50 && !isSlider) {
+                                return (baseWidth - spacing * 2) / 3;
+                            }
                             if (widgetWidth <= 25) {
                                 return (baseWidth - spacing * 3) / 4;
                             } else if (widgetWidth <= 50) {
@@ -308,7 +311,7 @@ Column {
                                 return baseWidth;
                             }
                         }
-                        height: isSliderOnlyRow ? 48 : 60
+                        height: isSliderOnlyRow ? 48 : (Theme.fluent ? 88 : 60)
 
                         editMode: root.editMode
                         widgetIndex: globalWidgetIndex
@@ -451,7 +454,7 @@ Column {
             property int widgetIndex: parent.widgetIndex || 0
             property var widgetDef: root.model?.getWidgetForId(widgetData.id || "")
             width: parent.width
-            height: 60
+            height: parent.height
             iconBlinking: root.getCompoundPillIconBlinking(widgetData.id || "")
             iconName: root.getCompoundPillIconName(widgetData.id || "", widgetDef)
             primaryText: {
@@ -558,6 +561,12 @@ Column {
             }
             isActive: root.getCompoundPillIsActive(widgetData.id || "")
             enabled: widgetDef?.enabled ?? true
+            expanded: {
+                const id = widgetData.id || "";
+                if (id === "wifi")
+                    return root.expandedSection === "wifi" || root.expandedSection === "network";
+                return root.expandedSection === id;
+            }
             onToggled: {
                 if (root.editMode)
                     return;
@@ -590,6 +599,13 @@ Column {
                 height: parent.height
                 sliderTrackColor: Theme.ccSliderTrackColor
                 sliderTrackOpacity: Theme.ccSliderTrackOpacity
+                showChevron: true
+                isExpanded: root.expandedSection === "volumeSlider"
+                onChevronClicked: {
+                    if (!root.editMode) {
+                        root.expandClicked(widgetData, widgetIndex);
+                    }
+                }
             }
         }
     }
@@ -637,6 +653,13 @@ Column {
                 height: parent.height
                 sliderTrackColor: Theme.ccSliderTrackColor
                 sliderTrackOpacity: Theme.ccSliderTrackOpacity
+                showChevron: true
+                isExpanded: root.expandedSection === "inputVolumeSlider"
+                onChevronClicked: {
+                    if (!root.editMode) {
+                        root.expandClicked(widgetData, widgetIndex);
+                    }
+                }
             }
         }
     }
@@ -695,7 +718,7 @@ Column {
             property var widgetData: parent.widgetData || {}
             property int widgetIndex: parent.widgetIndex || 0
             width: parent.width
-            height: 60
+            height: parent.height
 
             iconName: {
                 switch (widgetData.id || "") {
@@ -870,6 +893,7 @@ Column {
             mountPath: widgetData.mountPath || "/"
             instanceId: widgetData.instanceId || ""
             showMountPath: widgetData.showMountPath !== undefined ? widgetData.showMountPath : true
+            expanded: root.expandedSection === ("diskUsage_" + (widgetData.instanceId || "default"))
 
             onExpandClicked: {
                 if (!root.editMode) {
@@ -978,6 +1002,7 @@ Column {
             primaryText: builtinInstance?.ccWidgetPrimaryText || "Built-in"
             secondaryText: builtinInstance?.ccWidgetSecondaryText || ""
             isActive: builtinInstance?.ccWidgetIsActive || false
+            expanded: root.expandedSection === (widgetData.id || "")
 
             onToggled: {
                 if (root.editMode)
@@ -1134,6 +1159,7 @@ Column {
             primaryText: pluginInstance?.ccWidgetPrimaryText || "Plugin"
             secondaryText: pluginInstance?.ccWidgetSecondaryText || ""
             isActive: pluginInstance?.ccWidgetIsActive || false
+            expanded: root.expandedSection === ("plugin_" + (widgetData.pluginId || widgetData.id || ""))
 
             onToggled: {
                 if (root.editMode)
@@ -1214,6 +1240,12 @@ Column {
             iconName: root.getCompoundPillIconName(widgetData.id || "", widgetDef)
             isActive: root.getCompoundPillIsActive(widgetData.id || "")
             enabled: (widgetDef?.enabled ?? true) && !root.editMode
+            expanded: {
+                const id = widgetData.id || "";
+                if (id === "wifi")
+                    return root.expandedSection === "wifi" || root.expandedSection === "network";
+                return root.expandedSection === id;
+            }
             onToggled: {
                 if (root.editMode)
                     return;

@@ -199,9 +199,11 @@ Item {
             coreDetailLoader.sourceComponent = bluetoothDetailComponent;
             break;
         case "audioOutput":
+        case "volumeSlider":
             coreDetailLoader.sourceComponent = audioOutputDetailComponent;
             break;
         case "audioInput":
+        case "inputVolumeSlider":
             coreDetailLoader.sourceComponent = audioInputDetailComponent;
             break;
         case "battery":

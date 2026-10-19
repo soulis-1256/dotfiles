@@ -11,6 +11,7 @@ Rectangle {
     property string iconName: ""
     property bool isActive: false
     property bool iconBlinking: false
+    property bool expanded: false
 
     // Left click expands the widget (primary detail action), right click toggles on/off.
     signal toggled
@@ -129,6 +130,14 @@ Rectangle {
             name: I18n.isRtl ? "chevron_left" : "chevron_right"
             size: 12
             color: root.isActive ? root._tileIconActive : Theme.surfaceVariantText
+            rotation: root.expanded ? 90 : 0
+            Behavior on rotation {
+                NumberAnimation {
+                    duration: Theme.shortDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.variantPopoutEnterCurve
+                }
+            }
         }
 
         MouseArea {

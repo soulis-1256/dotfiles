@@ -1,5 +1,7 @@
-function spanWidthFor(baseWidth, widgetWidth, spacing) {
+function spanWidthFor(baseWidth, widgetWidth, spacing, isSlider) {
     const w = widgetWidth || 50
+    if (Theme.fluent && w <= 50 && !isSlider)
+        return (baseWidth - spacing * 2) / 3
     if (w <= 25)
         return (baseWidth - spacing * 3) / 4
     if (w <= 50)
@@ -27,8 +29,9 @@ function computeSlots(widgets, order, baseWidth, spacing, rowSpacing, sliderHeig
         if (!widget)
             continue
 
-        const itemW = spanWidthFor(baseWidth, widget.width, spacing)
-        const itemH = isSliderWidget(widget.id || "") ? sliderHeight : normalHeight
+        const isSlider = isSliderWidget(widget.id || "")
+        const itemW = spanWidthFor(baseWidth, widget.width, spacing, isSlider)
+        const itemH = isSlider ? sliderHeight : normalHeight
 
         if (countInRow > 0 && (rowRight + spacing + itemW > baseWidth + 0.5)) {
             y += rowMaxH + rowSpacing
@@ -79,9 +82,12 @@ function calculateRowsAndWidgets(controlCenterColumn, expandedSection, expandedW
     for (var i = 0; i < widgets.length; i++) {
         const widget = widgets[i]
         const widgetWidth = widget.width || 50
+        const isSlider = isSliderWidget(widget.id || "")
 
         var itemWidth
-        if (widgetWidth <= 25) {
+        if (Theme.fluent && widgetWidth <= 50 && !isSlider) {
+            itemWidth = (baseWidth - spacing * 2) / 3
+        } else if (widgetWidth <= 25) {
             itemWidth = (baseWidth - spacing * 3) / 4
         } else if (widgetWidth <= 50) {
             itemWidth = (baseWidth - spacing) / 2
@@ -91,7 +97,7 @@ function calculateRowsAndWidgets(controlCenterColumn, expandedSection, expandedW
             itemWidth = baseWidth
         }
 
-        if (currentRow.length > 0 && (currentWidth + spacing + itemWidth > baseWidth)) {
+        if (currentRow.length > 0 && (currentWidth + spacing + itemWidth > baseWidth + 0.5)) {
             rows.push([...currentRow])
             currentRow = [widget]
             currentWidth = itemWidth

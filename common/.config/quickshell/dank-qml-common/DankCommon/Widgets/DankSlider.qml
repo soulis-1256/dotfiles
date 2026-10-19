@@ -83,7 +83,7 @@ Item {
             width: parent.width - (leftIconWidth + rightIconWidth + (slider.leftIcon.length > 0 ? Style.spacingM : 0) + (slider.rightIcon.length > 0 ? Style.spacingM : 0))
             height: slider.fluent ? 4 : 12
             radius: slider.fluent ? 2 : Style.cornerRadius
-            color: slider.fluent ? Style.withAlpha("#ffffff", sliderMouseArea.containsMouse ? 0.65 : 0.50) : Style.withAlpha(slider.trackColor, slider.trackOpacity)
+            color: slider.fluent ? Style.withAlpha(Style.surfaceText, sliderMouseArea.containsMouse ? 0.32 : 0.22) : Style.withAlpha(slider.trackColor, slider.trackOpacity)
             anchors.verticalCenter: parent.verticalCenter
             clip: false
 
@@ -113,9 +113,9 @@ Item {
 
                 property bool active: sliderMouseArea.containsMouse || sliderMouseArea.pressed || slider.isDragging
 
-                width: slider.fluent ? 14 : 4
-                height: slider.fluent ? 14 : 20
-                radius: slider.fluent ? 7 : Style.cornerRadius
+                width: slider.fluent ? 16 : 4
+                height: slider.fluent ? 16 : 20
+                radius: slider.fluent ? 8 : Style.cornerRadius
                 x: {
                     const range = slider.maximum - slider.minimum;
                     const rawRatio = range === 0 ? 0 : (slider.value - slider.minimum) / range;
@@ -126,7 +126,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 color: slider.fluent ? (slider.enabled ? Style.primary : Style.withAlpha(Style.onSurface, 0.38)) : (slider.enabled ? Style.primary : Style.withAlpha(Style.onSurface, 0.12))
                 border.width: slider.fluent ? 1 : 0
-                border.color: slider.fluent ? Style.withAlpha("#ffffff", 0.35) : slider.thumbOutlineColor
+                border.color: slider.fluent ? Style.withAlpha(Style.surfaceText, 0.30) : slider.thumbOutlineColor
 
                 ElevationShadow {
                     anchors.fill: parent

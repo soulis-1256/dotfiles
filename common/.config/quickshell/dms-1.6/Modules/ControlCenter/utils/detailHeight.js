@@ -11,6 +11,10 @@ function detailHeightForSection(section, maxHeight, pluginInstance) {
     }
     if (section.startsWith("brightnessSlider_"))
         return Math.min(400, maxHeight);
+    if (section === "audioOutput" || section === "volumeSlider")
+        return Math.min(320, maxHeight);
+    if (section === "audioInput" || section === "inputVolumeSlider")
+        return Math.min(300, maxHeight);
     if (section.startsWith("plugin_")) {
         const h = pluginInstance ? pluginInstance.ccDetailHeight : 0;
         return Math.min(h > 0 ? h : 250, maxHeight);

@@ -226,6 +226,17 @@ Item {
             return "CONTROL_CENTER_OPEN_FAILED";
         }
 
+        function openWithSection(section: string): string {
+            if (root.controlCenterLoader.item) {
+                if (!root.controlCenterLoader.item.shouldBeVisible) {
+                    open();
+                }
+                root.controlCenterLoader.item.openWithSection(section);
+                return "CONTROL_CENTER_OPEN_SECTION_SUCCESS";
+            }
+            return "CONTROL_CENTER_OPEN_SECTION_FAILED";
+        }
+
         function hide(): string {
             if (PopoutService.closeIslandActivity("controlcenter"))
                 return "CONTROL_CENTER_HIDE_SUCCESS";

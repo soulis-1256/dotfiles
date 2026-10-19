@@ -479,127 +479,101 @@ Rectangle {
                     border.color: modelData === AudioService.sink ? Theme.primary : Theme.outlineLight
                     border.width: modelData === AudioService.sink ? 2 : 1
 
-                    Row {
+                    DankIcon {
+                        id: appLeadingIcon
+                        name: "album"
+                        size: Theme.iconSize - 4
+                        color: !modelData.audio.muted ? Theme.primary : Theme.surfaceText
                         anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM
-                        spacing: Theme.spacingS
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
 
-                        DankIcon {
-                            name: "album"
-                            size: Theme.iconSize - 4
-                            color: !modelData.audio.muted ? Theme.primary : Theme.surfaceText
-                            anchors.verticalCenter: parent.verticalCenter
+                    StyledText {
+                        anchors.left: appLeadingIcon.right
+                        anchors.leftMargin: Theme.spacingS
+                        anchors.right: appVolumeRow.left
+                        anchors.rightMargin: Theme.spacingS
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: {
+                            const modelDataMediaName = modelData && modelData.properties ? (modelData.properties["media.name"] || "") : "";
+                            return AudioService.displayName(modelData) + (modelDataMediaName ? ": " + modelDataMediaName : "");
                         }
+                        font.pixelSize: Theme.fontSizeMedium
+                        color: Theme.surfaceText
+                        font.weight: modelData === AudioService.sink ? Font.Medium : Font.Normal
+                        elide: Text.ElideRight
+                        wrapMode: Text.NoWrap
+                    }
 
-                        Column {
+                    Row {
+                        id: appVolumeRow
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacingXS
+                        height: 40
+
+                        Rectangle {
+                            width: Theme.iconSize + Theme.spacingS
+                            height: Theme.iconSize + Theme.spacingS
                             anchors.verticalCenter: parent.verticalCenter
-                            width: {
-                                const iconWidth = Theme.iconSize;
-                                return parent.parent.width - iconWidth - parent.spacing - Theme.spacingM * 2;
+                            radius: Theme.controlCornerRadius
+                            color: appIconArea.containsMouse ? Theme.primaryHover : "transparent"
+
+                            MouseArea {
+                                id: appIconArea
+                                anchors.fill: parent
+                                visible: modelData !== null
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (modelData && modelData.audio) {
+                                        SessionData.suppressOSDTemporarily();
+                                        modelData.audio.muted = !modelData.audio.muted;
+                                    }
+                                }
                             }
 
-                            StyledText {
-                                text: {
-                                    const modelDataMediaName = modelData && modelData.properties ? (modelData.properties["media.name"] || "") : "";
-                                    const mediaName = AudioService.displayName(modelData) + ": " + modelDataMediaName;
-                                    const max = 35;
-                                    return mediaName.length > max ? mediaName.substring(0, max) + "..." : mediaName;
+                            DankIcon {
+                                anchors.centerIn: parent
+                                name: AudioService.volumeIconName(modelData)
+                                size: Theme.iconSize - 4
+                                color: modelData && modelData.audio && !modelData.audio.muted && modelData.audio.volume > 0 ? Theme.primary : Theme.surfaceText
+                            }
+                        }
+
+                        DankSlider {
+                            readonly property real actualVolumePercent: modelData && modelData.audio ? Math.round(modelData.audio.volume * 100) : 0
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 90
+                            enabled: modelData !== null && modelData.audio !== null
+                            minimum: 0
+                            maximum: 100
+                            value: modelData && modelData.audio ? Math.min(100, Math.round(modelData.audio.volume * 100)) : 0
+                            showValue: true
+                            unit: "%"
+                            valueOverride: actualVolumePercent
+                            thumbOutlineColor: Theme.surfaceContainer
+                            trackColor: Theme.ccSliderTrackColor
+                            trackOpacity: Theme.ccSliderTrackOpacity
+
+                            onSliderValueChanged: function (newValue) {
+                                if (modelData && modelData.audio) {
+                                    SessionData.suppressOSDTemporarily();
+                                    modelData.audio.volume = newValue / 100.0;
+                                    if (newValue > 0 && modelData.audio.muted) {
+                                        modelData.audio.muted = false;
+                                    }
+                                    AudioService.playVolumeChangeSoundIfEnabled();
                                 }
-                                font.pixelSize: Theme.fontSizeMedium
-                                color: Theme.surfaceText
-                                font.weight: modelData === AudioService.sink ? Font.Medium : Font.Normal
-                                elide: Text.ElideRight
-                                width: parent.width
-                                wrapMode: Text.NoWrap
                             }
                         }
                     }
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.rightMargin: 120
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: appVolumeRow.width
-                        height: 28
-                        radius: height / 2
 
-                        Item {
-                            id: appVolumeRow
-                            property color sliderTrackColor: "transparent"
-                            property real sliderTrackOpacity: Theme.ccSliderTrackOpacity
-                            anchors.centerIn: parent
-
-                            height: 40
-                            width: parent.width
-
-                            Rectangle {
-                                anchors.right: parent.right
-                                anchors.rightMargin: Theme.spacingM
-                                width: Theme.iconSize + Theme.spacingS * 2
-                                height: Theme.iconSize + Theme.spacingS * 2
-                                anchors.verticalCenter: parent.verticalCenter
-                                radius: Theme.cornerRadius
-                                color: appIconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0)
-
-                                DankRipple {
-                                    id: appMuteRipple
-                                    cornerRadius: parent.radius
-                                }
-
-                                MouseArea {
-                                    id: appIconArea
-                                    anchors.fill: parent
-                                    visible: modelData !== null
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onPressed: mouse => appMuteRipple.trigger(mouse.x, mouse.y)
-                                    onClicked: {
-                                        if (modelData) {
-                                            SessionData.suppressOSDTemporarily();
-                                            modelData.audio.muted = !modelData.audio.muted;
-                                        }
-                                    }
-                                }
-
-                                DankIcon {
-                                    anchors.centerIn: parent
-                                    name: AudioService.volumeIconName(modelData)
-                                    size: Theme.iconSize
-                                    color: modelData && !modelData.audio.muted && modelData.audio.volume > 0 ? Theme.primary : Theme.surfaceText
-                                }
-                            }
-
-                            DankSlider {
-                                readonly property real actualVolumePercent: modelData ? Math.round(modelData.audio.volume * 100) : 0
-
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 100
-                                enabled: modelData !== null
-                                minimum: 0
-                                maximum: 100
-                                value: modelData ? Math.min(100, Math.round(modelData.audio.volume * 100)) : 0
-                                showValue: true
-                                unit: "%"
-                                valueOverride: actualVolumePercent
-                                thumbOutlineColor: Theme.surfaceContainer
-                                trackColor: appVolumeRow.sliderTrackColor.a > 0 ? appVolumeRow.sliderTrackColor : Theme.ccSliderTrackColor
-                                trackOpacity: appVolumeRow.sliderTrackOpacity
-
-                                onSliderValueChanged: function (newValue) {
-                                    if (modelData) {
-                                        SessionData.suppressOSDTemporarily();
-                                        modelData.audio.volume = newValue / 100.0;
-                                        if (newValue > 0 && modelData.audio.muted) {
-                                            modelData.audio.muted = false;
-                                        }
-                                        AudioService.playVolumeChangeSoundIfEnabled();
-                                    }
-                                }
-                            }
-                        }
-                        PwObjectTracker {
-                            objects: [modelData]
-                        }
+                    PwObjectTracker {
+                        objects: [modelData]
                     }
                 }
             }
