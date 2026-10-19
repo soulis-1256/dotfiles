@@ -25,6 +25,14 @@ Item {
     property var systemUpdateButtonRef: null
     property var launcherButtonRef: null
 
+    function triggerLauncher() {
+        if (launcherButtonRef && typeof launcherButtonRef.toggleWithMode === "function") {
+            launcherButtonRef.toggleWithMode("all");
+            return;
+        }
+        PopoutService.toggleDankLauncherV2();
+    }
+
     function triggerSystemUpdate() {
         const loader = PopoutService.systemUpdateLoader;
         if (!loader)

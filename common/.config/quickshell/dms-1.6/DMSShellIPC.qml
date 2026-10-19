@@ -1488,12 +1488,21 @@ Item {
         }
 
         function close(): string {
+            const bar = root.getPreferredBar("launcherButtonRef") || root.getPreferredBar();
+            if (bar && bar.launcherButtonRef && typeof bar.launcherButtonRef.closePopout === "function" && bar.launcherButtonRef.isPopoutOpen) {
+                bar.launcherButtonRef.closePopout();
+                return "LAUNCHER_CLOSE_SUCCESS";
+            }
             PopoutService.closeDankLauncherV2();
             return "LAUNCHER_CLOSE_SUCCESS";
         }
 
         function toggle(): string {
             const bar = root.getPreferredBar("launcherButtonRef") || root.getPreferredBar();
+            if (bar && bar.launcherButtonRef && typeof bar.launcherButtonRef.toggleWithMode === "function") {
+                bar.launcherButtonRef.toggleWithMode("all");
+                return "LAUNCHER_TOGGLE_SUCCESS";
+            }
             if (bar && typeof bar.triggerLauncher === "function") {
                 bar.triggerLauncher();
                 return "LAUNCHER_TOGGLE_SUCCESS";

@@ -159,7 +159,16 @@ Item {
         property var controlCenterButtonRef: null
         property var clockButtonRef: null
         property var systemUpdateButtonRef: null
+        property var launcherButtonRef: null
         property int notificationCount: 0
+
+        function triggerLauncher() {
+            if (launcherButtonRef && typeof launcherButtonRef.toggleWithMode === "function") {
+                launcherButtonRef.toggleWithMode("all");
+                return;
+            }
+            PopoutService.toggleDankLauncherV2();
+        }
 
         signal colorPickerRequested
 
