@@ -1963,8 +1963,6 @@ Item {
                 Rectangle {
                     id: focusedBorderRing
                     visible: !root.isFullHeight
-                    scale: delegateRoot.pressScale
-                    transformOrigin: Item.Center
                     x: root.isVertical ? (root.widgetHeight - width) / 2 : (parent.width - width) / 2
                     y: root.isVertical ? (parent.height - height) / 2 : (root.widgetHeight - height) / 2
                     width: {
@@ -2029,8 +2027,6 @@ Item {
                     radius: root.isFullHeight ? 0 : Theme.cornerRadius
                     color: delegateRoot.displayColor
                     opacity: dragHandler.dragging ? 0.8 : 1.0
-                    scale: delegateRoot.pressScale
-                    transformOrigin: Item.Center
 
                     Rectangle {
                         id: hoverBg
@@ -2267,7 +2263,7 @@ Item {
                                             width: root.appIconSize
                                             height: root.appIconSize
                                             property real pressScale: 1
-                                            scale: pressScale
+                                            scale: pressScale * delegateRoot.pressScale
                                             transformOrigin: Item.Center
                                             readonly property var windowId: modelData.windowId
                                             readonly property string windowSession: modelData.windowSession || ""
@@ -2498,7 +2494,7 @@ Item {
                                             width: root.appIconSize
                                             height: root.appIconSize
                                             property real pressScale: 1
-                                            scale: pressScale
+                                            scale: pressScale * delegateRoot.pressScale
                                             transformOrigin: Item.Center
                                             readonly property var windowId: modelData.windowId
                                             readonly property string windowSession: modelData.windowSession || ""
