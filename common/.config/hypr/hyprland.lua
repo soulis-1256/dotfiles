@@ -265,15 +265,16 @@ if f_bars then
 		hl.config({
 			plugin = {
 				hyprbars = {
-					bar_height = 32,
+					bar_height = 30,
 					bar_color = bar_color,
 					["col.text"] = text_color,
 					bar_blur = true,
-					bar_text_font = "Inter Variable, Material Symbols Rounded, Sans",
-					bar_text_size = 11,
+					bar_text_font = "Inter Variable",
+					bar_text_size = 10,
+					bar_title_padding = 14,
 					bar_text_align = "left",
-					bar_padding = 10,
-					bar_button_padding = 8,
+					bar_padding = 0,
+					bar_button_padding = 0,
 					bar_part_of_window = true,
 					bar_precedence_over_border = true,
 					on_double_click = "hyprctl dispatch fullscreen 1",
@@ -281,16 +282,16 @@ if f_bars then
 			},
 		})
 
-		-- Dux Expressive Native Close Button: rounded squircle with Material Symbols 'close' icon
+		-- Wide rectangular caption button (46px wide, full bar height)
+		-- Close: transparent background, dynamic text color
 		hl.plugin.hyprbars.add_button({
-			bg_color = "rgba(424921f0)",
-			fg_color = "rgb(cfd39c)",
-			size = 22,
-			width = 24,
-			height = 22,
-			round = 7,
-			icon_size = 13,
-			icon = "\u{e5cd}",
+			bg_color = "rgba(00000000)",
+			fg_color = text_color,
+			size = 14,
+			width = 46,
+			round = 0,
+			icon_size = 14,
+			icon = "\u{e1b2}",
 			action = "close",
 		})
 	end)
