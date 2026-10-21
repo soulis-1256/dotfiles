@@ -269,7 +269,7 @@ if f_bars then
 					bar_color = bar_color,
 					["col.text"] = text_color,
 					bar_blur = true,
-					bar_text_font = "Cantarell, Inter, Sans",
+					bar_text_font = "Inter Variable, Material Symbols Rounded, Sans",
 					bar_text_size = 11,
 					bar_text_align = "left",
 					bar_padding = 10,
@@ -281,29 +281,17 @@ if f_bars then
 			},
 		})
 
-		-- Close: circular red chiclet
+		-- Dux Expressive Native Close Button: rounded squircle with Material Symbols 'close' icon
 		hl.plugin.hyprbars.add_button({
-			bg_color = "rgba(ff5f57dd)",
-			fg_color = "rgb(440000)",
-			size = 18,
-			width = 18,
-			height = 18,
-			round = 99,
-			icon_size = 12,
-			icon = "\u{e1b2}",
+			bg_color = "rgba(424921f0)",
+			fg_color = "rgb(cfd39c)",
+			size = 22,
+			width = 24,
+			height = 22,
+			round = 7,
+			icon_size = 13,
+			icon = "\u{e5cd}",
 			action = "close",
-		})
-		-- Maximize: circular green chiclet
-		hl.plugin.hyprbars.add_button({
-			bg_color = "rgba(40c940dd)",
-			fg_color = "rgb(003300)",
-			size = 18,
-			width = 18,
-			height = 18,
-			round = 99,
-			icon_size = 12,
-			icon = "\u{e167}",
-			action = "fullscreen",
 		})
 	end)
 end

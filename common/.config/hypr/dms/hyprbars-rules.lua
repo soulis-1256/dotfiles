@@ -31,6 +31,12 @@ hl.on("window.open", frost_discord)
 -- hyprbars blacklist: single source of truth for apps without top bars
 _G.hyprbars_blacklist = {
 	classes = {
+		-- Dux Labs and Dank apps (native CSD headerbars)
+		"dev\\.duxlabs\\..*",
+		"com\\.danklinux\\..*",
+		"dfiles",
+		"dux-.*",
+		"dms",
 		"discord",
 		"zen",
 		"zen-alpha",
@@ -42,7 +48,6 @@ _G.hyprbars_blacklist = {
 		-- Loupe is GTK4/adwaita with its own CSD headerbar
 		"org\\.gnome\\.Loupe",
 		"[sS]team.*",
-		"com\\.danklinux\\.dms",
 		"steam_app_.*",
 		".*\\.exe.*",
 		"[uU]nreal.*",
