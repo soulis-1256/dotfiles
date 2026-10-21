@@ -11,6 +11,8 @@ hl.bind("SUPER + SHIFT + 0", hl.dsp.window.move({ workspace = "10" }), { descrip
 hl.unbind("SUPER + SHIFT + parenright")
 hl.bind("SUPER + SHIFT + parenright", hl.dsp.window.move({ workspace = "10" }), { description = "Move to workspace 10" })
 hl.unbind("SUPER + T")
+hl.unbind("SUPER + E")
+hl.bind("SUPER + E", hl.dsp.exec_cmd("dfiles show"), { description = "File Manager (Dux Files)" })
 hl.unbind("SUPER + grave")
 hl.bind("SUPER + grave", hl.dsp.exec_cmd("ghostty"), { description = "Terminal (ghostty)" })
 hl.unbind("SUPER + asciitilde")
