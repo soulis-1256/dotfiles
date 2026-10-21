@@ -31,7 +31,7 @@ Item {
     property bool restoredThisDrag: false
     property bool activeScreenIsPortrait: false
 
-    readonly property color winBg: Theme.popupLayerColor(Theme.surfaceContainer)
+    readonly property color winBg: Theme.surfaceContainer
     readonly property color winText: Theme.surfaceText
     readonly property color winMuted: Theme.surfaceVariantText
     readonly property color winAccent: Theme.primary
