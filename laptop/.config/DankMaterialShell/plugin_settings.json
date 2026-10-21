@@ -1,4 +1,10 @@
 {
+  "snap": {
+    "enabled": true
+  },
+  "gameOverlay": {
+    "enabled": true
+  },
   "dockerManager": {
     "enabled": true,
     "groupByCompose": true,

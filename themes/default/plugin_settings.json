@@ -2,6 +2,9 @@
   "snap": {
     "enabled": true
   },
+  "gameOverlay": {
+    "enabled": true
+  },
   "win11Snap": {
     "enabled": false
   },

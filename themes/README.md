@@ -15,7 +15,7 @@ theme-switcher apply default
 
 Windows 10/11 extras live in `windows-10/plugins/` and `windows-11/plugins/` and are symlinked into `~/.config/DankMaterialShell/plugins/` only while that theme is active.
 
-Snap layouts (drag-to-edge and the top-of-screen flyout) live in `shared/plugins/snap/` and are installed for every theme.
+Snap layouts (`shared/plugins/snap/`) and Game Overlay focus stealing (`shared/plugins/gameOverlay/`) live in `shared/plugins/` and are installed for every theme.
 
 User state is not reset on reapply:
 

@@ -1,0 +1,12 @@
+{
+    "id": "gameOverlay",
+    "name": "Game Overlay",
+    "description": "Restores Exclusive keyboard focus for Control Center over fullscreen games",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "daemon",
+    "component": "./GameOverlayDaemon.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}
