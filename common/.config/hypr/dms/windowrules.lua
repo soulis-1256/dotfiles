@@ -20,7 +20,7 @@ hl.window_rule({ match = { class = "^(com\\.danklinux\\.dms)$", title = "^(Setti
 hl.window_rule({ match = { class = "^(org\\.gnome\\.Loupe)$" }, float = true, size = { 1100, 700 } })
 
 -- DMS-RULE: id=dms_rule_11, name=
-hl.window_rule({ match = { class = "^(dolphin|org\\.kde\\.dolphin|thunar|nemo|caja|pcmanfm.*|krusader|konqueror|vlc)$" }, float = true, size = { 1100, 700 } })
+hl.window_rule({ match = { class = "^(dev\\.duxlabs\\.files|dolphin|org\\.kde\\.dolphin|thunar|nemo|caja|pcmanfm.*|krusader|konqueror|vlc)$" }, float = true, size = { 1100, 700 } })
 
 -- DMS-RULE: id=dms-floating-windows, name=DMS Floating Windows
 hl.window_rule({ match = { class = "^(dev\\.duxlabs\\.shell|com\\.danklinux\\.dms)$" }, float = true })
