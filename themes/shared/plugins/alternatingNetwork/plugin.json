@@ -1,0 +1,12 @@
+{
+    "id": "alternatingNetwork",
+    "name": "Alternating Network Monitor",
+    "description": "Network speed monitor with periodic animation between download and upload",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "component": "./AlternatingNetworkWidget.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}
