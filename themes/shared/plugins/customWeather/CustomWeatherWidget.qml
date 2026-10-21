@@ -10,6 +10,8 @@ PluginComponent {
 
     layerNamespacePlugin: "custom-weather"
 
+    property bool _pendingOpen: false
+
     Component.onCompleted: {
         WeatherService.addRef();
     }
@@ -17,8 +19,70 @@ PluginComponent {
         WeatherService.removeRef();
     }
 
-    pillClickAction: (x, y, width, section, screen) => {
-        PopoutService?.toggleDankDash("weather", x, y, width, section, screen);
+    Connections {
+        target: PopoutService.dankDashPopoutLoader ?? null
+        function onLoaded() {
+            if (root._pendingOpen) {
+                root._pendingOpen = false;
+                root.openWeatherPopout();
+            }
+        }
+    }
+
+    function openWeatherPopout() {
+        const loader = PopoutService.dankDashPopoutLoader;
+        if (!loader)
+            return;
+
+        loader.active = true;
+        const popout = loader.item || PopoutService.dankDashPopout;
+        if (!popout) {
+            _pendingOpen = true;
+            return;
+        }
+
+        const anchor = root.pillAnchor();
+        if (!anchor)
+            return;
+
+        const effectiveBarConfig = root.barConfig;
+        const barPos = anchor.position !== undefined ? anchor.position : (effectiveBarConfig?.position ?? (root.isVertical ? 2 : 1));
+        const bottomGap = effectiveBarConfig?.bottomGap ?? 0;
+
+        if (popout.setBarContext) {
+            popout.setBarContext(barPos, bottomGap);
+        }
+
+        popout.triggerScreen = anchor.screen;
+
+        if (popout.setTriggerPosition) {
+            popout.setTriggerPosition(
+                anchor.trigger.x,
+                anchor.trigger.y,
+                anchor.trigger.width,
+                root.section,
+                anchor.screen,
+                barPos,
+                anchor.thickness,
+                anchor.spacing,
+                anchor.config,
+                root
+            );
+        }
+
+        if (typeof popout.prepareForTrigger === "function") {
+            popout.prepareForTrigger("weather", "click");
+        }
+
+        if (typeof popout.requestTab === "function") {
+            popout.requestTab("weather");
+        }
+
+        PopoutManager.requestPopout(popout, "weather", "weather");
+    }
+
+    pillClickAction: () => {
+        root.openWeatherPopout();
     }
 
     horizontalBarPill: Component {
