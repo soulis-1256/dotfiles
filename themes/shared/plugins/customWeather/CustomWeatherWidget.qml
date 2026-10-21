@@ -11,78 +11,99 @@ PluginComponent {
     layerNamespacePlugin: "custom-weather"
 
     property bool _pendingOpen: false
+    property var _pendingPos: null
 
     Component.onCompleted: {
         WeatherService.addRef();
+        if (PopoutService.dankDashPopoutLoader && !PopoutService.dankDashPopoutLoader.active) {
+            PopoutService.dankDashPopoutLoader.active = true;
+        }
     }
     Component.onDestruction: {
         WeatherService.removeRef();
     }
 
     Connections {
-        target: PopoutService.dankDashPopoutLoader ?? null
-        function onLoaded() {
-            if (root._pendingOpen) {
+        target: PopoutService
+        function onDankDashPopoutLoaderChanged() {
+            if (PopoutService.dankDashPopoutLoader && !PopoutService.dankDashPopoutLoader.active) {
+                PopoutService.dankDashPopoutLoader.active = true;
+            }
+        }
+        function onDankDashPopoutChanged() {
+            if (root._pendingOpen && PopoutService.dankDashPopout) {
                 root._pendingOpen = false;
-                root.openWeatherPopout();
+                const pos = root._pendingPos || {};
+                root.openWeatherPopout(pos.x, pos.y, pos.width, pos.section, pos.screen);
             }
         }
     }
 
-    function openWeatherPopout() {
+    function openWeatherPopout(x, y, width, section, screen) {
         const loader = PopoutService.dankDashPopoutLoader;
         if (!loader)
             return;
 
-        loader.active = true;
+        if (!loader.active) {
+            loader.active = true;
+        }
+
         const popout = loader.item || PopoutService.dankDashPopout;
         if (!popout) {
-            _pendingOpen = true;
+            root._pendingOpen = true;
+            root._pendingPos = {
+                x: x,
+                y: y,
+                width: width,
+                section: section,
+                screen: screen
+            };
             return;
         }
 
-        const anchor = root.pillAnchor();
-        if (!anchor)
-            return;
-
+        const currentScreen = screen || root.parentScreen;
         const effectiveBarConfig = root.barConfig;
-        const barPos = anchor.position !== undefined ? anchor.position : (effectiveBarConfig?.position ?? (root.isVertical ? 2 : 1));
+        const barPos = root.axis?.edge === "left" ? 2 : (root.axis?.edge === "right" ? 3 : (root.axis?.edge === "top" ? 0 : 1));
         const bottomGap = effectiveBarConfig?.bottomGap ?? 0;
+        const barThickness = root.barThickness;
+        const barSpacing = root.barSpacing ?? 4;
+        const triggerSection = section || root.section || "center";
+        const triggerSource = (effectiveBarConfig?.id ?? "default") + "-" + triggerSection + "-weather";
 
         if (popout.setBarContext) {
             popout.setBarContext(barPos, bottomGap);
         }
 
-        popout.triggerScreen = anchor.screen;
+        popout.triggerScreen = currentScreen;
 
         if (popout.setTriggerPosition) {
             popout.setTriggerPosition(
-                anchor.trigger.x,
-                anchor.trigger.y,
-                anchor.trigger.width,
-                root.section,
-                anchor.screen,
+                x,
+                y,
+                width,
+                triggerSection,
+                currentScreen,
                 barPos,
-                anchor.thickness,
-                anchor.spacing,
-                anchor.config,
+                barThickness,
+                barSpacing,
+                effectiveBarConfig,
                 root
             );
         }
 
         if (typeof popout.prepareForTrigger === "function") {
-            popout.prepareForTrigger("weather", "click");
+            popout.prepareForTrigger(triggerSource, "click");
         }
 
         if (typeof popout.requestTab === "function") {
             popout.requestTab("weather");
         }
 
-        PopoutManager.requestPopout(popout, "weather", "weather");
+        PopoutManager.requestPopout(popout, undefined, triggerSource);
     }
 
-    pillClickAction: () => {
-        root.openWeatherPopout();
+    pillClickAction: (x, y, width, section, screen) => {
+        root.openWeatherPopout(x, y, width, section, screen);
     }
 
     horizontalBarPill: Component {

@@ -20,7 +20,7 @@ PluginComponent {
             const ov = root.blurBarWindow.hyprlandOverviewLoader.item;
             ov.overviewOpen = !ov.overviewOpen;
         } else {
-            Quickshell.process(["dms", "ipc", "call", "hypr", "toggleOverview"]);
+            Quickshell.execDetached(["dms", "ipc", "call", "hypr", "toggleOverview"]);
         }
     }
 

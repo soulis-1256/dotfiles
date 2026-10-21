@@ -100,7 +100,7 @@ FocusScope {
         const term = (typeof SessionData !== "undefined" && SessionData.resolveTerminal)
             ? (SessionData.resolveTerminal() || "ghostty")
             : "ghostty";
-        Quickshell.process([term, "-e", ...cmdParts]);
+        Quickshell.execDetached([term, "-e", ...cmdParts]);
         closeMenu();
     }
 
@@ -531,7 +531,7 @@ FocusScope {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            Quickshell.process(["dms", "ipc", "call", "settings", "open"]);
+                            PopoutService.openSettings();
                             root.closeMenu();
                         }
                     }
@@ -623,7 +623,7 @@ FocusScope {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            Quickshell.process(["dms", "ipc", "call", "lock", "lock"]);
+                            Quickshell.execDetached(["dms", "ipc", "call", "lock", "lock"]);
                             root.closeMenu();
                         }
                     }
