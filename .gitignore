@@ -42,6 +42,8 @@ colors.lua
 **/dms/cursor.lua
 **/dms/layout.lua
 **/dms/colors.lua
+**/dms/input.lua
+**/DankMaterialShell/icc.json
 
 # Theme-switcher runtime (plugins + snapshots live in the stowed DMS config)
 **/DankMaterialShell/settings.json
