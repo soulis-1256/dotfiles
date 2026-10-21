@@ -1,3 +1,0 @@
-[templates.dmszenbrowser]
-input_path = 'SHELL_DIR/matugen/templates/zen-userchrome.css'
-output_path = 'CONFIG_DIR/DankMaterialShell/zen.css'

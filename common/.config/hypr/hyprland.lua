@@ -253,116 +253,59 @@ if f_bars then
 	pcall(hl.plugin.load, hyprbars_plugin)
 
 
-	_G.hyprbars_buttons_configured = false
-	_G.setup_hyprbars_buttons = function(theme_style)
-		if _G.hyprbars_buttons_configured then
+	pcall(function()
+		if not (hl.plugin and hl.plugin.hyprbars and hl.plugin.hyprbars.add_button) then
 			return
 		end
-		_G.hyprbars_buttons_configured = true
-		pcall(function()
-			if not (hl.plugin and hl.plugin.hyprbars and hl.plugin.hyprbars.add_button) then
-				return
-			end
 
-			local hb = _G.dms_hyprbars or {}
-			local bar_color = hb.bar_color or "rgba(1e1e1ecc)"
-			local text_color = hb.text_color or "rgb(cccccc)"
+		local hb = _G.dms_hyprbars or {}
+		local bar_color = hb.bar_color or "rgba(1e1e1ecc)"
+		local text_color = hb.text_color or "rgb(cccccc)"
 
-			if theme_style == "windows-11" or theme_style == "windows-10" then
-				hl.config({
-					plugin = {
-						hyprbars = {
-							bar_height = 30,
-							bar_color = bar_color,
-							["col.text"] = text_color,
-							bar_blur = true,
-							bar_text_font = "Inter Variable",
-							bar_text_size = 10,
-							bar_title_padding = 14,
-							bar_text_align = "left",
-							bar_padding = 0,
-							bar_button_padding = 0,
-							bar_part_of_window = true,
-							bar_precedence_over_border = true,
-							on_double_click = "hyprctl dispatch fullscreen 1",
-						},
-					},
-				})
+		hl.config({
+			plugin = {
+				hyprbars = {
+					bar_height = 32,
+					bar_color = bar_color,
+					["col.text"] = text_color,
+					bar_blur = true,
+					bar_text_font = "Cantarell, Inter, Sans",
+					bar_text_size = 11,
+					bar_text_align = "left",
+					bar_padding = 10,
+					bar_button_padding = 8,
+					bar_part_of_window = true,
+					bar_precedence_over_border = true,
+					on_double_click = "hyprctl dispatch fullscreen 1",
+				},
+			},
+		})
 
-				-- Windows 11 / 10 wide rectangular caption button (46px wide, full bar height)
-				-- Close: red hover
-				hl.plugin.hyprbars.add_button({
-					bg_color = "rgba(00000000)",
-					fg_color = text_color,
-					size = 14,
-					width = 46,
-					round = 0,
-					icon_size = 14,
-					icon = "\u{e1b2}",
-					action = "close",
-				})
-			else
-				-- Default theme: "rounded shit" (macOS / GNOME circular chiclets with glowing pills)
-				hl.config({
-					plugin = {
-						hyprbars = {
-							bar_height = 32,
-							bar_color = bar_color,
-							["col.text"] = text_color,
-							bar_blur = true,
-							bar_text_font = "Cantarell, Inter, Sans",
-							bar_text_size = 11,
-							bar_text_align = "left",
-							bar_padding = 10,
-							bar_button_padding = 8,
-							bar_part_of_window = true,
-							bar_precedence_over_border = true,
-							on_double_click = "hyprctl dispatch fullscreen 1",
-						},
-					},
-				})
-
-				-- Close: circular red chiclet
-				hl.plugin.hyprbars.add_button({
-					bg_color = "rgba(ff5f57dd)",
-					fg_color = "rgb(440000)",
-					size = 18,
-					width = 18,
-					height = 18,
-					round = 99,
-					icon_size = 12,
-					icon = "\u{e1b2}",
-					action = "close",
-				})
-				-- Maximize: circular green chiclet
-				hl.plugin.hyprbars.add_button({
-					bg_color = "rgba(40c940dd)",
-					fg_color = "rgb(003300)",
-					size = 18,
-					width = 18,
-					height = 18,
-					round = 99,
-					icon_size = 12,
-					icon = "\u{e167}",
-					action = "fullscreen",
-				})
-			end
-		end)
-	end
-end
-
--- Active theme overrides (managed by theme-switcher)
-pcall(require, "theme")
-
--- If theme didn't call setup_hyprbars_buttons, call it with fallback detection
-if _G.setup_hyprbars_buttons then
-	local f_th = io.open((os.getenv("HOME") or "") .. "/.config/.current_theme", "r")
-	local cur_theme = "default"
-	if f_th then
-		cur_theme = f_th:read("*l") or "default"
-		f_th:close()
-	end
-	_G.setup_hyprbars_buttons(cur_theme)
+		-- Close: circular red chiclet
+		hl.plugin.hyprbars.add_button({
+			bg_color = "rgba(ff5f57dd)",
+			fg_color = "rgb(440000)",
+			size = 18,
+			width = 18,
+			height = 18,
+			round = 99,
+			icon_size = 12,
+			icon = "\u{e1b2}",
+			action = "close",
+		})
+		-- Maximize: circular green chiclet
+		hl.plugin.hyprbars.add_button({
+			bg_color = "rgba(40c940dd)",
+			fg_color = "rgb(003300)",
+			size = 18,
+			width = 18,
+			height = 18,
+			round = 99,
+			icon_size = 12,
+			icon = "\u{e167}",
+			action = "fullscreen",
+		})
+	end)
 end
 
 require("dms.windowrules")
