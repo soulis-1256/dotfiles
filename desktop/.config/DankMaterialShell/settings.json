@@ -1,7 +1,7 @@
 {
-  "currentThemeName": "purple",
+  "currentThemeName": "monochrome",
   "currentThemeCategory": "generic",
-  "customThemeFile": "/home/soulis/.config/dms/themes/astralJourney/theme.json",
+  "customThemeFile": "/home/soulis/.config/dms/themes/amoledBlack/theme.json",
   "registryThemeVariants": {
     "catppuccin": {
       "dark": {
@@ -12,7 +12,7 @@
     "amoledBlack": {
       "dark": {
         "flavor": "black",
-        "accent": "light-orange"
+        "accent": "green"
       }
     },
     "peaceAndQuiet": "cyan",
@@ -24,7 +24,7 @@
     },
     "gnomeAdwaita": "blue"
   },
-  "matugenScheme": "scheme-vibrant",
+  "matugenScheme": "scheme-expressive",
   "popupTransparency": 1,
   "widgetBackgroundColor": "s",
   "hyprlandLayoutGapsOverride": -1,
@@ -298,7 +298,7 @@
           "id": "launcherButton",
           "enabled": true,
           "launcherLogoMode": "os",
-          "launcherLogoColorOverride": "",
+          "launcherLogoColorOverride": "primary",
           "launcherLogoSizeOffset": 0
         },
         {
@@ -429,7 +429,8 @@
         {
           "id": "launcherButton",
           "enabled": true,
-          "launcherLogoMode": "os"
+          "launcherLogoMode": "os",
+          "launcherLogoColorOverride": "primary"
         },
         {
           "id": "workspaceSwitcher",
@@ -760,7 +761,7 @@
   ],
   "connectedFrameBarStyleBackups": {},
   "frameEnabled": false,
-  "matugenSpec": "2021",
+  "matugenSpec": "2025",
   "radiusMode": "scale",
   "blurStrength": 0,
   "floatingWindowTitleBars": true,
@@ -811,5 +812,7 @@
   "launcherHistoryEnabled": true,
   "audioVisualizerEnabled": true,
   "scrollTitleEnabled": true,
-  "centeringMode": "geometric"
+  "centeringMode": "geometric",
+  "matugenSeedColor": "#ff0000",
+  "matugenContrast": 0
 }
