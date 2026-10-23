@@ -679,7 +679,7 @@
           "enabled": true
         },
         {
-          "id": "clock",
+          "id": "stackedClock",
           "enabled": true,
           "clockCompactMode": true
         }

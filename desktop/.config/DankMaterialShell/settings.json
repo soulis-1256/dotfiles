@@ -357,7 +357,7 @@
           "showBluetoothIcon": false
         },
         {
-          "id": "clock",
+          "id": "stackedClock",
           "enabled": true,
           "clockDateOrder": "dateFirst",
           "clockCompactMode": false,
@@ -492,7 +492,7 @@
           "showBluetoothIcon": false
         },
         {
-          "id": "clock",
+          "id": "stackedClock",
           "enabled": true,
           "clockDateOrder": "dateFirst"
         },
@@ -619,7 +619,7 @@
           "showBluetoothIcon": false
         },
         {
-          "id": "clock",
+          "id": "stackedClock",
           "enabled": true
         }
       ],

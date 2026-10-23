@@ -1,0 +1,15 @@
+{
+    "id": "stackedClock",
+    "name": "Stacked Clock",
+    "description": "Clock widget with Time stacked vertically above Date",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": [
+        "widget"
+    ],
+    "component": "./StackedClockWidget.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}
