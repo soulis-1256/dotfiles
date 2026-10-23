@@ -150,6 +150,7 @@ require("dms.cursor")
 require("dms.float-maximize")
 require("dms.binds")
 require("dms.binds-user")
+require("dms.binds-custom")
 require("dms.steam-toasts")
 
 -- Inactive color is fully transparent; border is drawn outside the window.
@@ -302,3 +303,4 @@ require("dms.app-workspace-rules")
 require("dms.hyprbars-rules")
 
 
+require("dms.input")

@@ -3,7 +3,5 @@ TIPS.*
 install.sh
 .git
 .gitignore
-themes
-themes/*
 tools
 tools/*

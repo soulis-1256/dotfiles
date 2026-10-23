@@ -144,7 +144,7 @@ Hyprland dwindle is the tiling layout. `general.layout` is `dwindle` in `hyprlan
 
 Two custom behaviors stay:
 
-- Drag a floating window to the top edge to maximize it, and drag it down to restore. The gesture is `themes/shared/plugins/snap` plus `common/.config/hypr/dms/snap.lua`. `float-maximize.lua` only supplies the helpers that gesture calls: xdg maximize for client-side decorations, geometry maximize for hyprbar windows, and transient windows (picture-in-picture) so a child does not unmaximize its parent.
+- Drag a floating window to the top edge to maximize it, and drag it down to restore. The gesture is `common/.config/DankMaterialShell/plugins/snap` plus `common/.config/hypr/dms/snap.lua`. `float-maximize.lua` only supplies the helpers that gesture calls: xdg maximize for client-side decorations, geometry maximize for hyprbar windows, and transient windows (picture-in-picture) so a child does not unmaximize its parent.
 - The workspace switcher shows an app hover preview when that workspace has at least one native floating window.
 
 `~/.cache/hypr_app_float_state.json` still records the maximized bit when snap sets it. Nothing reads that file to float or resize a window on open.

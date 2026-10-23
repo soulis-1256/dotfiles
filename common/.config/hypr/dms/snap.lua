@@ -1,5 +1,5 @@
 -- Snap layouts: drag-to-edge, top flyout, maximize/restore.
--- Loaded for every theme. QML overlay lives in themes/shared/plugins/snap.
+-- QML overlay lives in common/.config/DankMaterialShell/plugins/snap.
 
 local function get_monitor_work_area(mon)
 	local is_rotated = (mon.transform and (mon.transform % 2 == 1))

@@ -25,6 +25,13 @@ hl.window_rule({
 	no_initial_focus = true,
 })
 
+-- Spotify on 4
+hl.window_rule({
+	match = { class = "^([sS]potify)$" },
+	workspace = "4 silent",
+	no_initial_focus = true,
+})
+
 hl.window_rule({
 	match = { title = "^(Reflex Saloon Demo.*)$" },
 	workspace = "4 silent",
