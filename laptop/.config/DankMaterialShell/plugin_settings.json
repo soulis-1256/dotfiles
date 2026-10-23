@@ -16,5 +16,11 @@
   },
   "discordVoice": {
     "enabled": true
+  },
+  "customMusic": {
+    "enabled": true
+  },
+  "stackedClock": {
+    "enabled": true
   }
 }

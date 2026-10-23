@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PATCH_FILE="${HOME}/.config/DankMaterialShell/patches/AppDrawerPopout.qml"
+if [[ ! -f "$PATCH_FILE" ]]; then
+    PATCH_FILE="${HOME}/dotfiles/common/.config/DankMaterialShell/patches/AppDrawerPopout.qml"
+fi
+
+if [[ ! -f "$PATCH_FILE" ]]; then
+    exit 0
+fi
+
+UID_NUM="$(id -u)"
+BASE_DIR="/run/user/${UID_NUM}/dms-shell"
+
+if [[ ! -d "$BASE_DIR" ]]; then
+    exit 0
+fi
+
+for shell_dir in "$BASE_DIR"/*; do
+    if [[ -d "$shell_dir/Modules/AppDrawer" ]]; then
+        target_file="$shell_dir/Modules/AppDrawer/AppDrawerPopout.qml"
+        if [[ -f "$target_file" ]]; then
+            if grep -q "win11BottomBar" "$target_file" 2>/dev/null; then
+                continue
+            fi
+            chmod u+w "$shell_dir/Modules/AppDrawer" "$target_file" 2>/dev/null || true
+            cp -f "$PATCH_FILE" "$target_file"
+        fi
+    fi
+done
