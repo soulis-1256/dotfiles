@@ -166,6 +166,12 @@ hl.on("window.fullscreen", function(w)
 end)
 hl.window_rule({ match = { class = "^(zoom)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.qbittorrent\\.qBittorrent|qbittorrent)$" }, float = true })
+hl.window_rule({
+	match = { class = "^(org\\.localsend\\.localsend_app|localsend_app|localsend)$" },
+	float = true,
+	center = true,
+	size = { 1100, 720 },
+})
 hl.layer_rule({ match = { namespace = "^(quickshell)$" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "^dms:.*" }, no_anim = true })
 
