@@ -184,7 +184,7 @@ int CHyprBar::buttonIndexAt(const Vector2D& COORDS) {
         const float bHeight = (b.height > 0) ? b.height : (b.width > 0 ? (float)barHeight : b.size);
         const auto  BARBUF  = Vector2D{(int)barW, (int)barHeight};
         Vector2D    currentPos =
-            Vector2D{(buttonsRight ? BARBUF.x - barButtonPadding - bWidth - offset : offset), (BARBUF.y - bHeight) / 2.0}.floor();
+            Vector2D{(buttonsRight ? BARBUF.x - offset - bWidth : offset), (BARBUF.y - bHeight) / 2.0}.floor();
 
         if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + bWidth, currentPos.y + bHeight))
             return i;
@@ -684,19 +684,30 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a, 
         buttonBox.round();
 
         if (color.a > 0.001f) {
-            // renderRect ignores GL scissor and clips via clipBox. Fill the
-            // bar's rounded chrome, clipped to this button, so the close hover
-            // follows the window corner instead of a square (or the whole bar).
-            auto&      clipBox   = g_pHyprRenderer->m_renderData.clipBox;
-            const CBox savedClip = clipBox;
-            CBox       clip      = buttonBox;
-            if (!barClip.empty())
-                clip = clip.intersection(barClip);
-            if (!savedClip.empty())
-                clip = clip.intersection(savedClip);
-            clipBox = clip;
-            g_pHyprOpenGL->renderRect(chromeBox, color, {.round = chromeRound, .roundingPower = chromeRoundPower});
-            clipBox = savedClip;
+            if (button.round > 0) {
+                int roundRadius = (button.round >= 50) ? static_cast<int>(std::round(std::min(bWidth, bHeight) / 2.0)) :
+                                                         static_cast<int>(std::round(button.round * scale));
+                auto&      clipBox   = g_pHyprRenderer->m_renderData.clipBox;
+                const CBox savedClip = clipBox;
+                if (!barClip.empty())
+                    clipBox = savedClip.empty() ? barClip : savedClip.intersection(barClip);
+                g_pHyprOpenGL->renderRect(buttonBox, color, {.round = roundRadius, .roundingPower = 2.F});
+                clipBox = savedClip;
+            } else {
+                // renderRect ignores GL scissor and clips via clipBox. Fill the
+                // bar's rounded chrome, clipped to this button, so the close hover
+                // follows the window corner instead of a square (or the whole bar).
+                auto&      clipBox   = g_pHyprRenderer->m_renderData.clipBox;
+                const CBox savedClip = clipBox;
+                CBox       clip      = buttonBox;
+                if (!barClip.empty())
+                    clip = clip.intersection(barClip);
+                if (!savedClip.empty())
+                    clip = clip.intersection(savedClip);
+                clipBox = clip;
+                g_pHyprOpenGL->renderRect(chromeBox, color, {.round = chromeRound, .roundingPower = chromeRoundPower});
+                clipBox = savedClip;
+            }
         }
 
         offset += scaledButtonsPad + bWidth;

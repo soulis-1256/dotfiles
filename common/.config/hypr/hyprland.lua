@@ -260,22 +260,24 @@ if f_bars then
 		end
 
 		local hb = _G.dms_hyprbars or {}
-		local bar_color = hb.bar_color or "rgba(1e1e1ecc)"
-		local text_color = hb.text_color or "rgb(cccccc)"
+		local bar_color = hb.bar_color or "rgba(1a1110ff)"
+		local text_color = hb.text_color or "rgb(f1dedc)"
+		local close_bg = hb.close_bg or "rgb(5d3f3c)"
+		local close_fg = hb.close_fg or "rgb(ffdad6)"
 
 		hl.config({
 			plugin = {
 				hyprbars = {
-					bar_height = 30,
+					bar_height = 32,
 					bar_color = bar_color,
 					["col.text"] = text_color,
 					bar_blur = true,
 					bar_text_font = "Inter Variable",
-					bar_text_size = 10,
+					bar_text_size = 11,
 					bar_title_padding = 14,
 					bar_text_align = "left",
-					bar_padding = 0,
-					bar_button_padding = 0,
+					bar_padding = 8,
+					bar_button_padding = 6,
 					bar_part_of_window = true,
 					bar_precedence_over_border = true,
 					on_double_click = "hyprctl dispatch fullscreen 1",
@@ -283,15 +285,15 @@ if f_bars then
 			},
 		})
 
-		-- Wide rectangular caption button (46px wide, full bar height)
-		-- Close: transparent background, dynamic text color
+		-- Dux Expressive Native Close Button: rounded squircle matching Settings
 		hl.plugin.hyprbars.add_button({
-			bg_color = "rgba(00000000)",
-			fg_color = text_color,
-			size = 14,
-			width = 46,
-			round = 0,
-			icon_size = 14,
+			bg_color = close_bg,
+			fg_color = close_fg,
+			size = 22,
+			width = 22,
+			height = 22,
+			round = 7,
+			icon_size = 12,
 			icon = "\u{e1b2}",
 			action = "close",
 		})
