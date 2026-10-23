@@ -102,6 +102,23 @@ PluginComponent {
         if (PopoutService.dankDashPopoutLoader && !PopoutService.dankDashPopoutLoader.active) {
             PopoutService.dankDashPopoutLoader.active = true;
         }
+        _hookPillWheel();
+    }
+
+    function _hookPillWheel() {
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (child && child.wheel && typeof child.wheel.connect === "function") {
+                child.wheel.connect(root.handleWheel);
+            }
+        }
+    }
+
+    WheelHandler {
+        id: rootWheelHandler
+        target: null
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onWheel: (wheelEvent) => root.handleWheel(wheelEvent)
     }
 
     Connections {
@@ -188,6 +205,8 @@ PluginComponent {
     }
 
     function handleWheel(wheelEvent) {
+        if (!wheelEvent || wheelEvent.accepted)
+            return;
         if (SettingsData.widgetOption("music", widgetData, "audioScrollMode") === "nothing")
             return;
 
