@@ -1,28 +1,7 @@
 {
   "currentThemeName": "monochrome",
   "currentThemeCategory": "generic",
-  "customThemeFile": "/home/soulis/.config/DankMaterialShell/themes/amoledBlack/theme.json",
-  "registryThemeVariants": {
-    "catppuccin": {
-      "dark": {
-        "flavor": "mocha",
-        "accent": "mauve"
-      }
-    },
-    "amoledBlack": {
-      "dark": {
-        "flavor": "black",
-        "accent": "green"
-      }
-    },
-    "peaceAndQuiet": "cyan",
-    "astralJourney": {
-      "dark": {
-        "flavor": "blackhole",
-        "accent": "lilac"
-      }
-    }
-  },
+  "customThemeFile": "",
   "matugenScheme": "scheme-expressive",
   "popupTransparency": 1,
   "widgetBackgroundColor": "s",
@@ -197,8 +176,8 @@
   "networkPreference": "wifi",
   "iconThemeDark": "System Default",
   "cursorSettings": {
-    "theme": "Nero-Matugen",
-    "size": 28,
+    "theme": "Adwaita",
+    "size": 24,
     "niri": {
       "hideWhenTyping": false,
       "hideAfterInactiveMs": 0

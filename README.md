@@ -156,5 +156,3 @@ Dux owns the shell. These dotfiles add the pieces around it.
 
 - **Plugins**, in `common/.config/DankMaterialShell/plugins/`. Both machine profiles symlink that directory. The set is the weather pill, the stacked clock, the network pill, and the fullscreen game overlay.
 - **Four patch files**, in `common/.config/DankMaterialShell/patches/`. `dms-patch-shell` copies them onto the shell after `dms` unpacks it: the app launcher popout, the music pill, the keyboard-layout pill, and the Hyprland color template. They replace those Dux files wholesale, so a Dux update means replaying the edits onto the new originals.
-- **Theme packs** under each machine's `DankMaterialShell/themes/`. They are color data. Both machines use the built-in `monochrome` theme.
-- **Nero-Matugen**, in `common/.local/share/nero-matugen/`. The cursor bitmaps are recolored when Matugen builds a palette. `cursorSettings.size` in `settings.json` is 28.

@@ -1,29 +1,7 @@
 {
   "currentThemeName": "monochrome",
   "currentThemeCategory": "generic",
-  "customThemeFile": "/home/soulis/.config/dms/themes/amoledBlack/theme.json",
-  "registryThemeVariants": {
-    "catppuccin": {
-      "dark": {
-        "flavor": "mocha",
-        "accent": "mauve"
-      }
-    },
-    "amoledBlack": {
-      "dark": {
-        "flavor": "black",
-        "accent": "green"
-      }
-    },
-    "peaceAndQuiet": "cyan",
-    "astralJourney": {
-      "dark": {
-        "flavor": "blackhole",
-        "accent": "lilac"
-      }
-    },
-    "gnomeAdwaita": "blue"
-  },
+  "customThemeFile": "",
   "matugenScheme": "scheme-expressive",
   "popupTransparency": 1,
   "widgetBackgroundColor": "s",
