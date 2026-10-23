@@ -33,11 +33,49 @@
 #include "BarPassElement.hpp"
 
 #include <climits>
+#include <vector>
 
 using namespace Render::GL;
 
 static CHyprColor configColor(Config::INTEGER color) {
     return CHyprColor{static_cast<uint64_t>(color)};
+}
+
+// Wayland cursor-shape name for a clickable control (Adwaita's hand; hand2 points here).
+constexpr const char* CAPTION_BUTTON_CURSOR = "pointer";
+
+// Caption buttons in bar-local pixels. `barSize` is the bar in that space and
+// `scale` turns the logical config sizes into it. Paint, click, and hover all
+// use this, so the hit target is the rectangle that is drawn.
+static std::vector<CBox> captionButtonBoxes(const Vector2D& barSize, float scale) {
+    std::vector<CBox> boxes;
+    if (scale <= 0.f || barSize.x <= 0 || barSize.y <= 0)
+        return boxes;
+
+    const float pad   = static_cast<float>(g_pGlobalState->config.barPadding->value()) * scale;
+    const float gap   = static_cast<float>(g_pGlobalState->config.barButtonPadding->value()) * scale;
+    const bool  right = g_pGlobalState->config.barButtonsAlignment->value() != "left";
+
+    float offset = pad;
+    float room   = static_cast<float>(barSize.x) - pad * 2.f;
+
+    for (const auto& button : g_pGlobalState->buttons) {
+        const float logicalW = (button.width > 0) ? button.width : button.size;
+        const float logicalH = (button.height > 0) ? button.height : (button.width > 0 ? static_cast<float>(barSize.y) / scale : button.size);
+        const float w        = logicalW * scale;
+        const float h        = logicalH * scale;
+        if (room < w + gap)
+            break;
+
+        const float x = right ? static_cast<float>(barSize.x) - offset - w : offset;
+        const float y = (static_cast<float>(barSize.y) - h) / 2.f;
+        boxes.emplace_back(x, y, w, h);
+
+        offset += gap + w;
+        room -= w + gap;
+    }
+
+    return boxes;
 }
 
 CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
@@ -170,27 +208,12 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
 }
 
 int CHyprBar::buttonIndexAt(const Vector2D& COORDS) {
-    const auto barHeight        = g_pGlobalState->config.barHeight->value();
-    const auto barPadding       = g_pGlobalState->config.barPadding->value();
-    const auto barButtonPadding = g_pGlobalState->config.barButtonPadding->value();
-    const auto alignButtons     = g_pGlobalState->config.barButtonsAlignment->value();
-    const bool buttonsRight     = alignButtons != "left";
-    const auto barW             = assignedBoxGlobal().w;
-
-    float offset = barPadding;
-    int   i      = 0;
-    for (auto& b : g_pGlobalState->buttons) {
-        const float bWidth  = (b.width > 0) ? b.width : b.size;
-        const float bHeight = (b.height > 0) ? b.height : (b.width > 0 ? (float)barHeight : b.size);
-        const auto  BARBUF  = Vector2D{(int)barW, (int)barHeight};
-        Vector2D    currentPos =
-            Vector2D{(buttonsRight ? BARBUF.x - offset - bWidth : offset), (BARBUF.y - bHeight) / 2.0}.floor();
-
-        if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + bWidth, currentPos.y + bHeight))
-            return i;
-
-        offset += barButtonPadding + bWidth;
-        ++i;
+    const auto bar   = assignedBoxGlobal();
+    const auto boxes = captionButtonBoxes(Vector2D{(int)bar.w, (int)bar.h}, 1.f);
+    for (size_t i = 0; i < boxes.size(); ++i) {
+        const auto& b = boxes[i];
+        if (VECINRECT(COORDS, b.x, b.y, b.x + b.w, b.y + b.h))
+            return (int)i;
     }
     return -1;
 }
@@ -323,6 +346,30 @@ std::optional<Layout::eRectCorner> CHyprBar::getResizeCorner(const Vector2D& mou
     return std::nullopt;
 }
 
+void CHyprBar::setSpecialCursor(const std::string& shape) {
+    if (m_szCurrentCursorOverride == shape)
+        return;
+    Pointer::Cursor::overrideController->setOverride(shape, Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+    m_szCurrentCursorOverride = shape;
+    m_bBorderHoverActive      = true;
+}
+
+void CHyprBar::clearSpecialCursor() {
+    if (!m_bBorderHoverActive)
+        return;
+    Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+    m_szCurrentCursorOverride.clear();
+    m_bBorderHoverActive = false;
+}
+
+bool CHyprBar::anyButtonHovered() const {
+    for (const auto& bar : g_pGlobalState->bars) {
+        if (bar && bar->m_iButtonHoverState)
+            return true;
+    }
+    return false;
+}
+
 void CHyprBar::onMouseMove(Vector2D coords) {
     // Hover fill is stored in m_iButtonHoverState and only painted on damage.
     // Do this on every move, including maximized windows (border_size 0 counts
@@ -336,22 +383,26 @@ void CHyprBar::onMouseMove(Vector2D coords) {
         return;
     }
 
-    if (!validMapped(m_pWindow) || isWindowMaximized()) {
-        if (m_bBorderHoverActive) {
-            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
-            m_szCurrentCursorOverride.clear();
-            m_bBorderHoverActive = false;
-        }
+    // An active drag owns the cursor. Drop ours so we don't hold the slot.
+    if (g_layoutManager && g_layoutManager->dragController() && g_layoutManager->dragController()->target()) {
+        clearSpecialCursor();
         return;
     }
 
-    // If an active drag / resize operation is running, don't interfere with the active drag cursor
-    if (g_layoutManager && g_layoutManager->dragController() && g_layoutManager->dragController()->target()) {
-        if (m_bBorderHoverActive) {
-            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
-            m_szCurrentCursorOverride.clear();
-            m_bBorderHoverActive = false;
-        }
+    // Same box as the highlight. A maximized window has no resize border, but
+    // the caption button is still a button.
+    if (m_iButtonHoverState != 0) {
+        setSpecialCursor(CAPTION_BUTTON_CURSOR);
+        return;
+    }
+
+    // The shape is global. Another bar's button may already own it; clearing
+    // here would put the arrow back on top of that button.
+    if (anyButtonHovered())
+        return;
+
+    if (!validMapped(m_pWindow) || isWindowMaximized()) {
+        clearSpecialCursor();
         return;
     }
 
@@ -360,39 +411,26 @@ void CHyprBar::onMouseMove(Vector2D coords) {
     const auto              WINDOWATCURSOR = hitTester.windowAt(coords, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
 
     if (WINDOWATCURSOR != m_pWindow) {
-        if (m_bBorderHoverActive) {
-            Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
-            m_szCurrentCursorOverride.clear();
-            m_bBorderHoverActive = false;
-        }
+        clearSpecialCursor();
         return;
     }
 
     const auto resizeCorner = getResizeCorner(coords);
-    if (resizeCorner.has_value()) {
-        static auto PHOVERICON = CConfigValue<Config::INTEGER>("general:hover_icon_on_border");
-        if (*PHOVERICON) {
-            std::string shape = "top_side";
-            if (*resizeCorner == Layout::CORNER_TOPLEFT)
-                shape = "top_left_corner";
-            else if (*resizeCorner == Layout::CORNER_TOPRIGHT)
-                shape = "top_right_corner";
-            else if (*resizeCorner == Layout::CORNER_LEFT)
-                shape = "left_side";
-            else if (*resizeCorner == Layout::CORNER_RIGHT)
-                shape = "right_side";
+    static auto PHOVERICON  = CConfigValue<Config::INTEGER>("general:hover_icon_on_border");
+    if (resizeCorner.has_value() && *PHOVERICON) {
+        std::string shape = "top_side";
+        if (*resizeCorner == Layout::CORNER_TOPLEFT)
+            shape = "top_left_corner";
+        else if (*resizeCorner == Layout::CORNER_TOPRIGHT)
+            shape = "top_right_corner";
+        else if (*resizeCorner == Layout::CORNER_LEFT)
+            shape = "left_side";
+        else if (*resizeCorner == Layout::CORNER_RIGHT)
+            shape = "right_side";
 
-            if (m_szCurrentCursorOverride != shape) {
-                Pointer::Cursor::overrideController->setOverride(shape, Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
-                m_szCurrentCursorOverride = shape;
-            }
-            m_bBorderHoverActive = true;
-        }
-    } else if (m_bBorderHoverActive) {
-        Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
-        m_szCurrentCursorOverride.clear();
-        m_bBorderHoverActive = false;
-    }
+        setSpecialCursor(shape);
+    } else
+        clearSpecialCursor();
 }
 
 void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
@@ -621,39 +659,15 @@ void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {
     m_pTextTex             = g_pHyprRenderer->renderText(m_szLastTitle, COLOR, scaledSize, false, FONT, maxWidth, WEIGHT.m_value);
 }
 
-size_t CHyprBar::getVisibleButtonCount(Config::INTEGER barButtonPadding, Config::INTEGER barPadding, const Vector2D& bufferSize, const float scale) {
-    float  availableSpace = bufferSize.x - barPadding * scale * 2;
-    size_t count          = 0;
-
-    for (const auto& button : g_pGlobalState->buttons) {
-        const float bWidth = (button.width > 0) ? button.width : button.size;
-        const float buttonSpace = (bWidth + barButtonPadding) * scale;
-        if (availableSpace >= buttonSpace) {
-            count++;
-            availableSpace -= buttonSpace;
-        } else
-            break;
-    }
-
-    return count;
-}
-
 void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a, const CBox& chromeBox, int chromeRound, float chromeRoundPower, const CBox& barClip) {
-    const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
-    const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
-    const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
     const auto INACTIVECOLOR    = g_pGlobalState->config.inactiveButtonColor->value();
-
-    const bool BUTTONSRIGHT    = ALIGNBUTTONS != "left";
-    const auto visibleCount    = getVisibleButtonCount(BARBUTTONPADDING, BARPADDING, Vector2D{barBox->w, barBox->h}, scale);
+    const auto boxes            = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale);
     const bool INVALIDATEICONS = m_bButtonsDirty || m_bWindowSizeChanged;
 
-    int        offset = BARPADDING * scale;
-    for (size_t i = 0; i < visibleCount; ++i) {
-        auto&      button           = g_pGlobalState->buttons[i];
-        const float bWidth          = ((button.width > 0) ? button.width : button.size) * scale;
-        const float bHeight         = ((button.height > 0) ? button.height : (button.width > 0 ? (barBox->h / scale) : button.size)) * scale;
-        const auto scaledButtonsPad = BARBUTTONPADDING * scale;
+    for (size_t i = 0; i < boxes.size(); ++i) {
+        auto&       button = g_pGlobalState->buttons[i];
+        const float bWidth  = boxes[i].w;
+        const float bHeight = boxes[i].h;
 
         auto color = button.bgcol;
         bool hovered = (m_iButtonHoverState & (1 << i)) != 0;
@@ -679,8 +693,8 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a, 
 
         color.a *= a;
 
-        CBox buttonBox = {barBox->x + (BUTTONSRIGHT ? barBox->w - offset - bWidth : offset), barBox->y + (barBox->h - bHeight) / 2.0, bWidth,
-                          bHeight};
+        CBox buttonBox = boxes[i];
+        buttonBox.translate(Vector2D{barBox->x, barBox->y});
         buttonBox.round();
 
         if (color.a > 0.001f) {
@@ -709,26 +723,15 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a, 
                 clipBox = savedClip;
             }
         }
-
-        offset += scaledButtonsPad + bWidth;
     }
 }
 
 void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float a) {
-    const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
-    const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
-    const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
-    const auto ICONONHOVER      = g_pGlobalState->config.iconOnHover->value();
+    const auto ICONONHOVER = g_pGlobalState->config.iconOnHover->value();
+    const auto boxes       = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale);
 
-    const bool BUTTONSRIGHT = ALIGNBUTTONS != "left";
-    const auto visibleCount = getVisibleButtonCount(BARBUTTONPADDING, BARPADDING, Vector2D{barBox->w, barBox->h}, scale);
-
-    int offset = BARPADDING * scale;
-
-    for (size_t i = 0; i < visibleCount; ++i) {
-        auto&       button          = g_pGlobalState->buttons[i];
-        const float bWidth          = ((button.width > 0) ? button.width : button.size) * scale;
-        const auto  scaledButtonsPad = BARBUTTONPADDING * scale;
+    for (size_t i = 0; i < boxes.size(); ++i) {
+        auto& button = g_pGlobalState->buttons[i];
 
         if ((!button.iconTex || button.iconTex->m_texID == 0) && !button.icon.empty()) {
             auto fgcol = button.userfg ? button.fgcol : (button.bgcol.r + button.bgcol.g + button.bgcol.b < 1) ? CHyprColor(0xFFFFFFFF) : CHyprColor(0xFF000000);
@@ -744,8 +747,9 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         if (!button.iconTex || button.iconTex->m_texID == 0)
             continue;
 
-        const double btnCenterX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - bWidth / 2.0 : offset + bWidth / 2.0);
-        const double btnCenterY = barBox->y + barBox->height / 2.0;
+        const auto&  box        = boxes[i];
+        const double btnCenterX = barBox->x + box.x + box.w / 2.0;
+        const double btnCenterY = barBox->y + box.y + box.h / 2.0;
         const double iconX      = std::round(btnCenterX - button.iconTex->m_size.x / 2.0);
         const double iconY      = std::round(btnCenterY - button.iconTex->m_size.y / 2.0);
         CBox       pos          = {iconX, iconY, (double)button.iconTex->m_size.x, (double)button.iconTex->m_size.y};
@@ -753,7 +757,6 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
 
         if (!ICONONHOVER || (ICONONHOVER && m_iButtonHoverState > 0))
             g_pHyprOpenGL->renderTexture(button.iconTex, pos, {.a = a});
-        offset += scaledButtonsPad + bWidth;
     }
 }
 
@@ -1011,8 +1014,13 @@ bool CHyprBar::cursorOccludedByOverlay(const Vector2D& mouse) {
 }
 
 void CHyprBar::damageOnButtonHover() {
-    if (!validMapped(m_pWindow) || m_hidden)
+    if (!validMapped(m_pWindow) || m_hidden) {
+        if (m_iButtonHoverState != 0) {
+            m_iButtonHoverState = 0;
+            m_bButtonHovered    = false;
+        }
         return;
+    }
 
     unsigned int newState = 0;
     const auto   barBox   = assignedBoxGlobal();
@@ -1031,27 +1039,9 @@ void CHyprBar::damageOnButtonHover() {
     // makes windowAt return the maxed window under a small float, so hover
     // never armed on Ghostty/Spotify-sized windows.
     if (overBar) {
-        const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
-        const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
-        const auto HEIGHT           = g_pGlobalState->config.barHeight->value();
-        const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
-        const bool BUTTONSRIGHT     = ALIGNBUTTONS != "left";
-        const auto COORDS           = cursorRelativeToBar();
-        const auto BARBUF           = Vector2D{(int)barBox.w, (int)HEIGHT};
-
-        float offset = BARPADDING;
-        for (size_t i = 0; i < g_pGlobalState->buttons.size(); ++i) {
-            auto&       b       = g_pGlobalState->buttons[i];
-            const float bWidth  = (b.width > 0) ? b.width : b.size;
-            const float bHeight = (b.height > 0) ? b.height : (b.width > 0 ? (float)HEIGHT : b.size);
-            Vector2D    currentPos =
-                Vector2D{(BUTTONSRIGHT ? BARBUF.x - BARBUTTONPADDING - bWidth - offset : offset), (BARBUF.y - bHeight) / 2.0}.floor();
-
-            if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + bWidth, currentPos.y + bHeight))
-                newState |= (1u << i);
-
-            offset += BARBUTTONPADDING + bWidth;
-        }
+        const int idx = buttonIndexAt(cursorRelativeToBar());
+        if (idx >= 0)
+            newState |= (1u << idx);
     }
 
     if (newState != m_iButtonHoverState) {

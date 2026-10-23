@@ -124,14 +124,15 @@ class CHyprBar : public IHyprWindowDecoration {
     bool                               isOverButton(const Vector2D& COORDS);
     bool                               isWindowMaximized();
     void                               toggleMaximize();
+    void                               setSpecialCursor(const std::string& shape);
+    void                               clearSpecialCursor();
+    bool                               anyButtonHovered() const;
 
     // store hover state for buttons as a bitfield
     unsigned int m_iButtonHoverState = 0;
 
     // for dynamic updates
-    int    m_iLastHeight = 0;
-
-    size_t getVisibleButtonCount(Config::INTEGER barButtonPadding, Config::INTEGER barPadding, const Vector2D& bufferSize, const float scale);
+    int m_iLastHeight = 0;
 
     friend class CBarPassElement;
 };

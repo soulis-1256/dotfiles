@@ -133,6 +133,37 @@ hl.window_rule({
 	float = true,
 	pin = true,
 })
+
+-- If un-fullscreen settles on maximized (internal state 1), return to the
+-- floating size after this fullscreen call returns. Real fullscreen
+-- (internal state 2) is left alone.
+local function pip_window(w)
+	if not w then
+		return false
+	end
+	local title = (w.title or w.initial_title or ""):lower()
+	return title:match("picture[%- ]in[%- ]picture") ~= nil
+end
+
+hl.on("window.fullscreen", function(w)
+	if not pip_window(w) or w.fullscreen ~= 1 then
+		return
+	end
+	local addr = w.address
+	hl.timer(function()
+		local live = addr and hl.get_window("address:" .. tostring(addr))
+		if not live or not pip_window(live) or live.fullscreen ~= 1 then
+			return
+		end
+		hl.dispatch(hl.dsp.window.fullscreen_state({
+			window = live,
+			internal = 0,
+			client = 0,
+			action = "set",
+			layout_aware = false,
+		}))
+	end, { timeout = 1, type = "oneshot" })
+end)
 hl.window_rule({ match = { class = "^(zoom)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.qbittorrent\\.qBittorrent|qbittorrent)$" }, float = true })
 hl.layer_rule({ match = { namespace = "^(quickshell)$" }, no_anim = true })
@@ -289,11 +320,11 @@ if f_bars then
 		hl.plugin.hyprbars.add_button({
 			bg_color = close_bg,
 			fg_color = close_fg,
-			size = 22,
-			width = 22,
-			height = 22,
-			round = 7,
-			icon_size = 12,
+			size = 26,
+			width = 26,
+			height = 26,
+			round = 8,
+			icon_size = 14,
 			icon = "\u{e1b2}",
 			action = "close",
 		})

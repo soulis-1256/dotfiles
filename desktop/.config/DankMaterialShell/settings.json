@@ -198,8 +198,8 @@
   "networkPreference": "wifi",
   "iconThemeDark": "System Default",
   "cursorSettings": {
-    "theme": "Nero-Matugen",
-    "size": 28,
+    "theme": "Adwaita",
+    "size": 24,
     "niri": {
       "hideWhenTyping": false,
       "hideAfterInactiveMs": 0
