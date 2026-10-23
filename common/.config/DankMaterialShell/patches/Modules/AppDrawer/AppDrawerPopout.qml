@@ -2,6 +2,7 @@ import QtQuick
 import qs.Common
 import qs.DCommon.Widgets
 import qs.Modals.DLauncherV2
+import qs.Modules.ControlCenter
 import qs.Services
 import qs.Widgets
 
@@ -158,7 +159,7 @@ DPopout {
                     height: 56
                     bottomLeftRadius: Theme.windowRadius
                     bottomRightRadius: Theme.windowRadius
-                    color: Theme.withAlpha(Theme.surfaceContainerLow, 0.75)
+                    color: "transparent"
 
                     MouseArea {
                         anchors.fill: parent
@@ -170,7 +171,7 @@ DPopout {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         height: 1
-                        color: Theme.withAlpha(Theme.outline, 0.18)
+                        color: Theme.outlineVariant
                     }
 
                     Item {
@@ -199,9 +200,18 @@ DPopout {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.spacingS
 
-                        DIconButton {
+                        DActionButton {
+                            width: 44
+                            height: 36
+                            buttonSize: 36
+                            circular: false
+                            radius: Theme.cornerRadiusM
+                            backgroundColor: CcMetrics.tileInactiveColor
+                            border.width: Theme.layerOutlineWidth
+                            border.color: Theme.outlineMedium
                             iconName: "settings"
-                            size: "m"
+                            iconSize: Theme.iconSizeMedium
+                            iconColor: CcMetrics.tileInactiveIcon
                             tooltipText: I18n.tr("Settings")
                             tooltipSide: "top"
                             onClicked: {
@@ -210,12 +220,20 @@ DPopout {
                             }
                         }
 
-                        DIconButton {
+                        DActionButton {
+                            width: 44
+                            height: 36
+                            buttonSize: 36
+                            circular: false
+                            radius: Theme.cornerRadiusM
+                            backgroundColor: CcMetrics.tileInactiveColor
+                            border.width: Theme.layerOutlineWidth
+                            border.color: Theme.outlineMedium
                             iconName: "power_settings_new"
-                            size: "m"
+                            iconSize: Theme.iconSizeMedium
+                            iconColor: Theme.error
                             tooltipText: I18n.tr("Power")
                             tooltipSide: "top"
-                            iconColor: Theme.error
                             onClicked: {
                                 appDrawerPopout.close();
                                 PopoutService.openPowerMenu();
