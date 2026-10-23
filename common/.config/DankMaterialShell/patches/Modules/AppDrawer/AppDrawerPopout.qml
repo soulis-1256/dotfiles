@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell.Wayland
 import qs.Common
 import qs.DCommon.Widgets
 import qs.Modals.DLauncherV2
@@ -13,9 +14,34 @@ DPopout {
 
     property string _pendingMode: ""
     property string _pendingQuery: ""
+    property bool _powerMenuOwned: false
+    readonly property bool powerMenuOpen: PopoutService.powerMenuModalLoader?.item?.shouldBeVisible ?? false
+
+    backgroundInteractive: !powerMenuOpen
+    hoverDismissSuspended: powerMenuOpen
+    customKeyboardFocus: powerMenuOpen ? WlrKeyboardFocus.None : null
 
     function show() {
         open();
+    }
+
+    function openPowerMenuHere() {
+        const loader = PopoutService.powerMenuModalLoader;
+        if (!loader)
+            return;
+        loader.active = true;
+        if (!loader.item)
+            return;
+        const bounds = Qt.rect(alignedX, alignedY, popupWidth, popupHeight);
+        _powerMenuOwned = true;
+        loader.item.openFromControlCenter(bounds, screen);
+    }
+
+    function _closeIfPowerMenuOwned() {
+        if (!_powerMenuOwned)
+            return;
+        _powerMenuOwned = false;
+        close();
     }
 
     function openWithMode(mode) {
@@ -96,6 +122,19 @@ DPopout {
         }
     }
 
+    Connections {
+        target: PopoutService.powerMenuModalLoader?.item ?? null
+        function onPowerActionRequested(action, title, message) {
+            appDrawerPopout._closeIfPowerMenuOwned();
+        }
+        function onLockRequested() {
+            appDrawerPopout._closeIfPowerMenuOwned();
+        }
+        function onDialogClosed() {
+            Qt.callLater(() => appDrawerPopout._powerMenuOwned = false);
+        }
+    }
+
     content: Component {
         Rectangle {
             id: contentContainer
@@ -142,6 +181,10 @@ DPopout {
                 }
 
                 Keys.onEscapePressed: event => {
+                    if (appDrawerPopout.powerMenuOpen) {
+                        event.accepted = true;
+                        return;
+                    }
                     if (launcherContent.editMode) {
                         launcherContent.closeEditMode();
                         event.accepted = true;
@@ -234,11 +277,29 @@ DPopout {
                             iconColor: Theme.error
                             tooltipText: I18n.tr("Power")
                             tooltipSide: "top"
-                            onClicked: {
-                                appDrawerPopout.close();
-                                PopoutService.openPowerMenu();
-                            }
+                            onClicked: appDrawerPopout.openPowerMenuHere()
                         }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                topLeftRadius: appDrawerPopout.surfaceCornerRadii.x
+                topRightRadius: appDrawerPopout.surfaceCornerRadii.y
+                bottomRightRadius: appDrawerPopout.surfaceCornerRadii.z
+                bottomLeftRadius: appDrawerPopout.surfaceCornerRadii.w
+                color: Qt.rgba(0, 0, 0, Theme.scrimAlpha)
+                opacity: appDrawerPopout.powerMenuOpen ? 1 : 0
+                visible: opacity > 0
+                z: CcMetrics.overlayZ
+
+                Behavior on opacity {
+                    enabled: CcMetrics.animationsEnabled
+                    NumberAnimation {
+                        duration: CcMetrics.fadeDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.expressiveCurves.expressiveEffects
                     }
                 }
             }
