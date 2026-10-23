@@ -297,7 +297,7 @@ end
 
 -- Focus does not restack. An xdg-maximized client ignores bring_to_top,
 -- so other floats on that workspace are lowered first.
-_G.win11_raise_window = function(w, _opts)
+_G.raise_window = function(w, _opts)
 	if not w then
 		return
 	end

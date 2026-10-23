@@ -29,13 +29,13 @@ local function get_monitor_work_area(mon)
 	}
 end
 
-_G.win11_toggle_maximize = function(target_addr)
+_G.snap_toggle_maximize = function(target_addr)
 	local w = (target_addr and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
 	if not w then
 		return
 	end
 
-	_G.win11_snap_cache = _G.win11_snap_cache or {}
+	_G.snap_cache = _G.snap_cache or {}
 	local raw_addr = w.address:lower()
 	local clean_addr = raw_addr:gsub("^0x", "")
 	local full_addr = "0x" .. clean_addr
@@ -63,7 +63,7 @@ _G.win11_toggle_maximize = function(target_addr)
 	local max_h = wa.h - title_h
 
 	local is_currently_maximized = false
-	local cached = _G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr]
+	local cached = _G.snap_cache[full_addr] or _G.snap_cache[clean_addr]
 	local use_xdg = _G.window_uses_xdg_maximize and _G.window_uses_xdg_maximize(w)
 	local transient = _G.window_is_transient_float and _G.window_is_transient_float(w)
 
@@ -100,8 +100,8 @@ _G.win11_toggle_maximize = function(target_addr)
 		end
 
 		local s = cached or { w = math.floor(wa.w * 0.6), h = math.floor(wa.h * 0.7) }
-		_G.win11_snap_cache[full_addr] = nil
-		_G.win11_snap_cache[clean_addr] = nil
+		_G.snap_cache[full_addr] = nil
+		_G.snap_cache[clean_addr] = nil
 
 		local newX = s.x or math.max(wa.x + 20, wa.x + math.floor((wa.w - s.w) / 2))
 		local newY = s.y or math.max(wa.y + 40, wa.y + math.floor((wa.h - s.h) / 2))
@@ -110,7 +110,7 @@ _G.win11_toggle_maximize = function(target_addr)
 		targeted_resize_move(w, newX, newY, s.w, s.h)
 
 		if _G.set_app_float_maximized then
-			_G.set_app_float_maximized(w, false, "win11_toggle_maximize")
+			_G.set_app_float_maximized(w, false, "snap_toggle_maximize")
 		end
 	else
 		-- MAXIMIZE (identical to dragging to top edge)
@@ -118,8 +118,8 @@ _G.win11_toggle_maximize = function(target_addr)
 			hl.dispatch(hl.dsp.window.float({ window = "address:" .. full_addr, action = "set" }))
 		end
 
-		_G.win11_snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
-		_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
+		_G.snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
+		_G.snap_cache[clean_addr] = _G.snap_cache[full_addr]
 
 		w = hl.get_window("address:" .. full_addr) or w
 		if use_xdg then
@@ -140,7 +140,7 @@ _G.win11_toggle_maximize = function(target_addr)
 		end
 
 		if _G.set_app_float_maximized then
-			_G.set_app_float_maximized(w, true, "win11_toggle_maximize")
+			_G.set_app_float_maximized(w, true, "snap_toggle_maximize")
 		end
 	end
 	return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
@@ -226,13 +226,13 @@ local function get_zone_geometry(mon, zone, has_bar)
 	}
 end
 
-_G.win11_snap_window = function(target_addr, zone, screen_name)
+_G.snap_window = function(target_addr, zone, screen_name)
 	if not zone or zone == "" then
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
 	if zone == "maximize" then
-		if _G.win11_toggle_maximize then
-			return _G.win11_toggle_maximize(target_addr)
+		if _G.snap_toggle_maximize then
+			return _G.snap_toggle_maximize(target_addr)
 		end
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 	end
@@ -266,10 +266,10 @@ _G.win11_snap_window = function(target_addr, zone, screen_name)
 		hl.dispatch(hl.dsp.window.float({ window = "address:" .. full_addr, action = "set" }))
 	end
 
-	_G.win11_snap_cache = _G.win11_snap_cache or {}
-	if not _G.win11_snap_cache[full_addr] and not _G.win11_snap_cache[clean_addr] then
-		_G.win11_snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
-		_G.win11_snap_cache[clean_addr] = _G.win11_snap_cache[full_addr]
+	_G.snap_cache = _G.snap_cache or {}
+	if not _G.snap_cache[full_addr] and not _G.snap_cache[clean_addr] then
+		_G.snap_cache[full_addr] = { w = w.size.x, h = w.size.y, x = w.at.x, y = w.at.y }
+		_G.snap_cache[clean_addr] = _G.snap_cache[full_addr]
 	end
 
 	local has_bar = true
@@ -287,7 +287,7 @@ _G.win11_snap_window = function(target_addr, zone, screen_name)
 		hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
 	end)
 	if _G.set_app_float_maximized then
-		_G.set_app_float_maximized(w, false, "win11_snap")
+		_G.set_app_float_maximized(w, false, "snap")
 	end
 	return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 end
@@ -316,7 +316,7 @@ local function follow_cursor_restore_pos(cursorX, cursorY, grabX, grabY, oldW, n
 	return math.floor(cursorX - offsetX + 0.5), math.floor(cursorY - grabY + 0.5)
 end
 
-_G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
+_G.snap_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
 	local w = (target_addr and target_addr ~= "" and hl.get_window("address:" .. target_addr)) or hl.get_active_window()
 	if not w or not w.floating then
 		return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
@@ -330,7 +330,7 @@ _G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
 		or (w.fullscreen == 1 or w.fullscreen == 3)
 	local use_xdg = _G.window_uses_xdg_maximize and _G.window_uses_xdg_maximize(w)
 
-	local cached = _G.win11_snap_cache and (_G.win11_snap_cache[full_addr] or _G.win11_snap_cache[clean_addr])
+	local cached = _G.snap_cache and (_G.snap_cache[full_addr] or _G.snap_cache[clean_addr])
 
 	-- Normal (not snapped/maxed) drag-drop: do not resize. Only unsnap/unmax.
 	if not cached and not currently_max then
@@ -357,8 +357,8 @@ _G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
 		usedOldW = liveW
 	end
 
-	_G.win11_drag_restore = true
-	_G.win11_dragging = true
+	_G.snap_drag_restore = true
+	_G.snap_dragging = true
 
 	hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "border_size", value = "unset" }))
 	hl.dispatch(hl.dsp.window.set_prop({ window = "address:" .. full_addr, prop = "rounding", value = "unset" }))
@@ -385,12 +385,12 @@ _G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
 	end
 
 	if _G.set_app_float_maximized then
-		_G.set_app_float_maximized(w, false, "win11_restore")
+		_G.set_app_float_maximized(w, false, "snap_restore")
 	end
 
-	if _G.win11_snap_cache then
-		_G.win11_snap_cache[full_addr] = nil
-		_G.win11_snap_cache[clean_addr] = nil
+	if _G.snap_cache then
+		_G.snap_cache[full_addr] = nil
+		_G.snap_cache[clean_addr] = nil
 	end
 
 	local mon = (_G.resolve_window_monitor and _G.resolve_window_monitor(w))
@@ -417,13 +417,10 @@ _G.win11_restore_window = function(target_addr, posX, posY, grabX, grabY, origW)
 	end)
 	-- Cleared on dragstop. Fallback if dragstop never arrives.
 	hl.timer(function()
-		if not _G.win11_dragging then
-			_G.win11_drag_restore = false
+		if not _G.snap_dragging then
+			_G.snap_drag_restore = false
 		end
 	end, { timeout = 2000, type = "oneshot" })
 	return (hl.dsp and hl.dsp.no_op and hl.dsp.no_op()) or nil
 end
 
-_G.snap_window = _G.win11_snap_window
-_G.snap_restore_window = _G.win11_restore_window
-_G.snap_toggle_maximize = _G.win11_toggle_maximize

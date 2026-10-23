@@ -6,7 +6,7 @@ A curated collection of system configurations, hardware quirks, and workflow ref
 
 ## 1. Hyprland & Wayland
 
-### Steam notification toasts vs the Dank bar
+### Steam notification toasts vs the bar
 
 Steam still draws XWayland `notificationtoasts_*` windows, which ignore
 layer-shell exclusive zones, so they sit under (or against) the bar.

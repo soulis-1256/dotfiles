@@ -81,11 +81,11 @@ void checkDragState(const Vector2D* mousePos = nullptr) {
                     mouse = g_pInputManager->getMouseCoordsInternal();
                 captureDragGrab(target, mouse);
             }
-            HyprlandAPI::invokeHyprctlCommand("eval", "_G.win11_dragging = true");
+            HyprlandAPI::invokeHyprctlCommand("eval", "_G.snap_dragging = true");
             g_pEventManager->postEvent(SHyprIPCEvent{"dragstart", addr});
         } else {
             dragGrabReady = false;
-            HyprlandAPI::invokeHyprctlCommand("eval", "_G.win11_dragging = false; _G.win11_drag_restore = false");
+            HyprlandAPI::invokeHyprctlCommand("eval", "_G.snap_dragging = false; _G.snap_drag_restore = false");
             g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
         }
     }
@@ -138,7 +138,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             if (wasDragging) {
                 wasDragging = false;
                 dragGrabReady = false;
-                HyprlandAPI::invokeHyprctlCommand("eval", "_G.win11_dragging = false; _G.win11_drag_restore = false");
+                HyprlandAPI::invokeHyprctlCommand("eval", "_G.snap_dragging = false; _G.snap_drag_restore = false");
                 g_pEventManager->postEvent(SHyprIPCEvent{"dragstop", ""});
             }
             if (g_pKeybindManager && g_layoutManager) {

@@ -2,19 +2,13 @@
   "snap": {
     "enabled": true
   },
-  "gameOverlay": {
+  "alternatingNetwork": {
     "enabled": true
   },
-  "dockerManager": {
-    "enabled": true,
-    "groupByCompose": true,
-    "terminalApp": "ghosttyfdf --hold"
+  "customWeather": {
+    "enabled": true
   },
-  "typingSounds": {
-    "enabled": true,
-    "selectedPackPath": "/home/soulis/.config/DankMaterialShell/plugins/typingSounds/soundpacks/cherrymx-black-abs"
-  },
-  "discordVoice": {
+  "gameOverlay": {
     "enabled": true
   },
   "stackedClock": {

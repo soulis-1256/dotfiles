@@ -77,7 +77,7 @@ Item {
 
             }
 
-            // Cards Grid: The 4 Windows 11 snap layout presets
+            // Cards grid: the four snap layout presets
             Row {
                 width: parent.width
                 spacing: 8

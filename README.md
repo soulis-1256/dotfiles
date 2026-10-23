@@ -8,7 +8,7 @@ Modern, minimal, and keyboard-driven desktop configuration on **CachyOS / Arch L
 
 - **OS:** CachyOS (Arch Linux based)
 - **Window Manager:** [Hyprland](https://hyprland.org) (Lua configuration format)
-- **Desktop Shell:** [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) running on [Quickshell](https://quickshell.outfoxxed.me)
+- **Desktop Shell:** [Dux](https://github.com/AvengeMedia/DankMaterialShell) 2.0 (`dms`), the stock shell. Quickshell runs the UI that `dms` unpacks from the binary.
 - **Dynamic Theming:** [Matugen](https://github.com/InioX/matugen) (Material You color generation)
 - **Terminal:** [Ghostty](https://ghostty.org)
 - **Shell:** Fish
@@ -26,8 +26,11 @@ The repository is modularized into **Stow Packages** so shared utilities remain 
 dotfiles/
 ├── common/                             # SHARED ACROSS ALL MACHINES
 │   ├── .config/
-│   │   ├── hypr/                       # Single source of truth (binds, focus engine, smart borders)
-│   │   ├── quickshell/dms/             # Custom QML desktop shell modules, grabs & focus fixes
+│   │   ├── hypr/                       # Hyprland base, user binds, snap, window rules
+│   │   ├── DankMaterialShell/
+│   │   │   ├── plugins/                # Bar and daemon plugins (snap, weather, clock, network, game overlay)
+│   │   │   └── patches/                # Four files copied onto the unpacked Dux shell
+│   │   ├── systemd/user/               # dms drop-in that runs the patch copy at start
 │   │   ├── ghostty/                    # Ghostty terminal styling & keybinds
 │   │   ├── fish/                       # Fish shell configuration & completions
 │   │   ├── nvim/                       # Neovim IDE configuration
@@ -37,6 +40,7 @@ dotfiles/
 │   │   ├── gtk-3.0/                    # GTK3 styling & colors
 │   │   └── gtk-4.0/                    # GTK4 styling & colors
 │   ├── .local/bin/
+│   │   ├── dms-patch-shell             # Copies patches onto the shell Dux just unpacked
 │   │   └── dms-game-overlay            # Super: Control Center in games, launcher on desktop
 │   └── .bashrc                         # Base interactive bash config
 │
@@ -44,14 +48,14 @@ dotfiles/
 │   └── .config/
 │       ├── hypr/
 │       │   └── desktop.lua             # Desktop overrides (Zen autostart, secondary screen PiP, Discord ws10)
-│       ├── DankMaterialShell/          # Desktop settings (Bottom main bar + 2nd portrait bar)
+│       ├── DankMaterialShell/          # Monochrome theme, bottom main bar + portrait bar
 │       └── matugen/                    # Desktop color palette config
 │
 ├── laptop/                             # STOWED ONLY ON LAPTOP
 │   └── .config/
 │       ├── hypr/
 │       │   └── laptop.lua              # Laptop overrides (centered 16:9 PiP)
-│       ├── DankMaterialShell/          # Laptop settings (Top bar, single bar, laptop theme)
+│       ├── DankMaterialShell/          # Monochrome theme, one top bar
 │       └── matugen/                    # Laptop color palette config
 │
 ├── install.sh                          # Light installer with auto-detection & dry-run mode
@@ -65,8 +69,8 @@ dotfiles/
 
 ### 1. Prerequisites & Installation
 
-1. **Install DankMaterialShell**:
-   DankMaterialShell is required. Follow the official installation instructions at **[danklinux.com](https://danklinux.com/)**.
+1. **Install Dux 2.0** (`dms`):
+   The shell UI ships inside the `dms` binary. Follow the official installation instructions at **[danklinux.com](https://danklinux.com/)**. This repo does not contain a copy of the shell.
 
 2. **Install Core System Packages** (Arch Linux / CachyOS):
    ```bash
@@ -151,16 +155,11 @@ Two custom behaviors stay:
 
 ---
 
-## Future Roadmap: Dynamic Cursor Theming & Hyprcursor Engine
+## What stays custom
 
-Currently, dynamic cursor theming (such as `Nero-Matugen`) operates by recoloring and compiling multi-size XCursor binaries (24px, 32px, 48px) via a Matugen post-hook whenever DMS generates a new palette. The hook reads `cursorSettings.size` from DMS `settings.json` and adds 8px, so the Dank default of 24 uses Nero's 32px bitmap. Hyprland's generated `cursor.lua` applies that same size at login.
+Dux owns the shell. These dotfiles add the pieces around it.
 
-### Planned Exploration: Native Hyprcursor Vector Engine
-Because Wayland compositors require pre-rasterized ARGB pixel buffers for hardware cursors, color tokens cannot be evaluated at the cursor file level in real time. A more robust, first-class theming approach to explore in the future:
-
-- **SVG-Based Hyprcursor Source Definitions:**
-  Maintain vector SVGs with semantic theme classes (e.g. `class="accent"`, `class="surface"`).
-- **Native DMS Theme Event Trigger:**
-  Instead of relying on application template hooks (like Ghostty), integrate dynamic cursor generation directly into the DMS / Quickshell theme change lifecycle.
-- **On-Demand Hyprcursor Compilation:**
-  Compile the parameterized SVGs directly into a live Hyprcursor theme (`~/.local/share/icons/hyprcursors/`) matching the exact active Matugen palette and configured cursor size (`cursorSettings.size`), guaranteeing perfectly crisp vector edges across all display scaling factors.
+- **Plugins**, in `common/.config/DankMaterialShell/plugins/`. Both machine profiles symlink that directory. The set is snap layouts, the weather pill, the stacked clock, the network pill, and the fullscreen game overlay.
+- **Four patch files**, in `common/.config/DankMaterialShell/patches/`. `dms-patch-shell` copies them onto the shell after `dms` unpacks it: the app launcher popout, the music pill, the keyboard-layout pill, and the Hyprland color template. They replace those Dux files wholesale, so a Dux update means replaying the edits onto the new originals.
+- **Theme packs** under each machine's `DankMaterialShell/themes/`. They are color data. Both machines use the built-in `monochrome` theme.
+- **Nero-Matugen**, in `common/.local/share/nero-matugen/`. The cursor bitmaps are recolored when Matugen builds a palette. `cursorSettings.size` in `settings.json` is 28.

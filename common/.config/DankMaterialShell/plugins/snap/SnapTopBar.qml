@@ -132,7 +132,7 @@ Item {
                 root.dragGrabOffsetY = -99999;
                 root.draggedWindowHasBar = true;
                 root.restoredThisDrag = false;
-                Hyprland.dispatch("_G.win11_dragging = true");
+                Hyprland.dispatch("_G.snap_dragging = true");
 
                 var clean = root.normAddr(addr);
                 if (Hyprland.toplevels && Hyprland.toplevels.values) {
@@ -163,7 +163,7 @@ Item {
                     }
                 }
             } else if (event.name === "dragstop") {
-                Hyprland.dispatch("_G.win11_dragging = false; _G.win11_drag_restore = false");
+                Hyprland.dispatch("_G.snap_dragging = false; _G.snap_drag_restore = false");
                 if (!root.isDragging) {
                     root.forceCollapse();
                     return;
@@ -341,7 +341,7 @@ Item {
                     return;
                 }
 
-                // B. Edge & Corner Snapping (Windows 11):
+                // B. Edge and corner snapping:
                 // Top screen edge: snaps when the top of the bar (or window) hits the top edge
                 // Snaps before the bar goes off-screen and shrinks!
                 if (barTopOnScreen <= 8 || localY <= 7) {

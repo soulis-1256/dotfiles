@@ -178,7 +178,7 @@ Item {
     }
 
     // =========================================================================
-    // 1. SUN SPHERE (Windows 11 Warm Golden-Orange Diagonal Sphere)
+    // 1. SUN SPHERE (warm golden-orange diagonal sphere)
     // =========================================================================
     Canvas {
         id: sunCanvas
@@ -221,7 +221,7 @@ Item {
     }
 
     // =========================================================================
-    // 2. MOON CRESCENT (Microsoft Fluent Weather Rounded Golden 3D Crescent)
+    // 2. MOON CRESCENT (rounded golden crescent)
     // =========================================================================
     Canvas {
         id: moonCanvas
@@ -404,7 +404,7 @@ Item {
     }
 
     // =========================================================================
-    // 5. LIGHTNING BOLT (Windows 11 Centered Vibrant Golden-Orange Bolt)
+    // 5. LIGHTNING BOLT (centered golden-orange bolt)
     // =========================================================================
     Canvas {
         id: boltCanvas
@@ -462,16 +462,16 @@ Item {
             readonly property bool isSnowflake: root.snow || (root.hail && index % 2 === 1)
             readonly property bool isStorm: root.showBolt
 
-            // Signature 24-degree slant matching Windows 11 (/ orientation)
+            // Signature 24-degree slant (/ orientation)
             readonly property real angleRad: 24 * Math.PI / 180
             readonly property real sinA: Math.sin(angleRad)
             readonly property real cosA: Math.cos(angleRad)
 
-            // Flanked slots for storm (Windows 11 teardrops flanking the bolt)
+            // Flanked slots for storm (teardrops flanking the bolt)
             readonly property var stormSlotX: [5.6, 15.4]
             readonly property var stormSlotY: [15.6, 14.8]
 
-            // Staggered slots for rain (Windows 11 staggered 2-row layout)
+            // Staggered slots for rain (staggered 2-row layout)
             readonly property var slotX: [6.8, 10.6, 14.4, 8.6, 12.4, 16.2]
             readonly property var slotY: [15.0, 15.0, 15.0, 17.6, 17.6, 17.6]
 
@@ -490,7 +490,7 @@ Item {
 
             opacity: root.motion ? (0.3 + 0.7 * Math.sin(progress * Math.PI)) : 0.95
 
-            // Storm: authentic Windows 11 teardrop flanking the bolt
+            // Storm: teardrop flanking the bolt
             Canvas {
                 id: stormTeardropCanvas
                 visible: dropItem.isStorm

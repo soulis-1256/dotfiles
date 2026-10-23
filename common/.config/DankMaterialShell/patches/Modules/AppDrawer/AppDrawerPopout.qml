@@ -168,7 +168,7 @@ DPopout {
                     anchors.top: parent.top
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.bottom: win11BottomBar.top
+                    anchors.bottom: launcherFooter.top
                     clip: true
 
                     LauncherContent {
@@ -195,7 +195,7 @@ DPopout {
                 }
 
                 Rectangle {
-                    id: win11BottomBar
+                    id: launcherFooter
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom

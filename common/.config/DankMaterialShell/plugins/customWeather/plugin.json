@@ -1,7 +1,7 @@
 {
     "id": "customWeather",
     "name": "Custom Weather",
-    "description": "Weather widget with custom animated Fluent condition icons",
+    "description": "Weather widget with custom animated condition icons",
     "version": "1.0.0",
     "author": "soulis",
     "type": "widget",

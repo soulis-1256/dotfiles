@@ -43,8 +43,8 @@ local function alt_tab(back)
 	if not w then
 		return
 	end
-	if _G.win11_raise_window then
-		_G.win11_raise_window(w, { force = true })
+	if _G.raise_window then
+		_G.raise_window(w, { force = true })
 	else
 		pcall(function()
 			hl.dispatch(hl.dsp.focus({ window = w }))
