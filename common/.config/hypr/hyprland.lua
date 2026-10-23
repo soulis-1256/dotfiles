@@ -178,7 +178,6 @@ require("dms.outputs")
 
 require("dms.layout")
 require("dms.cursor")
-require("dms.float-maximize")
 require("dms.binds")
 require("dms.binds-user")
 require("dms.binds-custom")
@@ -267,15 +266,6 @@ end, { locked = true, description = "Wake laptop screen on lid open" })
 -- Machine-specific overrides (loaded if present, e.g. from desktop or laptop packages)
 pcall(require, "desktop")
 pcall(require, "laptop")
-
--- Snap layout drag bridge (all themes)
-local snap_bridge = (os.getenv("HOME") or "") .. "/.local/lib/hyprland/hypr-snap-bridge-v3.so"
-local f = io.open(snap_bridge, "r")
-if f then
-	f:close()
-	pcall(hl.plugin.load, snap_bridge)
-end
-require("dms.snap")
 
 -- hyprbars window title bars plugin
 local hyprbars_plugin = (os.getenv("HOME") or "") .. "/.local/lib/hyprland/hyprbars.so"

@@ -1,7 +1,4 @@
 {
-  "snap": {
-    "enabled": true
-  },
   "alternatingNetwork": {
     "enabled": true
   },

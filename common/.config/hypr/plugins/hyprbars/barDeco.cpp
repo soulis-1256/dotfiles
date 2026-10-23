@@ -259,14 +259,7 @@ void CHyprBar::toggleMaximize() {
     if (Config::mgr()->type() == Config::CONFIG_LUA) {
         auto luaMgr = dynamicPointerCast<Config::Lua::CConfigManager>(WP<Config::IConfigManager>(Config::mgr()));
         if (luaMgr) {
-            std::string code = std::format(
-                "if _G.snap_toggle_maximize then "
-                "    _G.snap_toggle_maximize('0x{:x}') "
-                "else "
-                "    hl.dispatch(hl.dsp.window.fullscreen({{ mode = 'maximized', action = 'toggle' }})) "
-                "end",
-                (uintptr_t)PWIN.get());
-            luaMgr->eval(code);
+            luaMgr->eval("hl.dispatch(hl.dsp.window.fullscreen({ mode = 'maximized', action = 'toggle' }))");
             return;
         }
     }

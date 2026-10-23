@@ -43,15 +43,11 @@ local function alt_tab(back)
 	if not w then
 		return
 	end
-	if _G.raise_window then
-		_G.raise_window(w, { force = true })
-	else
-		pcall(function()
-			hl.dispatch(hl.dsp.focus({ window = w }))
-			hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
-			hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
-		end)
-	end
+	pcall(function()
+		hl.dispatch(hl.dsp.focus({ window = w }))
+		hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
+		hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
+	end)
 end
 
 hl.unbind("ALT + SHIFT + TAB")

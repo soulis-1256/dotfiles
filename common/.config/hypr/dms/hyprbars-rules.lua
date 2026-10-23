@@ -79,30 +79,3 @@ pcall(function()
 		tag = "+nobar",
 	})
 end)
-
--- Centralized helper used by maximize and snap geometry calculations
-_G.window_has_hyprbar = function(w)
-	if not w then
-		return true
-	end
-	local cls = (w.class or ""):lower()
-	local title = (w.title or ""):lower()
-
-	if title:match("picture[%- ]in[%- ]picture") then
-		return false
-	end
-	if cls:match("^steam") and title:match("^notificationtoasts") then
-		return false
-	end
-
-	for _, item in ipairs((_G.hyprbars_blacklist and _G.hyprbars_blacklist.classes) or {}) do
-		local pat = item:lower():gsub("%\\%.", "%%."):gsub("%[%w+%]", function(m)
-			return m:sub(2, 2):lower()
-		end)
-		if cls == pat or cls:match("^" .. pat .. "$") or cls:match(pat) then
-			return false
-		end
-	end
-
-	return true
-end

@@ -26,9 +26,9 @@ The repository is modularized into **Stow Packages** so shared utilities remain 
 dotfiles/
 ├── common/                             # SHARED ACROSS ALL MACHINES
 │   ├── .config/
-│   │   ├── hypr/                       # Hyprland base, user binds, snap, window rules
+│   │   ├── hypr/                       # Hyprland base, user binds, window rules
 │   │   ├── DankMaterialShell/
-│   │   │   ├── plugins/                # Bar and daemon plugins (snap, weather, clock, network, game overlay)
+│   │   │   ├── plugins/                # Bar and daemon plugins (weather, clock, network, game overlay)
 │   │   │   └── patches/                # Four files copied onto the unpacked Dux shell
 │   │   ├── systemd/user/               # dms drop-in that runs the patch copy at start
 │   │   ├── ghostty/                    # Ghostty terminal styling & keybinds
@@ -142,16 +142,11 @@ Private API keys, tokens, or machine-specific configurations should remain uncom
 
 ## Tiling and floating windows
 
-Hyprland dwindle is the tiling layout. `general.layout` is `dwindle` in `hyprland.lua`, and `float-maximize.lua` pins the same layout onto workspaces that used to carry a `lua:mosaic` rule.
+Hyprland dwindle is the tiling layout. `general.layout` is `dwindle` in `hyprland.lua`.
 
-`SUPER+F` toggles the focused window between floating and tiled. `SUPER+right-click` is Hyprland's resize. There is no mosaic layout, no float-everything mode, and no Control Center tile for either.
+`SUPER+F` toggles the focused window between floating and tiled. `SUPER+right-click` is Hyprland's resize. Double-click on a hyprbar toggles maximize. There is no mosaic layout, no drag-to-edge snap, and no float-everything mode.
 
-Two custom behaviors stay:
-
-- Drag a floating window to the top edge to maximize it, and drag it down to restore. The gesture is `common/.config/DankMaterialShell/plugins/snap` plus `common/.config/hypr/dms/snap.lua`. `float-maximize.lua` only supplies the helpers that gesture calls: xdg maximize for client-side decorations, geometry maximize for hyprbar windows, and transient windows (picture-in-picture) so a child does not unmaximize its parent.
-- The workspace switcher shows an app hover preview when that workspace has at least one native floating window.
-
-`~/.cache/hypr_app_float_state.json` still records the maximized bit when snap sets it. Nothing reads that file to float or resize a window on open.
+The workspace switcher shows an app hover preview when that workspace has at least one native floating window.
 
 ---
 
@@ -159,7 +154,7 @@ Two custom behaviors stay:
 
 Dux owns the shell. These dotfiles add the pieces around it.
 
-- **Plugins**, in `common/.config/DankMaterialShell/plugins/`. Both machine profiles symlink that directory. The set is snap layouts, the weather pill, the stacked clock, the network pill, and the fullscreen game overlay.
+- **Plugins**, in `common/.config/DankMaterialShell/plugins/`. Both machine profiles symlink that directory. The set is the weather pill, the stacked clock, the network pill, and the fullscreen game overlay.
 - **Four patch files**, in `common/.config/DankMaterialShell/patches/`. `dms-patch-shell` copies them onto the shell after `dms` unpacks it: the app launcher popout, the music pill, the keyboard-layout pill, and the Hyprland color template. They replace those Dux files wholesale, so a Dux update means replaying the edits onto the new originals.
 - **Theme packs** under each machine's `DankMaterialShell/themes/`. They are color data. Both machines use the built-in `monochrome` theme.
 - **Nero-Matugen**, in `common/.local/share/nero-matugen/`. The cursor bitmaps are recolored when Matugen builds a palette. `cursorSettings.size` in `settings.json` is 28.
