@@ -1,0 +1,15 @@
+{
+    "id": "customMusic",
+    "name": "Custom Music",
+    "description": "Media player widget with lyrics and controls, without hover tooltip",
+    "version": "1.0.0",
+    "author": "soulis",
+    "type": "widget",
+    "capabilities": [
+        "widget"
+    ],
+    "component": "./CustomMusicWidget.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}

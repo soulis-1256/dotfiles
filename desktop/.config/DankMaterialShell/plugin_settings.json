@@ -171,5 +171,8 @@
   },
   "gameOverlay": {
     "enabled": true
+  },
+  "customMusic": {
+    "enabled": true
   }
 }

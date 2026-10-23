@@ -283,7 +283,7 @@
           "enabled": true
         },
         {
-          "id": "music",
+          "id": "customMusic",
           "enabled": true,
           "mediaSize": 2,
           "mediaShowLyrics": true,
@@ -567,7 +567,7 @@
           "enabled": true
         },
         {
-          "id": "music",
+          "id": "customMusic",
           "enabled": true,
           "mediaSize": 2
         }
