@@ -34,8 +34,8 @@ fi
 if [[ "$is_game_fullscreen" == "true" ]]; then
     dms ipc call control-center toggle >/dev/null 2>&1
 else
-    if command -v dms-patch-launcher >/dev/null 2>&1; then
-        dms-patch-launcher >/dev/null 2>&1
+    if command -v dms-patch-shell >/dev/null 2>&1; then
+        dms-patch-shell >/dev/null 2>&1
     fi
     dms ipc call widget toggle launcherButton >/dev/null 2>&1
 fi

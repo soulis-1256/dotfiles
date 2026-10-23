@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PATCH_DIR="${HOME}/.config/DankMaterialShell/patches"
+if [[ ! -d "$PATCH_DIR" ]]; then
+    PATCH_DIR="${HOME}/dotfiles/common/.config/DankMaterialShell/patches"
+fi
+
+if [[ -d "$PATCH_DIR" ]]; then
+    PATCH_DIR="$(readlink -f "$PATCH_DIR")"
+else
+    exit 0
+fi
+
+UID_NUM="$(id -u)"
+BASE_DIR="/run/user/${UID_NUM}/dms-shell"
+
+if [[ ! -d "$BASE_DIR" ]]; then
+    exit 0
+fi
+
+for shell_dir in "$BASE_DIR"/*; do
+    if [[ ! -d "$shell_dir" ]]; then
+        continue
+    fi
+
+    while IFS= read -r patch_file; do
+        rel_path="${patch_file#$PATCH_DIR/}"
+        target_file="$shell_dir/$rel_path"
+        target_dir="$(dirname "$target_file")"
+
+        if [[ -d "$target_dir" ]]; then
+            if cmp -s "$patch_file" "$target_file" 2>/dev/null; then
+                continue
+            fi
+            chmod u+w "$target_dir" "$target_file" 2>/dev/null || true
+            cp -f "$patch_file" "$target_file"
+        fi
+    done < <(find -L "$PATCH_DIR" -type f)
+done

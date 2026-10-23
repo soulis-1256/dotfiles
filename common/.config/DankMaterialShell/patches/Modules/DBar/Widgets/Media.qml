@@ -3,20 +3,14 @@ import Quickshell.Services.Mpris
 import Quickshell.Widgets
 import qs.Common
 import qs.Modules.DBar
-import qs.Modules.DBar.Widgets
 import qs.Modules.Plugins
 import qs.Services
 import qs.DCommon.Widgets
 import qs.Widgets
 
-PluginComponent {
+BasePill {
     id: root
-
-    layerNamespacePlugin: "custom-music"
-
-    _visibilityOverride: true
-    _visibilityOverrideValue: playerAvailable
-
+    property var surfaceContext: null
     readonly property real contentScale: surfaceContext?.kind === "dock" ? widgetThickness / 40 : 1
 
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
@@ -32,11 +26,11 @@ PluginComponent {
     }
     readonly property bool usePlayerVolume: activePlayer && activePlayer.volumeSupported && !__isChromeBrowser
     property bool compactMode: false
+    property var widgetData: null
     readonly property bool adaptiveWidthEnabled: SettingsData.widgetOption("music", widgetData, "mediaAdaptiveWidthEnabled")
     property real allottedPrimarySize: 0
-    property var activeContentItem: null
-    readonly property real naturalPrimarySize: isVertical ? height : !playerAvailable ? 0 : Theme.snap((activeContentItem?.naturalContentWidth ?? 0) + horizontalPadding * 2, dpr)
-    readonly property real minimumPrimarySize: isVertical ? height : !playerAvailable ? 0 : Theme.snap((activeContentItem?.fixedContentWidth ?? 0) + horizontalPadding * 2, dpr)
+    readonly property real naturalPrimarySize: isVerticalOrientation ? height : !playerAvailable ? 0 : Theme.snap((contentItem?.naturalContentWidth ?? 0) + horizontalPadding * 2, dpr)
+    readonly property real minimumPrimarySize: isVerticalOrientation ? height : !playerAvailable ? 0 : Theme.snap((contentItem?.fixedContentWidth ?? 0) + horizontalPadding * 2, dpr)
     readonly property bool lyricsEnabled: SettingsData.widgetOption("music", widgetData, "mediaShowLyrics") && LyricsService.allowed
     readonly property bool coverArtEnabled: SettingsData.widgetOption("music", widgetData, "mediaShowCoverArt")
     readonly property string coverArtUrl: coverArtEnabled && activePlayer && TrackArtService.artReadyFor(activePlayer) ? TrackArtService.resolvedArtUrl : ""
@@ -68,25 +62,19 @@ PluginComponent {
             return 120 * root.contentScale;
         }
     }
-    readonly property real dpr: parentScreen ? CompositorService.getScreenScale(parentScreen) : 1
-    readonly property real horizontalPadding: Theme.snap((barConfig?.widgetPadding ?? 8) * (widgetThickness / 30), dpr)
-    readonly property real contentThickness: widgetThickness - horizontalPadding * 2
-
     readonly property int currentContentWidth: {
-        if (isVertical) {
+        if (isVerticalOrientation) {
             return contentThickness;
         }
         return 0;
     }
     readonly property int currentContentHeight: {
-        if (!isVertical) {
+        if (!isVerticalOrientation) {
             return contentThickness;
         }
         const playButtonHeight = 24 * root.contentScale;
         return badgeExtent + playButtonHeight;
     }
-
-    readonly property color contentColor: Theme.widgetTextColor
 
     property real scrollAccumulatorY: 0
     property real touchpadThreshold: 100
@@ -95,118 +83,9 @@ PluginComponent {
         active: root.lyricsEnabled && root.playerAvailable
     }
 
-    property bool _pendingOpen: false
-    property var _pendingPos: null
+    // Hover tooltip disabled
 
-    Component.onCompleted: {
-        if (PopoutService.dankDashPopoutLoader && !PopoutService.dankDashPopoutLoader.active) {
-            PopoutService.dankDashPopoutLoader.active = true;
-        }
-        _hookPillWheel();
-    }
-
-    function _hookPillWheel() {
-        for (let i = 0; i < children.length; i++) {
-            const child = children[i];
-            if (child && child.wheel && typeof child.wheel.connect === "function") {
-                child.wheel.connect(root.handleWheel);
-            }
-        }
-    }
-
-    WheelHandler {
-        id: rootWheelHandler
-        target: null
-        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-        onWheel: (wheelEvent) => root.handleWheel(wheelEvent)
-    }
-
-    Connections {
-        target: PopoutService
-        function onDankDashPopoutLoaderChanged() {
-            if (PopoutService.dankDashPopoutLoader && !PopoutService.dankDashPopoutLoader.active) {
-                PopoutService.dankDashPopoutLoader.active = true;
-            }
-        }
-        function onDankDashPopoutChanged() {
-            if (root._pendingOpen && PopoutService.dankDashPopout) {
-                root._pendingOpen = false;
-                const pos = root._pendingPos || {};
-                root.openMediaPopout(pos.x, pos.y, pos.width, pos.section, pos.screen);
-            }
-        }
-    }
-
-    function openMediaPopout(x, y, width, section, screen) {
-        const loader = PopoutService.dankDashPopoutLoader;
-        if (!loader)
-            return;
-
-        if (!loader.active) {
-            loader.active = true;
-        }
-
-        const popout = loader.item || PopoutService.dankDashPopout;
-        if (!popout) {
-            root._pendingOpen = true;
-            root._pendingPos = {
-                x: x,
-                y: y,
-                width: width,
-                section: section,
-                screen: screen
-            };
-            return;
-        }
-
-        const currentScreen = screen || root.parentScreen;
-        const effectiveBarConfig = root.barConfig;
-        const barPos = root.axis?.edge === "left" ? 2 : (root.axis?.edge === "right" ? 3 : (root.axis?.edge === "top" ? 0 : 1));
-        const bottomGap = effectiveBarConfig?.bottomGap ?? 0;
-        const barThickness = root.barThickness;
-        const barSpacing = root.barSpacing ?? 4;
-        const triggerSection = section || root.section || "center";
-        const triggerSource = (effectiveBarConfig?.id ?? "default") + "-" + triggerSection + "-media";
-
-        if (popout.setBarContext) {
-            popout.setBarContext(barPos, bottomGap);
-        }
-
-        popout.triggerScreen = currentScreen;
-
-        if (popout.setTriggerPosition) {
-            popout.setTriggerPosition(
-                x,
-                y,
-                width,
-                triggerSection,
-                currentScreen,
-                barPos,
-                barThickness,
-                barSpacing,
-                effectiveBarConfig,
-                root
-            );
-        }
-
-        if (typeof popout.prepareForTrigger === "function") {
-            popout.prepareForTrigger(triggerSource, "click");
-        }
-
-        if (typeof popout.requestTab === "function") {
-            popout.requestTab("media");
-        }
-
-        PopoutManager.requestPopout(popout, undefined, triggerSource);
-    }
-
-    pillClickAction: (x, y, width, section, screen) => {
-        root.openMediaPopout(x, y, width, section, screen);
-    }
-
-    function handleWheel(wheelEvent) {
-        if (!wheelEvent || wheelEvent.accepted)
-            return;
+    onWheel: function (wheelEvent) {
         if (SettingsData.widgetOption("music", widgetData, "audioScrollMode") === "nothing")
             return;
 
@@ -330,14 +209,13 @@ PluginComponent {
         }
     }
 
-    horizontalBarPill: Component {
+    content: Component {
         Item {
             id: contentRoot
-            Component.onCompleted: root.activeContentItem = this
-
             readonly property real naturalTextWidth: {
                 if (!root.playerAvailable || root.maxTextWidth <= 0)
                     return 0;
+                // Preserve the fixed-width text slot even if metadata is briefly empty.
                 if (!root.adaptiveWidthEnabled || root.lyricActive)
                     return root.maxTextWidth;
                 if (textContainer.displayText.length === 0)
@@ -353,7 +231,7 @@ PluginComponent {
             readonly property real naturalContentWidth: fixedContentWidth + (naturalTextWidth > 0 ? naturalTextWidth + Theme.spacingXS : 0)
             readonly property int horizontalContentWidth: fixedContentWidth + (measuredTextWidth > 0 ? measuredTextWidth + Theme.spacingXS : 0)
 
-            implicitWidth: root.playerAvailable ? horizontalContentWidth : 0
+            implicitWidth: root.playerAvailable ? (root.isVerticalOrientation ? root.currentContentWidth : horizontalContentWidth) : 0
             implicitHeight: root.playerAvailable ? root.currentContentHeight : 0
             opacity: root.playerAvailable ? 1 : 0
 
@@ -379,14 +257,57 @@ PluginComponent {
                 }
             }
 
-            WheelHandler {
-                target: null
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: (wheelEvent) => root.handleWheel(wheelEvent)
+            Column {
+                id: verticalLayout
+                visible: root.isVerticalOrientation
+                anchors.centerIn: parent
+                spacing: Theme.spacingXS
+
+                Item {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: root.badgeSize
+                    height: badges.height
+
+                    Column {
+                        id: badges
+                        spacing: Theme.spacingXS
+
+                        CoverArt {}
+
+                        MediaIcon {}
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onPressed: mouse => {
+                            root.triggerRipple(this, mouse.x, mouse.y);
+                        }
+                        onClicked: root.clicked()
+                    }
+                }
+
+                PlayButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.MiddleButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: mouse => {
+                            if (mouse.button === Qt.MiddleButton) {
+                                MprisController.previousOrRewind();
+                                return;
+                            }
+                            MprisController.next();
+                        }
+                    }
+                }
             }
 
             Row {
                 id: mediaRow
+                visible: !root.isVerticalOrientation
                 anchors.centerIn: parent
                 spacing: Theme.spacingXS
 
@@ -405,12 +326,12 @@ PluginComponent {
 
                     Rectangle {
                         id: textContainer
-                        readonly property string cachedIdentity: root.activePlayer ? (root.activePlayer.identity || "") : ""
+                        readonly property string cachedIdentity: activePlayer ? (activePlayer.identity || "") : ""
                         readonly property string lowerIdentity: cachedIdentity.toLowerCase()
                         readonly property bool isWebMedia: lowerIdentity.includes("firefox") || lowerIdentity.includes("chrome") || lowerIdentity.includes("chromium") || lowerIdentity.includes("edge") || lowerIdentity.includes("safari")
 
                         property string displayText: {
-                            if (!root.activePlayer || !MprisController.stableTitle)
+                            if (!activePlayer || !MprisController.stableTitle)
                                 return "";
                             const title = MprisController.stableTitle;
                             const subtitle = isWebMedia ? (MprisController.stableArtist || cachedIdentity) : MprisController.stableArtist;
@@ -453,6 +374,16 @@ PluginComponent {
                             font.pixelSize: mediaText.font.pixelSize
                             live: root.surfaceLive
                         }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: root.playerAvailable
+                            cursorShape: Qt.PointingHandCursor
+                            onPressed: mouse => {
+                                root.triggerRipple(this, mouse.x, mouse.y);
+                                root.clicked();
+                            }
+                        }
                     }
                 }
 
@@ -467,7 +398,7 @@ PluginComponent {
                         anchors.verticalCenter: parent.verticalCenter
                         color: "transparent"
                         visible: root.playerAvailable
-                        opacity: (root.activePlayer && root.activePlayer.canGoPrevious) ? 1 : 0.3
+                        opacity: (activePlayer && activePlayer.canGoPrevious) ? 1 : 0.3
 
                         DIcon {
                             anchors.centerIn: parent
@@ -494,8 +425,8 @@ PluginComponent {
                         radius: Theme.cornerRadiusFull
                         anchors.verticalCenter: parent.verticalCenter
                         color: "transparent"
-                        visible: root.playerAvailable
-                        opacity: (root.activePlayer && root.activePlayer.canGoNext) ? 1 : 0.3
+                        visible: playerAvailable
+                        opacity: (activePlayer && activePlayer.canGoNext) ? 1 : 0.3
 
                         DIcon {
                             anchors.centerIn: parent
@@ -509,68 +440,10 @@ PluginComponent {
                             enabled: root.playerAvailable
                             stateColor: root.contentColor
                             onClicked: {
-                                if (root.activePlayer) {
+                                if (activePlayer) {
                                     MprisController.next();
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    verticalBarPill: Component {
-        Item {
-            id: vContentRoot
-            Component.onCompleted: {
-                if (root.isVertical)
-                    root.activeContentItem = this;
-            }
-
-            implicitWidth: root.playerAvailable ? root.currentContentWidth : 0
-            implicitHeight: root.playerAvailable ? root.currentContentHeight : 0
-            opacity: root.playerAvailable ? 1 : 0
-
-            WheelHandler {
-                target: null
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: (wheelEvent) => root.handleWheel(wheelEvent)
-            }
-
-            Column {
-                id: verticalLayout
-                anchors.centerIn: parent
-                spacing: Theme.spacingXS
-
-                Item {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: root.badgeSize
-                    height: badges.height
-
-                    Column {
-                        id: badges
-                        spacing: Theme.spacingXS
-
-                        CoverArt {}
-
-                        MediaIcon {}
-                    }
-                }
-
-                PlayButton {
-                    anchors.horizontalCenter: parent.horizontalCenter
-
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.MiddleButton | Qt.RightButton
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: mouse => {
-                            if (mouse.button === Qt.MiddleButton) {
-                                MprisController.previousOrRewind();
-                                return;
-                            }
-                            MprisController.next();
                         }
                     }
                 }

@@ -668,7 +668,7 @@
           "enabled": false
         },
         {
-          "id": "customMusic",
+          "id": "music",
           "enabled": true,
           "mediaSize": 0
         }
