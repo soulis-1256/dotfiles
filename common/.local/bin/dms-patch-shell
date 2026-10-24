@@ -19,6 +19,8 @@ if [[ ! -d "$BASE_DIR" ]]; then
     exit 0
 fi
 
+applied_count=0
+
 for shell_dir in "$BASE_DIR"/*; do
     if [[ ! -d "$shell_dir" ]]; then
         continue
@@ -35,6 +37,15 @@ for shell_dir in "$BASE_DIR"/*; do
             fi
             chmod u+w "$target_dir" "$target_file" 2>/dev/null || true
             cp -f "$patch_file" "$target_file"
+            ((applied_count++)) || true
         fi
     done < <(find -L "$PATCH_DIR" -type f)
 done
+
+# If any patch was applied or updated, signal DMS to reload Quickshell
+if (( applied_count > 0 )); then
+    dms_pid="${MAINPID:-$(pgrep -u "$UID_NUM" -x dms 2>/dev/null | head -n1 || true)}"
+    if [[ -n "$dms_pid" ]]; then
+        kill -USR1 "$dms_pid" 2>/dev/null || true
+    fi
+fi
