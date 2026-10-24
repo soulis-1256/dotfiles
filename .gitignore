@@ -48,3 +48,7 @@ colors.lua
 # DMS runtime state & registry cache
 **/DankMaterialShell/theme-state/
 **/DankMaterialShell/plugins/.repos/
+
+# Optional OpenRGB hook. tools/openrgb-theme/enable.sh creates these links.
+desktop/.config/matugen/dms/
+desktop/.config/matugen/templates/openrgb.hex

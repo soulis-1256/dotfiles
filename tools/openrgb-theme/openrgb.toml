@@ -1,0 +1,7 @@
+# Linked by tools/openrgb-theme/enable.sh. Dux appends every file in
+# ~/.config/matugen/dms/configs on a scheme switch. Blocks in config.toml
+# are not copied, because that file has no plain [templates] header.
+[templates.openrgb]
+input_path = '/home/soulis/.config/matugen/templates/openrgb.hex'
+output_path = '~/.cache/openrgb-theme.hex'
+post_hook = '~/.local/bin/openrgb-theme {{colors.primary.default.hex_stripped}} >/dev/null 2>&1 &'

@@ -1,0 +1,45 @@
+#!/bin/sh
+# Optional desktop hook. Install with tools/openrgb-theme/enable.sh.
+# Undo with tools/openrgb-theme/disable.sh.
+
+set -eu
+
+scheme=${1#\#}
+case $scheme in
+  [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
+  *)
+    printf 'openrgb-theme: expected RRGGBB, got %s\n' "${1-}" >&2
+    exit 1
+    ;;
+esac
+
+# Scheme colors are sRGB. These LEDs use linear levels, so the same bytes
+# come out pale. White stays white. Decode gamma before sending.
+hex=$(printf '%s' "$scheme" | python3 -c '
+import sys
+def lin(c):
+    x = c / 255
+    y = x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4
+    return max(0, min(255, round(y * 255)))
+h = sys.stdin.read().strip()
+r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+print(f"{lin(r):02x}{lin(g):02x}{lin(b):02x}")
+')
+
+cache=${XDG_CACHE_HOME:-$HOME/.cache}
+mkdir -p "$cache"
+exec 9>"$cache/openrgb-theme.lock"
+flock 9
+
+note() {
+  printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >>"$cache/openrgb-theme.log"
+}
+
+openrgb --noautoconnect \
+  -d 'B650 AORUS ELITE AX V2' -z 0 -sz 24 -z 1 -sz 48 -m static -c "$hex" -b 100 \
+  -d Blackwidow -m static -c "$hex" -b 100
+
+if ! openrgb --noautoconnect -d 'Radeon RX 9060' -m static -c "$hex" -b 100; then
+  note "gpu skipped for $hex"
+fi
+note "set $scheme -> $hex"
