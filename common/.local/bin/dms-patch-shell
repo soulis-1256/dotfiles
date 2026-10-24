@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PATCH_DIR="${HOME}/.config/DankMaterialShell/patches"
+PATCH_DIR="${HOME}/.config/dms/patches"
 if [[ ! -d "$PATCH_DIR" ]]; then
-    PATCH_DIR="${HOME}/dotfiles/common/.config/DankMaterialShell/patches"
+    PATCH_DIR="${HOME}/dotfiles/common/.config/dms/patches"
 fi
 
 if [[ -d "$PATCH_DIR" ]]; then

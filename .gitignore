@@ -43,11 +43,11 @@ colors.lua
 **/dms/layout.lua
 **/dms/colors.lua
 **/dms/input.lua
-**/DankMaterialShell/icc.json
+**/dms/icc.json
 
 # DMS runtime state & registry cache
-**/DankMaterialShell/theme-state/
-**/DankMaterialShell/plugins/.repos/
+**/dms/theme-state/
+**/dms/plugins/.repos/
 
 # Optional OpenRGB hook. tools/openrgb-theme/enable.sh creates these links.
 desktop/.config/matugen/dms/

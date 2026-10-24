@@ -775,7 +775,7 @@
   "showWeekNumber": false,
   "useFahrenheit": false,
   "mouseAccelProfile": "default",
-  "mouseAccelSpeed": 0,
+  "mouseAccelSpeed": -0.2,
   "containerSaturation": 100,
   "focusRingEnabled": true,
   "terminalPalette": "default",

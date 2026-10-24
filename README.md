@@ -27,7 +27,7 @@ dotfiles/
 ├── common/                             # SHARED ACROSS ALL MACHINES
 │   ├── .config/
 │   │   ├── hypr/                       # Hyprland base, user binds, window rules
-│   │   ├── DankMaterialShell/
+│   │   ├── dms/
 │   │   │   ├── plugins/                # Bar and daemon plugins (weather, clock, network, game overlay)
 │   │   │   └── patches/                # Four files copied onto the unpacked Dux shell
 │   │   ├── systemd/user/               # dms drop-in that runs the patch copy at start
@@ -48,14 +48,14 @@ dotfiles/
 │   └── .config/
 │       ├── hypr/
 │       │   └── desktop.lua             # Desktop overrides (Zen autostart, secondary screen PiP, Discord ws10)
-│       ├── DankMaterialShell/          # Monochrome theme, bottom main bar + portrait bar
+│       ├── dms/                        # Monochrome theme, bottom main bar + portrait bar
 │       └── matugen/                    # Desktop color palette config
 │
 ├── laptop/                             # STOWED ONLY ON LAPTOP
 │   └── .config/
 │       ├── hypr/
 │       │   └── laptop.lua              # Laptop overrides (centered 16:9 PiP)
-│       ├── DankMaterialShell/          # Monochrome theme, one top bar
+│       ├── dms/                        # Monochrome theme, one top bar
 │       └── matugen/                    # Laptop color palette config
 │
 ├── install.sh                          # Light installer with auto-detection & dry-run mode
@@ -154,7 +154,7 @@ The workspace switcher shows an app hover preview when that workspace has at lea
 
 Dux owns the shell. These dotfiles add the pieces around it.
 
-- **Plugins**, in `common/.config/DankMaterialShell/plugins/`. Both machine profiles symlink that directory. The set is the weather pill, the stacked clock, the network pill, and the fullscreen game overlay.
-- **Four patch files**, in `common/.config/DankMaterialShell/patches/`. `dms-patch-shell` copies them onto the shell after `dms` unpacks it: the app launcher popout, the music pill, the keyboard-layout pill, and the Hyprland color template. They replace those Dux files wholesale, so a Dux update means replaying the edits onto the new originals.
+- **Plugins**, in `common/.config/dms/plugins/`. Both machine profiles symlink that directory. The set is the weather pill, the stacked clock, the network pill, and the fullscreen game overlay.
+- **Four patch files**, in `common/.config/dms/patches/`. `dms-patch-shell` copies them onto the shell after `dms` unpacks it: the app launcher popout, the music pill, the keyboard-layout pill, and the Hyprland color template. They replace those Dux files wholesale, so a Dux update means replaying the edits onto the new originals.
 - **Dux Files file chooser.** `common/.config/xdg-desktop-portal/hyprland-portals.conf` prefers `dfiles` for `org.freedesktop.impl.portal.FileChooser`, with Hyprland and GTK behind it. The portal description and the D-Bus activation file live under `common/.local/share/`. D-Bus starts `/home/soulis/.local/bin/dfiles run --hidden --portal-activated`. Dux 2.0 does not write these files on its own.
 - **Desktop lights, off unless you ask.** `tools/openrgb-theme/` is this PC's OpenRGB hook for scheme changes. Stow ignores `tools/`, and `install.sh` does not link it. `tools/openrgb-theme/enable.sh` turns it on here. The README in that directory has the wiring and the undo command.
