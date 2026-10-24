@@ -8,7 +8,7 @@ It sets a static color on this machine when Dux switches scheme:
 - Razer BlackWidow V3 TKL.
 - Gigabyte Radeon RX 9060 XT GAMING OC. If that call fails, the board and the keyboard still update. The miss is appended to `~/.cache/openrgb-theme.log`.
 
-The 24 LEDs are two Arctic P14 Pro A-RGB fans daisy-chained to `ARGB_V2_1`, with PWM on `SYS_FAN2`. The 48 LEDs are the Liquid Freezer III Pro 360 on `ARGB_V2_2`: three radiator fans plus the cover over the pump. The H6 Flow fans on `SYS_FAN1` have no ARGB plug. Memory stays out. `i2c-dev` stays blacklisted at boot, so the GPU stays dark until that module is loaded for the session.
+The 24 LEDs are two Arctic P14 Pro A-RGB fans daisy-chained to `ARGB_V2_1`, with PWM on `SYS_FAN2`. The 48 LEDs are the Liquid Freezer III Pro 360 on `ARGB_V2_2`: three radiator fans plus the cover over the pump. The H6 Flow fans on `SYS_FAN1` have no ARGB plug. Memory stays out; the hook addresses only the motherboard, keyboard, and GPU. OpenRGB accesses the GPU via `i2c-dev` (loaded automatically via `/usr/lib/modules-load.d/openrgb.conf`).
 
 The color is the scheme primary. Dux writes it as sRGB. These LEDs take linear levels, so the hook decodes gamma before sending and sets brightness to 100%. White is unchanged. The OpenRGB call runs in the background because device detection takes a few seconds.
 
