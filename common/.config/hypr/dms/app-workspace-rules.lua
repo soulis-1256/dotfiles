@@ -25,10 +25,10 @@ hl.window_rule({
 	no_initial_focus = true,
 })
 
--- Spotify on 4
+-- Spotify on 7
 hl.window_rule({
 	match = { class = "^([sS]potify)$" },
-	workspace = "4 silent",
+	workspace = "7 silent",
 	no_initial_focus = true,
 })
 
