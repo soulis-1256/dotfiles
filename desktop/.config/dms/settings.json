@@ -450,7 +450,11 @@
         {
           "id": "keyboard_layout_name",
           "enabled": true,
-          "keyboardLayoutNameCompactMode": true
+          "keyboardLayoutNameCompactMode": true,
+          "keyboardLayoutNameLabelOverrides": {
+            "us": "ENG",
+            "gr": "ΕΛ"
+          }
         },
         {
           "id": "controlCenterButton",
