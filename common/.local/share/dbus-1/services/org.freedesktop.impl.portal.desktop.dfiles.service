@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=org.freedesktop.impl.portal.desktop.dfiles
-Exec=/home/soulis/.local/bin/dfiles run --hidden --portal-activated
