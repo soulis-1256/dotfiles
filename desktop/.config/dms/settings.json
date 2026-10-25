@@ -1,7 +1,7 @@
 {
-  "currentThemeName": "monochrome",
+  "currentThemeName": "red",
   "currentThemeCategory": "generic",
-  "customThemeFile": "",
+  "customThemeFile": "/home/soulis/.config/dms/themes/crimsonVoltage/theme.json",
   "matugenScheme": "scheme-expressive",
   "popupTransparency": 1,
   "widgetBackgroundColor": "s",
@@ -739,7 +739,7 @@
   ],
   "connectedFrameBarStyleBackups": {},
   "frameEnabled": false,
-  "matugenSpec": "2025",
+  "matugenSpec": "2021",
   "radiusMode": "scale",
   "blurStrength": 0,
   "floatingWindowTitleBars": true,
@@ -792,5 +792,5 @@
   "scrollTitleEnabled": true,
   "centeringMode": "geometric",
   "matugenSeedColor": "#ff0000",
-  "matugenContrast": 0
+  "matugenContrast": -0.74
 }
