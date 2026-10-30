@@ -73,7 +73,7 @@ hl.config({
 		shadow = {
 			enabled = true,
 			range = 30,
-			render_power = 5,
+			render_power = 4,
 			offset = "0 5",
 			color = "rgba(00000070)",
 		},
@@ -196,14 +196,6 @@ hl.config({
 		col = {
 			inactive_border = "rgba(00000000)",
 		},
-	},
-	decoration = {
-		border_part_of_window = false,
-	},
-	input = {
-		follow_mouse = 2,
-		float_switch_override_focus = 0,
-		mouse_refocus = false,
 	},
 })
 
