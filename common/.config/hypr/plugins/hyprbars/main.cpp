@@ -52,6 +52,8 @@ static void onPreConfigReload() {
 }
 
 static void onConfigReloaded() {
+    ensureButtonPressBezier();
+
     for (auto& b : g_pGlobalState->bars) {
         if (!b)
             continue;
@@ -222,6 +224,13 @@ int newLuaButton(lua_State* L) {
         lua_getfield(L, 1, "round");
         if (lua_isnumber(L, -1))
             button.round = lua_tointeger(L, -1);
+    }
+
+    {
+        Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
+        lua_getfield(L, 1, "press_round");
+        if (lua_isnumber(L, -1))
+            button.press_round = lua_tointeger(L, -1);
     }
 
     {

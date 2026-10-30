@@ -84,6 +84,7 @@ class CHyprBar : public IHyprWindowDecoration {
     void renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const float scale, const float a, const CBox& chromeBox, int chromeRound, float chromeRoundPower, const CBox& barClip);
     void renderBarButtonsText(Render::CRenderContext& ctx, CBox* barBox, const float scale, const float a);
     void damageOnButtonHover();
+    void animateButtonPress(int index, bool pressed);
     bool cursorOccludedByOverlay(const Vector2D& mouse);
 
     bool inputIsValid();
@@ -119,6 +120,10 @@ class CHyprBar : public IHyprWindowDecoration {
     bool                m_bCancelledDown = false;
     int                 m_touchId        = 0;
     int                 m_iPressedButton = -1;
+    int                 m_iPressAnimButton = -1;
+
+    // 0..1 button press morph progress, animated by Hyprland's animation manager
+    PHLANIMVAR<float>   m_fButtonPressAnim;
 
     std::optional<Layout::eRectCorner> getResizeCorner(const Vector2D& mouseCoords);
     bool                               isOverButton(const Vector2D& COORDS);
@@ -136,3 +141,6 @@ class CHyprBar : public IHyprWindowDecoration {
 
     friend class CBarPassElement;
 };
+
+// Registers the Material 3 expressive curve used by the button press morph.
+void ensureButtonPressBezier();

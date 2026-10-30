@@ -52,24 +52,18 @@ mv -f "$SO.tmp" "$SO"
 printf '%s\n' "$VERSION" > "$STAMP"
 log "installed $SO for Hyprland $VERSION"
 
-# Reload into the running session, if any. Failures are expected when the
-# running compositor is still the old version (upgrade done, not rebooted yet).
+# Never unload the plugin from a live session: PLUGIN_EXIT leaves every existing
+# bar decoration with function pointers into the .so that is about to be
+# dlclose()d, so the next frame can take the whole compositor down. Hyprland has
+# no safe hot-swap for plugins that add window decorations; a fresh binary is
+# only picked up when the session restarts.
 if command -v hyprctl >/dev/null 2>&1; then
     runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
     sig="${HYPRLAND_INSTANCE_SIGNATURE:-}"
     if [[ -z "$sig" && -d "$runtime/hypr" ]]; then
         sig="$(ls -1dt "$runtime"/hypr/*/ 2>/dev/null | head -n1 | xargs -r basename || true)"
     fi
-    if [[ -n "$sig" ]]; then
-        # Only touch a session that already runs this exact version: during an
-        # upgrade the old compositor still has the old plugin in memory, and
-        # unloading it would remove the bars for no reason.
-        running="$(XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl version 2>/dev/null | head -n1 | awk '{print $2}')"
-        if [[ "$running" == "$VERSION" ]]; then
-            XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl plugin unload "$SO" >/dev/null 2>&1 || true
-            XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl plugin load "$SO" >/dev/null 2>&1 || true
-        else
-            log "running session is ${running:-unknown}, not reloading $VERSION plugin"
-        fi
+    if [[ -n "$sig" ]] && XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl version >/dev/null 2>&1; then
+        log "a Hyprland session is running; log out and back in (or reboot) to load the new binary"
     fi
 fi

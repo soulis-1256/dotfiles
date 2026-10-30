@@ -29,11 +29,10 @@ XWayland unless Gamescope is in the path).
 ### Hyprland Plugin Development
 1. Fork and edit the plugin source.
 2. Compile the shared library (`.so`).
-3. Reload live without restarting Hyprland:
-   ```bash
-   hyprctl plugin unload /path/to/plugin.so
-   hyprctl plugin load /path/to/plugin.so
-   ```
+3. Do **not** hot-swap it with `hyprctl plugin unload/load`. A plugin that adds
+   window decorations leaves live objects pointing into the `.so`, so unloading
+   it can crash the whole compositor. Restart the session (log out/in) to pick
+   up a new build.
 4. For distribution, test using `hyprpm add <repo>` and `hyprpm enable <name>`.
 5. Plugin binaries are release-locked (`HYPRLAND_API_VERSION`). The forked
    `hyprbars` is rebuilt automatically by `hyprbars-rebuild.path` when

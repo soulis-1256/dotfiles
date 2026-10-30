@@ -47,6 +47,39 @@ static CHyprColor configColor(Config::INTEGER color) {
 // Wayland cursor-shape name for a clickable control (Adwaita's hand; hand2 points here).
 constexpr const char* CAPTION_BUTTON_CURSOR = "pointer";
 
+// Dux (Material 3) window buttons morph their radius when pressed instead of
+// scaling: a circle collapses into a rounded square over 200 ms on
+// cubic-bezier(0.34, 0.8, 0.34, 1) - the "expressive effects" curve.
+constexpr const char* BUTTON_PRESS_BEZIER   = "hyprbars-button-press";
+constexpr float       BUTTON_PRESS_SPEED    = 2.F; // Hyprland speed unit = 100 ms
+constexpr float       BUTTON_PRESS_ALPHA    = 0.12F;
+
+void ensureButtonPressBezier() {
+    if (!Animation::mgr())
+        return;
+
+    if (!Animation::mgr()->bezierExists(BUTTON_PRESS_BEZIER))
+        Animation::mgr()->addBezierWithName(BUTTON_PRESS_BEZIER, Vector2D{0.34F, 0.8F}, Vector2D{0.34F, 1.F});
+}
+
+static SP<Hyprutils::Animation::SAnimationPropertyConfig> buttonPressAnimConfig() {
+    ensureButtonPressBezier();
+
+    static SP<Hyprutils::Animation::SAnimationPropertyConfig> config = [] {
+        auto c              = makeShared<Hyprutils::Animation::SAnimationPropertyConfig>();
+        c->overridden       = true;
+        c->internalBezier   = BUTTON_PRESS_BEZIER;
+        c->internalStyle    = "";
+        c->internalSpeed    = BUTTON_PRESS_SPEED;
+        c->internalEnabled  = 1;
+        c->pValues          = c;
+        c->pParentAnimation = c;
+        return c;
+    }();
+
+    return config;
+}
+
 // Caption buttons in bar-local pixels. `barSize` is the bar in that space and
 // `scale` turns the logical config sizes into it. Paint, click, and hover all
 // use this, so the hit target is the rectangle that is drawn.
@@ -99,6 +132,9 @@ CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
     Animation::mgr()->createAnimation(configColor(g_pGlobalState->config.barColor->value()), m_cRealBarColor, Config::animationTree()->getAnimationPropertyConfig("border"),
                                       pWindow, AVARDAMAGE_NONE);
     m_cRealBarColor->setUpdateCallback([&](auto) { damageEntire(); });
+
+    Animation::mgr()->createAnimation(0.F, m_fButtonPressAnim, buttonPressAnimConfig(), pWindow, AVARDAMAGE_NONE);
+    m_fButtonPressAnim->setUpdateCallback([&](auto) { damageEntire(); });
 }
 
 CHyprBar::~CHyprBar() {
@@ -527,6 +563,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     m_iPressedButton = buttonIndexAt(COORDS);
     if (m_iPressedButton >= 0) {
         m_bDragPending = false;
+        animateButtonPress(m_iPressedButton, true);
         return;
     }
 
@@ -560,6 +597,7 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         const int idx = buttonIndexAt(cursorRelativeToBar());
         if (idx == m_iPressedButton)
             executeButton(idx);
+        animateButtonPress(m_iPressedButton, false);
         m_iPressedButton = -1;
     }
 
@@ -669,6 +707,11 @@ void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const
         auto color = button.bgcol;
         bool hovered = (m_iButtonHoverState & (1 << i)) != 0;
 
+        // Dux morphs the button on press and fades a 12% state layer of the
+        // icon colour on top; mirror both, driven by the shared 0..1 value.
+        const float pressProgress =
+            ((int)i == m_iPressAnimButton && button.press_round >= 0 && m_fButtonPressAnim) ? m_fButtonPressAnim->value() : 0.F;
+
         if (button.bgcol.a <= 0.01f) {
             if (hovered) {
                 if (i == 0 || button.cmd.find("killactive") != std::string::npos)
@@ -688,6 +731,14 @@ void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const
                 button.iconTex = nullptr;
         }
 
+        if (pressProgress > 0.001F) {
+            const CHyprColor STATE = button.userfg ? button.fgcol : CHyprColor(1.0F, 1.0F, 1.0F, 1.0F);
+            const float      k     = BUTTON_PRESS_ALPHA * pressProgress;
+            color.r                = static_cast<float>(color.r) * (1.F - k) + static_cast<float>(STATE.r) * k;
+            color.g                = static_cast<float>(color.g) * (1.F - k) + static_cast<float>(STATE.g) * k;
+            color.b                = static_cast<float>(color.b) * (1.F - k) + static_cast<float>(STATE.b) * k;
+        }
+
         color.a *= a;
 
         CBox buttonBox = boxes[i];
@@ -696,13 +747,17 @@ void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const
 
         if (color.a > 0.001f) {
             if (button.round > 0) {
-                int roundRadius = (button.round >= 50) ? static_cast<int>(std::round(std::min(bWidth, bHeight) / 2.0)) :
-                                                         static_cast<int>(std::round(button.round * scale));
+                float restRadius = (button.round >= 50) ? std::min(bWidth, bHeight) / 2.F : static_cast<float>(button.round) * scale;
+                float roundRadius = restRadius;
+                if (pressProgress > 0.F) {
+                    const float pressedRadius = (button.press_round >= 50) ? std::min(bWidth, bHeight) / 2.F : static_cast<float>(button.press_round) * scale;
+                    roundRadius += (pressedRadius - roundRadius) * pressProgress;
+                }
                 auto&      clipBox   = ctx.m_data.clipBox;
                 const CBox savedClip = clipBox;
                 if (!barClip.empty())
                     clipBox = savedClip.empty() ? barClip : savedClip.intersection(barClip);
-                g_pHyprOpenGL->renderRect(ctx, buttonBox, color, {.round = roundRadius, .roundingPower = 2.F});
+                g_pHyprOpenGL->renderRect(ctx, buttonBox, color, {.round = static_cast<int>(std::lround(roundRadius)), .roundingPower = 2.F});
                 clipBox = savedClip;
             } else {
                 // renderRect ignores GL scissor and clips via clipBox. Fill the
@@ -1048,4 +1103,20 @@ void CHyprBar::damageOnButtonHover() {
         if (const auto pWin = m_pWindow.lock())
             g_pHyprRenderer->damageWindow(pWin, true);
     }
+}
+
+void CHyprBar::animateButtonPress(int index, bool pressed) {
+    if (index < 0 || index >= (int)g_pGlobalState->buttons.size())
+        return;
+
+    const auto& BUTTON = g_pGlobalState->buttons[index];
+    if (BUTTON.press_round < 0 || !m_fButtonPressAnim)
+        return;
+
+    // The curve is dropped on config reload; bring it back before animating.
+    ensureButtonPressBezier();
+
+    m_iPressAnimButton  = index;
+    *m_fButtonPressAnim = pressed ? 1.F : 0.F;
+    damageEntire();
 }

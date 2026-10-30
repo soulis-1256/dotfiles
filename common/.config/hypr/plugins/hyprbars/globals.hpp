@@ -19,6 +19,7 @@ struct SHyprButton {
     float                width     = 0;
     float                height    = 0;
     int                  round     = -1;
+    int                  press_round = -1; // radius while pressed; < 0 disables the press animation
     int                  icon_size = 0;
     std::string          icon      = "";
     std::string          font      = "lucide";
