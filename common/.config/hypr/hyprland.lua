@@ -99,7 +99,7 @@ hl.config({
 			new_optimizations = true,
 		},
 		wobble = {
-			enabled = true,
+			enabled = false,
 			-- Spring on move/resize. Knobs and Hyprland defaults:
 			--   mesh       12    vertices per edge (2-32), smoothness
 			--   stiffness 200    spring stiffness (0.0001-1000)
