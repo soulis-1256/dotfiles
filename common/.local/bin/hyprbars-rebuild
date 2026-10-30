@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Rebuild the forked hyprbars plugin against the installed Hyprland headers.
+#
+# Hyprland plugins are version-locked: the plugin API version changes between
+# releases (0.56 => "0.1", 0.57 => "0.2") and every render/decoration signature
+# is allowed to move. A .so built for the previous release refuses to load, so
+# the bar silently disappears after a system upgrade.
+#
+# Triggered by hyprbars-rebuild.path when /usr/share/pkgconfig/hyprland.pc is
+# rewritten by a package upgrade. Safe to run at any time: it is a no-op unless
+# the installed version differs from the last successful build.
+
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+DOTFILES="$(git -C "$(dirname "$SELF")" rev-parse --show-toplevel 2>/dev/null || true)"
+SRC="${HYPRBARS_SRC:-${DOTFILES:-$HOME/dotfiles}/common/.config/hypr/plugins/hyprbars}"
+DEST="$HOME/.local/lib/hyprland"
+SO="$DEST/hyprbars.so"
+STAMP="$DEST/.hyprbars-version"
+
+log() { printf '[hyprbars-rebuild] %s\n' "$*" >&2; }
+
+# Don't touch a working .so before 0.57 headers exist: the ported source only
+# builds against the 0.57 API.
+if ! grep -qs 'CRenderContext' /usr/include/hyprland/src/render/pass/PassElement.hpp; then
+    log "installed headers are pre-0.57, nothing to do"
+    exit 0
+fi
+
+VERSION="$(pkg-config --modversion hyprland 2>/dev/null || echo unknown)"
+if [[ -f "$SO" && -f "$STAMP" && "$(cat "$STAMP")" == "$VERSION" ]]; then
+    log "hyprbars.so already built for Hyprland $VERSION"
+    exit 0
+fi
+
+log "building hyprbars for Hyprland $VERSION"
+mkdir -p "$DEST"
+backup=""
+if [[ -f "$SO" ]]; then
+    backup="$SO.$(cat "$STAMP" 2>/dev/null || echo old)"
+    cp -f "$SO" "$backup" || true
+fi
+
+if ! make -C "$SRC" clean all; then
+    log "build failed; keeping the previous binary"
+    exit 1
+fi
+
+install -m 755 "$SRC/hyprbars.so" "$SO.tmp"
+mv -f "$SO.tmp" "$SO"
+printf '%s\n' "$VERSION" > "$STAMP"
+log "installed $SO for Hyprland $VERSION"
+
+# Reload into the running session, if any. Failures are expected when the
+# running compositor is still the old version (upgrade done, not rebooted yet).
+if command -v hyprctl >/dev/null 2>&1; then
+    runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    sig="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+    if [[ -z "$sig" && -d "$runtime/hypr" ]]; then
+        sig="$(ls -1dt "$runtime"/hypr/*/ 2>/dev/null | head -n1 | xargs -r basename || true)"
+    fi
+    if [[ -n "$sig" ]]; then
+        # Only touch a session that already runs this exact version: during an
+        # upgrade the old compositor still has the old plugin in memory, and
+        # unloading it would remove the bars for no reason.
+        running="$(XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl version 2>/dev/null | head -n1 | awk '{print $2}')"
+        if [[ "$running" == "$VERSION" ]]; then
+            XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl plugin unload "$SO" >/dev/null 2>&1 || true
+            XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl plugin load "$SO" >/dev/null 2>&1 || true
+        else
+            log "running session is ${running:-unknown}, not reloading $VERSION plugin"
+        fi
+    fi
+fi

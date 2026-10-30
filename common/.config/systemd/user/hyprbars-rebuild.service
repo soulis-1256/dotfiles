@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuild the forked hyprbars plugin after a Hyprland update
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hyprbars-rebuild
+Environment=XDG_RUNTIME_DIR=%t
+
+[Install]
+WantedBy=default.target

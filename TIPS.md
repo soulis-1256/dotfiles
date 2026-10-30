@@ -35,6 +35,10 @@ XWayland unless Gamescope is in the path).
    hyprctl plugin load /path/to/plugin.so
    ```
 4. For distribution, test using `hyprpm add <repo>` and `hyprpm enable <name>`.
+5. Plugin binaries are release-locked (`HYPRLAND_API_VERSION`). The forked
+   `hyprbars` is rebuilt automatically by `hyprbars-rebuild.path` when
+   `/usr/share/pkgconfig/hyprland.pc` changes; run `~/.local/bin/hyprbars-rebuild`
+   by hand if the unit did not fire.
 
 ---
 

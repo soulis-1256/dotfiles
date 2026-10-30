@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch Hyprland's pkg-config file for version changes
+
+[Path]
+# Rewritten by pacman on every Hyprland package upgrade.
+PathChanged=/usr/share/pkgconfig/hyprland.pc
+PathModified=/usr/share/pkgconfig/hyprland.pc
+Unit=hyprbars-rebuild.service
+
+[Install]
+WantedBy=default.target
