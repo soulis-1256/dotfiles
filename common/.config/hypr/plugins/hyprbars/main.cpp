@@ -4,7 +4,8 @@
 
 #include <any>
 #include <hyprland/src/Compositor.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
+#include <hyprland/src/desktop/view/window/WindowPresentation.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/config/ConfigManager.hpp>
 #include <hyprland/src/config/shared/parserUtils/ParserUtils.hpp>
@@ -35,11 +36,11 @@ APICALL EXPORT std::string PLUGIN_API_VERSION() {
 }
 
 static void onNewWindow(PHLWINDOW window) {
-    if (!window->m_X11DoesntWantBorders) {
-        if (std::ranges::any_of(window->m_windowDecorations, [](const auto& d) { return d->getDisplayName() == "Hyprbar"; }))
+    if (true) { // 0.57: m_X11DoesntWantBorders was removed; upstream skips the check
+        if (std::ranges::any_of(window->presentation().decorations(), [](const auto& d) { return d->getDisplayName() == "Hyprbar"; }))
             return;
 
-        auto bar = makeUnique<CHyprBar>(window);
+        auto bar = Hyprutils::Memory::makeShared<CHyprBar>(window);
         g_pGlobalState->bars.emplace_back(bar);
         bar->m_self = bar;
         HyprlandAPI::addWindowDecoration(PHANDLE, window, std::move(bar));
@@ -66,7 +67,7 @@ static void onUpdateWindowRules(PHLWINDOW window) {
         return;
 
     (*BARIT)->updateRules();
-    window->updateWindowDecos();
+    window->updateWindowData();
 }
 
 Hyprlang::CParseResult onNewButton(const char* K, const char* V) {
@@ -311,16 +312,13 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.iconOnHover);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.onDoubleClick);
 
-    if (Config::mgr()->type() == Config::CONFIG_LEGACY)
-        HyprlandAPI::addConfigKeyword(PHANDLE, "plugin:hyprbars:hyprbars-button", onNewButton, Hyprlang::SHandlerOptions{});
-    else
-        HyprlandAPI::addLuaFunction(PHANDLE, "hyprbars", "add_button", ::newLuaButton);
+    HyprlandAPI::addLuaFunction(PHANDLE, "hyprbars", "add_button", ::newLuaButton);
     static auto P4 = Event::bus()->m_events.config.preReload.listen([&] { onPreConfigReload(); });
     static auto P5 = Event::bus()->m_events.config.reloaded.listen([&] { onConfigReloaded(); });
 
     // add deco to existing windows
     for (auto& w : Desktop::windowState()->windows()) {
-        if (w->isHidden() || !w->m_isMapped)
+        if (w->isHidden() || !w->backend().isMapped())
             continue;
 
         onNewWindow(w);
@@ -335,7 +333,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
     for (auto& m : State::monitorState()->monitors())
         m->m_scheduledRecalc = true;
 
-    g_pHyprRenderer->m_renderPass.removeAllOfType("CBarPassElement");
+    g_pHyprRenderer->context().m_pass.removeAllOfType("CBarPassElement");
 
     Desktop::Rule::windowEffects()->unregisterEffect(g_pGlobalState->barColorRuleIdx);
     Desktop::Rule::windowEffects()->unregisterEffect(g_pGlobalState->titleColorRuleIdx);
