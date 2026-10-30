@@ -48,9 +48,12 @@ end)
 hl.config({
 	binds = {
 		allow_pin_fullscreen = true,
-		-- Don't re-centre a tiled window under the cursor when it is dragged
-		-- out into a floating one (prevents the jump on drag-out).
-		drag_center_window = false,
+		-- Temporarily disabled: with drag_center_window = false, Hyprland's
+		-- DragController uses the window's geometric center (middle) rather than
+		-- cursor position to determine the target monitor/workspace. When dragging
+		-- a window by its left edge to a left monitor, it won't tile until the
+		-- center of the window crosses the boundary.
+		-- drag_center_window = false,
 	},
 	input = {
 		kb_layout = "us,gr",
