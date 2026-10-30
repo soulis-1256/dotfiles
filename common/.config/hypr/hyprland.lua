@@ -82,13 +82,32 @@ hl.config({
 		inactive_opacity = 1.0,
 		blur = {
 			enabled = true,
-			-- 0 kawase, 1 frost, 2 ripple, 3 drops, 4 water, 5 fluid_jar,
-			-- 6 prism, 7 heat_shimmer, 8 acrylic, 9 aurora, 10 haze
-			variant = 0,
+			-- Hyprland 0.57 blur variants (0-10):
+			-- User favorites:
+			--   * 3: drops        - Active default (rain streams running down glass)
+			--   * 7: heat_shimmer - Favorite animated alternative (hot air convection waves)
+			--   * 0: kawase       - Favorite static alternative (clean Dual-Kawase frosted glass)
+			-- Other variants: 1 frost, 2 ripple, 4 water, 5 fluid_jar, 6 prism, 8 acrylic, 9 aurora, 10 haze
+			variant = 3,
+			ignore_opacity = true,
+			size = 8,
+			passes = 3,
+			vibrancy = 0.2,
+			drops = {
+				speed = 1.5,
+			},
+			new_optimizations = true,
 		},
 		wobble = {
 			enabled = true,
-			intensity = 2,
+			-- Spring on move/resize. Knobs and Hyprland defaults:
+			--   mesh       12    vertices per edge (2-32), smoothness
+			--   stiffness 200    spring stiffness (0.0001-1000)
+			--   damping    12    how fast it settles (0-1000)
+			--   mass        1    spring mass (0.0001-1000)
+			--   intensity 0.2    impulse multiplier (0-2)
+			--   value_epsilon 0.25 / velocity_epsilon 2: "considered stable"
+			intensity = 0.24,
 		},
 		shadow = {
 			enabled = true,

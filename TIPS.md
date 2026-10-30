@@ -16,6 +16,26 @@ re-pins to the X11 screen edge. Revisit this when Steam's **client** is
 native Wayland; `steam --ozone-platform=wayland` is not that (it stays
 XWayland unless Gamescope is in the path).
 
+### Blur Variants (Hyprland v0.57+)
+Hyprland v0.57 added 11 swappable blur variants (`decoration.blur.variant`).
+
+#### Curated Favorites:
+* **`variant = 3` (`drops`)** — **[Active Default]** Atmospheric rain streaks running down the pane. Tuned with `drops.speed = 1.5`, `passes = 3`, `size = 8`, `vibrancy = 0.2`.
+* **`variant = 7` (`heat_shimmer`)** — Favorite animated alternative. Subtle upward convection heat-haze distortion (`heat_shimmer.speed = 1.0`) without being distracting.
+* **`variant = 0` (`kawase`)** — Favorite clean static alternative. Classic Dual-Kawase frosted glass with zero motion or artifacts.
+
+#### Evaluated & Rejected:
+* **`1` (`frost`)** — Noisy, jagged crystalline relief that fractures monospace fonts and degrades text readability.
+* **`2` (`ripple`)** — Too simple; only produces a brief shockwave on mouse clicks.
+* **`4` (`water`)** — Heightmap ripple doesn't respond reliably to passive cursor motion due to damage tracking.
+* **`5` (`fluid_jar`)** — Pure gimmick / cringe; makes the window look like a container half-filled with colored liquid.
+* **`6` (`prism`)** — Harsh geometric chromatic dispersion that interferes with text.
+* **`8` (`acrylic`)** — Defaults to 82% sharp pass-through (hardly blurry); once clarity is lowered, it is essentially identical to `kawase` (0).
+* **`9` (`aurora`)** — Barely noticeable on this setup; visually indistinguishable from simple static blur (curtains didn't pop or show meaningful motion).
+* **`10` (`haze`)** — Pearlescent sheen is subtle but doesn't add meaningful value over standard `kawase`.
+
+*Note on Ghostty / client alpha:* Always ensure `decoration.blur.ignore_opacity = true` is set in `hyprland.lua` so Hyprland's blur shader processes translucent terminal backdrops properly.
+
 ### Window Rules & Keybind Debugging
 * **Find Window Class / Title:**
   ```bash

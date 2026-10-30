@@ -5,8 +5,8 @@ font-size = 12
 window-decoration = false
 window-padding-x = 12
 window-padding-y = 12
-background-opacity = 1.0
-background-blur-radius = 32
+background-opacity = 0.85
+background-blur = true
 
 # Cursor Configuration
 cursor-style = block
