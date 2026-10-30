@@ -856,13 +856,14 @@ void CHyprBar::renderPass(Render::CRenderContext& ctx, PHLMONITOR pMonitor, cons
     if (DEST_COLOR != m_cRealBarColor->goal())
         *m_cRealBarColor = DEST_COLOR;
 
-    CHyprColor color = m_cRealBarColor->value();
-    color.a *= a;
+    const float OPACITY     = std::clamp(static_cast<float>(g_pGlobalState->config.barOpacity->value()), 0.0F, 1.0F);
+    CHyprColor  color       = m_cRealBarColor->value();
+    color.a                 *= a * OPACITY;
     const bool BUTTONSRIGHT = ALIGNBUTTONS != "left";
     const bool hyprBlur     = ENABLEBLUR && *PENABLEBLURGLOBAL;
     const bool SHOULDBLUR   = hyprBlur && color.a < 1.F;
     if (!hyprBlur)
-        color.a = a; // follow Hyprland: no compositor blur → solid chrome
+        color.a = a * OPACITY;
 
     if (HEIGHT < 1) {
         m_iLastHeight = HEIGHT;

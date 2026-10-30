@@ -279,6 +279,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto P3 = Event::bus()->m_events.window.updateRules.listen([&](PHLWINDOW w) { onUpdateWindowRules(w); });
 
     g_pGlobalState->config.barColor            = makeShared<Config::Values::CColorValue>("plugin:hyprbars:bar_color", "Change the bar color", 0x88333333);
+    g_pGlobalState->config.barOpacity          = makeShared<Config::Values::CFloatValue>("plugin:hyprbars:bar_opacity", "Opacity of the bar (0.0 to 1.0)", 1.0F);
     g_pGlobalState->config.textColor           = makeShared<Config::Values::CColorValue>("plugin:hyprbars:col.text", "Change the text color", 0xffffffff);
     g_pGlobalState->config.inactiveButtonColor = makeShared<Config::Values::CColorValue>(
         "plugin:hyprbars:inactive_button_color", "Change the inactive button's color. 0x00000000 means unset", 0x00000000);
@@ -302,6 +303,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_pGlobalState->config.onDoubleClick       = makeShared<Config::Values::CStringValue>("plugin:hyprbars:on_double_click", "Action to execute on double click of the bar", "");
 
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.barColor);
+    HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.barOpacity);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.textColor);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.inactiveButtonColor);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.barHeight);

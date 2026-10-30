@@ -331,6 +331,7 @@ if f_bars then
 					bar_color = bar_color,
 					["col.text"] = text_color,
 					bar_blur = true,
+					bar_opacity = 0.85,
 					bar_text_font = "Inter Variable",
 					bar_text_size = 11,
 					bar_title_padding = 14,

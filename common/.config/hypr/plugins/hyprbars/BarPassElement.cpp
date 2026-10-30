@@ -17,8 +17,9 @@ std::vector<UP<IPassElement>> CBarPassElement::draw(Render::CRenderContext& ctx)
 bool CBarPassElement::needsLiveBlur(Render::CRenderContext&) {
     static auto PENABLEBLURGLOBAL = CConfigValue<Config::BOOL>("decoration:blur:enabled");
 
-    CHyprColor  color = data.deco->m_bForcedBarColor.value_or(CHyprColor{static_cast<uint64_t>(g_pGlobalState->config.barColor->value())});
-    color.a *= data.a;
+    CHyprColor  color   = data.deco->m_bForcedBarColor.value_or(CHyprColor{static_cast<uint64_t>(g_pGlobalState->config.barColor->value())});
+    const float opacity = std::clamp(static_cast<float>(g_pGlobalState->config.barOpacity->value()), 0.0F, 1.0F);
+    color.a *= data.a * opacity;
     const bool SHOULDBLUR = g_pGlobalState->config.barBlur->value() && *PENABLEBLURGLOBAL && color.a < 1.F;
 
     return SHOULDBLUR;

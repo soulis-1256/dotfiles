@@ -3,6 +3,7 @@
 #include <hyprland/src/plugins/PluginAPI.hpp>
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/config/values/types/BoolValue.hpp>
+#include <hyprland/src/config/values/types/FloatValue.hpp>
 #include <hyprland/src/config/values/types/IntValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/config/values/types/ColorValue.hpp>
@@ -37,6 +38,7 @@ struct SGlobalState {
 
     struct {
         SP<Config::Values::CColorValue>      barColor, textColor, inactiveButtonColor;
+        SP<Config::Values::CFloatValue>      barOpacity;
         SP<Config::Values::CIntValue>        barHeight;
         SP<Config::Values::CIntValue>        barTextSize;
         SP<Config::Values::CFontWeightValue> barTextWeight;
