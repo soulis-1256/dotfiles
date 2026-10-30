@@ -35,6 +35,8 @@ end)
 
 -- User autostart
 hl.on("hyprland.start", function()
+	-- Re-probe audio when a sink was lost while switching sessions.
+	hl.exec_cmd("audio-reprobe")
 	hl.exec_cmd("wl-paste --watch cliphist store")
 	hl.exec_cmd("gsettings set org.gnome.desktop.wm.preferences button-layout ':close'")
 end)

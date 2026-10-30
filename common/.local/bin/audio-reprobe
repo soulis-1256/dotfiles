@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Re-probe audio if a sink was lost during the session switch.
+#
+# WirePlumber's ALSA monitor does not retry a probe that fails because the PCM
+# is momentarily busy (observed: `spa.alsa: 'hdmi:0': playback open failed:
+# Device or resource busy` while the greeter's PipeWire was probing the same
+# HDA card during a login handover). The node is then skipped for the rest of
+# the session, because wireplumber.service is bound to pipewire.service and
+# survives the compositor restart.
+#
+# Run at session start: compare the sinks with the ones recorded at the
+# previous session start and restart WirePlumber once if any are missing.
+set -u
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}"
+state_file="$state_dir/audio-sinks"
+
+sinks() { pactl list short sinks 2>/dev/null | cut -f2 | sort -u; }
+
+# Wait for this session's PipeWire to answer before deciding anything.
+for _ in $(seq 1 20); do
+	pactl info >/dev/null 2>&1 && break
+	sleep 0.5
+done
+
+prev="$(sort -u "$state_file" 2>/dev/null)"
+now="$(sinks)"
+
+if [ -n "$prev" ]; then
+	missing="$(comm -23 <(printf '%s\n' "$prev") <(printf '%s\n' "$now"))"
+
+	if [ -n "$missing" ]; then
+		echo "audio-reprobe: missing sink(s): $(echo $missing) - restarting wireplumber" >&2
+		systemctl --user restart wireplumber
+
+		for _ in $(seq 1 20); do
+			sleep 0.5
+			now="$(sinks)"
+			missing="$(comm -23 <(printf '%s\n' "$prev") <(printf '%s\n' "$now"))"
+			[ -z "$missing" ] && break
+		done
+
+		[ -n "$missing" ] && echo "audio-reprobe: still missing after restart: $(echo $missing)" >&2
+	fi
+fi
+
+# Record what actually exists: a sink that is really gone (unplugged monitor,
+# detached DAC) drops out of the list, so this only triggers a single restart.
+mkdir -p "$state_dir"
+printf '%s\n' "$now" | sed '/^$/d' >"$state_file"
