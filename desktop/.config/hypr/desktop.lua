@@ -19,9 +19,6 @@ hl.window_rule({
 	match = { class = "^(discord)$" },
 	workspace = "10 silent",
 	no_initial_focus = true,
-	opaque = true,
-	opacity = "1.0 1.0",
-	no_blur = true,
 	no_shadow = true,
 	no_dim = true,
 })

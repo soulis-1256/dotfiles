@@ -4,13 +4,13 @@
 -- Electron reports Discord as fully opaque and sets no_blur, so Hyprland
 -- skips compositor frost even with Vencord transparency. The window rule
 -- is not enough; set_prop on open is what actually clears those flags.
--- 0.99 opacity is the usual Electron alpha hack (not a visible fade).
+-- 0.85 opacity matches Ghostty and the title bars.
 -- Needs decoration.blur.enabled (Win11 theme).
 hl.window_rule({
 	match = { class = "^(discord)$" },
 	opaque = false,
 	no_blur = false,
-	opacity = "0.99 override 0.99 override",
+	opacity = "0.85 override 0.85 override",
 })
 
 local function frost_discord(w)
@@ -20,7 +20,7 @@ local function frost_discord(w)
 	local function apply()
 		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "opaque", value = 0 }))
 		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "no_blur", value = 0 }))
-		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "opacity", value = 0.99 }))
+		hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = "opacity", value = 0.85 }))
 	end
 	apply()
 	hl.timer(apply, { timeout = 250, type = "oneshot" })
