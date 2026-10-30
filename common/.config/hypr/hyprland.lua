@@ -48,6 +48,9 @@ end)
 hl.config({
 	binds = {
 		allow_pin_fullscreen = true,
+		-- Don't re-centre a tiled window under the cursor when it is dragged
+		-- out into a floating one (prevents the jump on drag-out).
+		drag_center_window = false,
 	},
 	input = {
 		kb_layout = "us,gr",
@@ -78,7 +81,14 @@ hl.config({
 		active_opacity = 1.0,
 		inactive_opacity = 1.0,
 		blur = {
-			enabled = false,
+			enabled = true,
+			-- 0 kawase, 1 frost, 2 ripple, 3 drops, 4 water, 5 fluid_jar,
+			-- 6 prism, 7 heat_shimmer, 8 acrylic, 9 aurora, 10 haze
+			variant = 0,
+		},
+		wobble = {
+			enabled = true,
+			intensity = 2,
 		},
 		shadow = {
 			enabled = true,
