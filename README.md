@@ -33,8 +33,6 @@ dotfiles/
 │   │   ├── systemd/user/               # dms drop-in that runs the patch copy at start
 │   │   ├── ghostty/                    # Ghostty terminal styling & keybinds
 │   │   ├── fish/                       # Fish shell configuration & completions
-│   │   ├── nvim/                       # Neovim IDE configuration
-│   │   ├── btop/                       # Btop resource monitor layout
 │   │   ├── pipewire/                   # Mic volume protection (Discord / Chromium fix)
 │   │   ├── gtk-3.0/                    # GTK3 styling & colors
 │   │   └── gtk-4.0/                    # GTK4 styling & colors
@@ -75,7 +73,7 @@ dotfiles/
    ```bash
    sudo pacman -S --needed stow git hyprland hyprlock xdg-desktop-portal-hyprland \
                            xdg-desktop-portal-gtk adw-gtk-theme breeze-icons \
-                           wl-clipboard cliphist ghostty fish btop dolphin
+                           wl-clipboard cliphist ghostty fish dolphin
    ```
 
 ### 2. Clone the Repository
