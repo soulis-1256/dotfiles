@@ -34,7 +34,6 @@ dotfiles/
 │   │   ├── ghostty/                    # Ghostty terminal styling & keybinds
 │   │   ├── fish/                       # Fish shell configuration & completions
 │   │   ├── nvim/                       # Neovim IDE configuration
-│   │   ├── zed/                        # Zed editor config
 │   │   ├── btop/                       # Btop resource monitor layout
 │   │   ├── pipewire/                   # Mic volume protection (Discord / Chromium fix)
 │   │   ├── gtk-3.0/                    # GTK3 styling & colors
