@@ -39,9 +39,9 @@ hl.window_rule({
 	monitor = "DP-1",
 })
 
--- 5. Pin DMS Settings to primary monitor DP-1 on Desktop
+-- 5. Pin Dux Settings to primary monitor DP-1 on Desktop
 hl.window_rule({
-	match = { class = "^(com\\.danklinux\\.dms)$", title = "^(Settings)$" },
+	match = { class = "^(dev\\.duxlabs\\.shell|com\\.danklinux\\.dms)$", title = "^(Settings)$" },
 	monitor = "DP-1",
 })
 

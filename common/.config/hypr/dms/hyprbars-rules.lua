@@ -31,7 +31,7 @@ hl.on("window.open", frost_discord)
 -- hyprbars blacklist: single source of truth for apps without top bars
 _G.hyprbars_blacklist = {
 	classes = {
-		-- Dux Labs and Dank apps (native CSD headerbars)
+		-- Dux Labs apps (native CSD headerbars)
 		"dev\\.duxlabs\\..*",
 		"com\\.danklinux\\..*",
 		"dfiles",

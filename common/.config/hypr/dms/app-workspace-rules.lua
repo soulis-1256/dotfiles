@@ -1,4 +1,4 @@
--- Workspace and map-focus rules that DankMaterialShell 1.6 cannot store.
+-- Workspace and map-focus rules that Dux Shell cannot store.
 -- DMS windowrules.lua is rewritten from its rule store, which only has
 -- `nofocus` → `no_focus` (window never focusable). These apps need
 -- `no_initial_focus` so they land on a silent workspace without stealing

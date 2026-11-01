@@ -8,12 +8,10 @@ Modern, minimal, and keyboard-driven desktop configuration on **CachyOS / Arch L
 
 - **OS:** CachyOS (Arch Linux based)
 - **Window Manager:** [Hyprland](https://hyprland.org) (Lua configuration format)
-- **Desktop Shell:** [Dux](https://github.com/AvengeMedia/DankMaterialShell) 2.0 (`dms`), the stock shell. Quickshell runs the UI that `dms` unpacks from the binary.
+- **Desktop Shell:** [Dux](https://github.com/duxlabs-dev/dux-shell) 2.0 (`dms`), the stock shell. Quickshell runs the UI that `dms` unpacks from the binary.
 - **Dynamic Theming:** [Matugen](https://github.com/InioX/matugen) (Material You color generation)
 - **Terminal:** [Ghostty](https://ghostty.org)
 - **Shell:** Fish
-- **Editors:** Neovim / Zed
-- **System Monitor:** Btop
 - **Dotfiles Manager:** GNU Stow (Packages Architecture)
 
 ---
@@ -67,7 +65,7 @@ dotfiles/
 ### 1. Prerequisites & Installation
 
 1. **Install Dux 2.0** (`dms`):
-   The shell UI ships inside the `dms` binary. Follow the official installation instructions at **[danklinux.com](https://danklinux.com/)**. This repo does not contain a copy of the shell.
+   The shell UI ships inside the `dms` binary. Follow the official installation instructions at **[duxlabs.dev](https://duxlabs.dev/)**. This repo does not contain a copy of the shell.
 
 2. **Install Core System Packages** (Arch Linux / CachyOS):
    ```bash

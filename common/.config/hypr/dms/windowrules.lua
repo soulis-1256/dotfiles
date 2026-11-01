@@ -14,7 +14,7 @@ hl.window_rule({ match = { class = "^([sS]team.*)$" }, no_shadow = true, no_blur
 hl.window_rule({ match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" }, float = true, pin = true })
 
 -- DMS-RULE: id=dms_rule_9, name=
-hl.window_rule({ match = { class = "^(com\\.danklinux\\.dms)$", title = "^(Settings)$" }, float = true, size = { 1100, 700 } })
+hl.window_rule({ match = { class = "^(dev\\.duxlabs\\.shell|com\\.danklinux\\.dms)$", title = "^(Settings)$" }, float = true, size = { 1100, 700 } })
 
 -- DMS-RULE: id=dms_rule_10, name=
 hl.window_rule({ match = { class = "^(org\\.gnome\\.Loupe)$" }, float = true, size = { 1100, 700 } })
