@@ -186,6 +186,15 @@ int newLuaButton(lua_State* L) {
     {
         Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
 
+        lua_getfield(L, 1, "icon_maximized");
+
+        if (lua_isstring(L, -1))
+            button.icon_maximized = lua_tostring(L, -1);
+    }
+
+    {
+        Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
+
         lua_getfield(L, 1, "action");
 
         if (!lua_isstring(L, -1))

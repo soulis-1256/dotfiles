@@ -22,9 +22,11 @@ struct SHyprButton {
     int                  round     = -1;
     int                  press_round = -1; // radius while pressed; < 0 disables the press animation
     int                  icon_size = 0;
-    std::string          icon      = "";
-    std::string          font      = "lucide";
+    std::string          icon           = "";
+    std::string          icon_maximized = "";
+    std::string          font           = "lucide";
     SP<Render::ITexture> iconTex;
+    SP<Render::ITexture> iconTexMaximized;
 };
 
 class CHyprBar;

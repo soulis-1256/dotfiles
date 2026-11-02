@@ -249,8 +249,20 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
 int CHyprBar::buttonIndexAt(const Vector2D& COORDS) {
     const auto bar   = assignedBoxGlobal();
     const auto boxes = captionButtonBoxes(Vector2D{(int)bar.w, (int)bar.h}, 1.f);
+    const bool right = g_pGlobalState->config.barButtonsAlignment->value() != "left";
+
     for (size_t i = 0; i < boxes.size(); ++i) {
         const auto& b = boxes[i];
+
+        // Corner button (Fitts's Law): extend hit target to the window's outer edge and top/bottom of bar
+        if (right && i == 0) {
+            if (COORDS.x >= b.x && COORDS.x <= bar.w && COORDS.y >= 0 && COORDS.y <= bar.h)
+                return 0;
+        } else if (!right && i == 0) {
+            if (COORDS.x >= 0 && COORDS.x <= b.x + b.w && COORDS.y >= 0 && COORDS.y <= bar.h)
+                return 0;
+        }
+
         if (VECINRECT(COORDS, b.x, b.y, b.x + b.w, b.y + b.h))
             return (int)i;
     }
@@ -727,8 +739,12 @@ void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const
             color.b = std::min(1.0f, static_cast<float>(color.b * 1.3f + 0.1f));
         } else if (INACTIVECOLOR > 0) {
             color = m_bWindowHasFocus ? color : configColor(INACTIVECOLOR);
-            if (INVALIDATEICONS && button.userfg && button.iconTex)
-                button.iconTex = nullptr;
+            if (INVALIDATEICONS && button.userfg) {
+                if (button.iconTex)
+                    button.iconTex = nullptr;
+                if (button.iconTexMaximized)
+                    button.iconTexMaximized = nullptr;
+            }
         }
 
         if (pressProgress > 0.001F) {
@@ -781,11 +797,16 @@ void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const
 void CHyprBar::renderBarButtonsText(Render::CRenderContext& ctx, CBox* barBox, const float scale, const float a) {
     const auto ICONONHOVER = g_pGlobalState->config.iconOnHover->value();
     const auto boxes       = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale);
+    const bool maximized   = isWindowMaximized();
 
     for (size_t i = 0; i < boxes.size(); ++i) {
         auto& button = g_pGlobalState->buttons[i];
 
-        if ((!button.iconTex || button.iconTex->m_texID == 0) && !button.icon.empty()) {
+        const bool         useMaximized = maximized && !button.icon_maximized.empty();
+        auto&              targetTex    = useMaximized ? button.iconTexMaximized : button.iconTex;
+        const std::string& targetIcon   = useMaximized ? button.icon_maximized : button.icon;
+
+        if ((!targetTex || targetTex->m_texID == 0) && !targetIcon.empty()) {
             auto fgcol = button.userfg ? button.fgcol : (button.bgcol.r + button.bgcol.g + button.bgcol.b < 1) ? CHyprColor(0xFFFFFFFF) : CHyprColor(0xFF000000);
 
             const std::string fontName = button.font.empty() ? "lucide" : button.font;
@@ -793,22 +814,22 @@ void CHyprBar::renderBarButtonsText(Render::CRenderContext& ctx, CBox* barBox, c
                 std::round(button.icon_size * scale) :
                 std::round(std::max(14.0f, button.size * 0.9f) * scale);
 
-            button.iconTex = g_pHyprRenderer->renderText(button.icon, fgcol, targetFontSize, false, fontName, 0);
+            targetTex = g_pHyprRenderer->renderText(targetIcon, fgcol, targetFontSize, false, fontName, 0);
         }
 
-        if (!button.iconTex || button.iconTex->m_texID == 0)
+        if (!targetTex || targetTex->m_texID == 0)
             continue;
 
         const auto&  box        = boxes[i];
         const double btnCenterX = barBox->x + box.x + box.w / 2.0;
         const double btnCenterY = barBox->y + box.y + box.h / 2.0;
-        const double iconX      = std::round(btnCenterX - button.iconTex->m_size.x / 2.0);
-        const double iconY      = std::round(btnCenterY - button.iconTex->m_size.y / 2.0);
-        CBox       pos          = {iconX, iconY, (double)button.iconTex->m_size.x, (double)button.iconTex->m_size.y};
+        const double iconX      = std::round(btnCenterX - targetTex->m_size.x / 2.0);
+        const double iconY      = std::round(btnCenterY - targetTex->m_size.y / 2.0);
+        CBox       pos          = {iconX, iconY, (double)targetTex->m_size.x, (double)targetTex->m_size.y};
         pos.round();
 
         if (!ICONONHOVER || (ICONONHOVER && m_iButtonHoverState > 0))
-            g_pHyprOpenGL->renderTexture(ctx, button.iconTex, pos, {.a = a});
+            g_pHyprOpenGL->renderTexture(ctx, targetTex, pos, {.a = a});
     }
 }
 

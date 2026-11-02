@@ -359,6 +359,22 @@ if f_bars then
 			icon = "\u{e1b2}",
 			action = "close",
 		})
+
+		-- Dux Maximize / Restore Button: transparent at rest, subtle state layer
+		-- on hover, circle at rest, morphs into squircle on press.
+		hl.plugin.hyprbars.add_button({
+			bg_color = "rgba(0, 0, 0, 0)",
+			fg_color = text_color,
+			size = 26,
+			width = 26,
+			height = 26,
+			round = 50,
+			press_round = 8,
+			icon_size = 14,
+			icon = "\u{e112}", -- Lucide: maximize (4 clean corner brackets, empty inside)
+			icon_maximized = "\u{e11a}", -- Lucide: minimize (4 corner brackets pointing inward)
+			action = "maximize",
+		})
 	end)
 end
 
