@@ -640,7 +640,9 @@
       "island": false,
       "followInterfaceStyle": false,
       "widgetFollowInterfaceStyle": false,
-      "dot": true
+      "dot": true,
+      "islandCompactThickness": 38,
+      "islandSatelliteGap": 12
     }
   ],
   "builtInPluginSettings": {
@@ -675,11 +677,12 @@
       "showOnLastDisplay": true,
       "position": 0,
       "mode": "compact",
+      "middleClickAction": "close",
       "taskbarAlign": "center",
       "widgetExpansion": "popout",
       "iconSize": 40,
-      "spacing": 4,
-      "itemSpacing": 4,
+      "spacing": 8,
+      "itemSpacing": 8,
       "margin": 0,
       "bottomGap": 0,
       "transparency": 1,
@@ -796,5 +799,7 @@
   "scrollTitleEnabled": true,
   "centeringMode": "geometric",
   "matugenSeedColor": "#ff0000",
-  "matugenContrast": -0.74
+  "matugenContrast": -0.74,
+  "interfaceStyle": "expressive",
+  "density": "comfortable"
 }
