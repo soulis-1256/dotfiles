@@ -172,6 +172,7 @@ hl.window_rule({
 	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
 	float = true,
 	pin = true,
+	keep_aspect_ratio = true,
 })
 
 -- If un-fullscreen settles on maximized (internal state 1), return to the
