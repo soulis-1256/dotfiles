@@ -128,6 +128,8 @@ class CHyprBar : public IHyprWindowDecoration {
     std::optional<Layout::eRectCorner> getResizeCorner(const Vector2D& mouseCoords);
     bool                               isOverButton(const Vector2D& COORDS);
     bool                               isWindowMaximized();
+    bool                               isMaximizeButtonVisible();
+    std::vector<size_t>                visibleButtons();
     void                               toggleMaximize();
     void                               setSpecialCursor(const std::string& shape);
     void                               clearSpecialCursor();
@@ -135,6 +137,8 @@ class CHyprBar : public IHyprWindowDecoration {
 
     // store hover state for buttons as a bitfield
     unsigned int m_iButtonHoverState = 0;
+
+    std::vector<size_t> m_lastVisibleButtons;
 
     // for dynamic updates
     int m_iLastHeight = 0;

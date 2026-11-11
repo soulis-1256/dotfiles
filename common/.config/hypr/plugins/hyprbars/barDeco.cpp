@@ -29,6 +29,7 @@
 #include <hyprland/src/config/lua/ConfigManager.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 
@@ -83,7 +84,7 @@ static SP<Hyprutils::Animation::SAnimationPropertyConfig> buttonPressAnimConfig(
 // Caption buttons in bar-local pixels. `barSize` is the bar in that space and
 // `scale` turns the logical config sizes into it. Paint, click, and hover all
 // use this, so the hit target is the rectangle that is drawn.
-static std::vector<CBox> captionButtonBoxes(const Vector2D& barSize, float scale) {
+static std::vector<CBox> captionButtonBoxes(const Vector2D& barSize, float scale, const std::vector<size_t>& buttonIndices) {
     std::vector<CBox> boxes;
     if (scale <= 0.f || barSize.x <= 0 || barSize.y <= 0)
         return boxes;
@@ -95,7 +96,10 @@ static std::vector<CBox> captionButtonBoxes(const Vector2D& barSize, float scale
     float offset = pad;
     float room   = static_cast<float>(barSize.x) - pad * 2.f;
 
-    for (const auto& button : g_pGlobalState->buttons) {
+    for (size_t idx : buttonIndices) {
+        if (idx >= g_pGlobalState->buttons.size())
+            continue;
+        const auto& button = g_pGlobalState->buttons[idx];
         const float logicalW = (button.width > 0) ? button.width : button.size;
         const float logicalH = (button.height > 0) ? button.height : (button.width > 0 ? static_cast<float>(barSize.y) / scale : button.size);
         const float w        = logicalW * scale;
@@ -248,7 +252,8 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
 
 int CHyprBar::buttonIndexAt(const Vector2D& COORDS) {
     const auto bar   = assignedBoxGlobal();
-    const auto boxes = captionButtonBoxes(Vector2D{(int)bar.w, (int)bar.h}, 1.f);
+    const auto vis   = visibleButtons();
+    const auto boxes = captionButtonBoxes(Vector2D{(int)bar.w, (int)bar.h}, 1.f, vis);
     const bool right = g_pGlobalState->config.barButtonsAlignment->value() != "left";
 
     for (size_t i = 0; i < boxes.size(); ++i) {
@@ -257,14 +262,14 @@ int CHyprBar::buttonIndexAt(const Vector2D& COORDS) {
         // Corner button (Fitts's Law): extend hit target to the window's outer edge and top/bottom of bar
         if (right && i == 0) {
             if (COORDS.x >= b.x && COORDS.x <= bar.w && COORDS.y >= 0 && COORDS.y <= bar.h)
-                return 0;
+                return (int)vis[0];
         } else if (!right && i == 0) {
             if (COORDS.x >= 0 && COORDS.x <= b.x + b.w && COORDS.y >= 0 && COORDS.y <= bar.h)
-                return 0;
+                return (int)vis[0];
         }
 
         if (VECINRECT(COORDS, b.x, b.y, b.x + b.w, b.y + b.h))
-            return (int)i;
+            return (int)vis[i];
     }
     return -1;
 }
@@ -298,6 +303,33 @@ bool CHyprBar::isWindowMaximized() {
     }
 
     return false;
+}
+
+bool CHyprBar::isMaximizeButtonVisible() {
+    if (!validMapped(m_pWindow))
+        return true;
+    const auto PWIN = m_pWindow.lock();
+    if (!PWIN)
+        return true;
+    if (PWIN->isFloating())
+        return true;
+    const auto PWORKSPACE = PWIN->m_workspace;
+    if (PWORKSPACE && PWORKSPACE->getWindowCount(true) <= 1)
+        return false;
+    return true;
+}
+
+std::vector<size_t> CHyprBar::visibleButtons() {
+    std::vector<size_t> indices;
+    const bool showMax = isMaximizeButtonVisible();
+    for (size_t i = 0; i < g_pGlobalState->buttons.size(); ++i) {
+        const auto& b = g_pGlobalState->buttons[i];
+        const bool isMax = (b.cmd == "fullscreen" || b.cmd == "maximize" || b.cmd.find("fullscreen") != std::string::npos);
+        if (isMax && !showMax)
+            continue;
+        indices.push_back(i);
+    }
+    return indices;
 }
 
 void CHyprBar::toggleMaximize() {
@@ -682,8 +714,12 @@ void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {
     const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
     const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
 
+    const auto vis = visibleButtons();
     float      buttonSizes = BARBUTTONPADDING;
-    for (auto& b : g_pGlobalState->buttons) {
+    for (size_t idx : vis) {
+        if (idx >= g_pGlobalState->buttons.size())
+            continue;
+        auto& b = g_pGlobalState->buttons[idx];
         const float bWidth = (b.width > 0) ? b.width : b.size;
         buttonSizes += bWidth + BARBUTTONPADDING;
     }
@@ -708,25 +744,27 @@ void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {
 
 void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const float scale, const float a, const CBox& chromeBox, int chromeRound, float chromeRoundPower, const CBox& barClip) {
     const auto INACTIVECOLOR    = g_pGlobalState->config.inactiveButtonColor->value();
-    const auto boxes            = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale);
+    const auto vis              = visibleButtons();
+    const auto boxes            = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale, vis);
     const bool INVALIDATEICONS = m_bButtonsDirty || m_bWindowSizeChanged;
 
     for (size_t i = 0; i < boxes.size(); ++i) {
-        auto&       button = g_pGlobalState->buttons[i];
+        const size_t realIdx = vis[i];
+        auto&       button = g_pGlobalState->buttons[realIdx];
         const float bWidth  = boxes[i].w;
         const float bHeight = boxes[i].h;
 
         auto color = button.bgcol;
-        bool hovered = (m_iButtonHoverState & (1 << i)) != 0;
+        bool hovered = (m_iButtonHoverState & (1 << realIdx)) != 0;
 
         // Dux morphs the button on press and fades a 12% state layer of the
         // icon colour on top; mirror both, driven by the shared 0..1 value.
         const float pressProgress =
-            ((int)i == m_iPressAnimButton && button.press_round >= 0 && m_fButtonPressAnim) ? m_fButtonPressAnim->value() : 0.F;
+            ((int)realIdx == m_iPressAnimButton && button.press_round >= 0 && m_fButtonPressAnim) ? m_fButtonPressAnim->value() : 0.F;
 
         if (button.bgcol.a <= 0.01f) {
             if (hovered) {
-                if (i == 0 || button.cmd.find("killactive") != std::string::npos)
+                if (realIdx == 0 || button.cmd.find("killactive") != std::string::npos || button.cmd == "close")
                     color = CHyprColor(0.91f, 0.07f, 0.14f, 0.95f);
                 else
                     color = CHyprColor(1.0f, 1.0f, 1.0f, 0.14f);
@@ -796,11 +834,13 @@ void CHyprBar::renderBarButtons(Render::CRenderContext& ctx, CBox* barBox, const
 
 void CHyprBar::renderBarButtonsText(Render::CRenderContext& ctx, CBox* barBox, const float scale, const float a) {
     const auto ICONONHOVER = g_pGlobalState->config.iconOnHover->value();
-    const auto boxes       = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale);
+    const auto vis         = visibleButtons();
+    const auto boxes       = captionButtonBoxes(Vector2D{barBox->w, barBox->h}, scale, vis);
     const bool maximized   = isWindowMaximized();
 
     for (size_t i = 0; i < boxes.size(); ++i) {
-        auto& button = g_pGlobalState->buttons[i];
+        const size_t realIdx = vis[i];
+        auto& button = g_pGlobalState->buttons[realIdx];
 
         const bool         useMaximized = maximized && !button.icon_maximized.empty();
         auto&              targetTex    = useMaximized ? button.iconTexMaximized : button.iconTex;
@@ -923,8 +963,15 @@ void CHyprBar::renderPass(Render::CRenderContext& ctx, PHLMONITOR pMonitor, cons
     else
         g_pHyprOpenGL->renderRect(ctx, titleBarBox, color, {.round = scaledRounding, .roundingPower = m_pWindow->presentation().roundingPower()});
 
+    const auto vis = visibleButtons();
+    const bool visChanged = (m_lastVisibleButtons != vis);
+    if (visChanged) {
+        m_lastVisibleButtons = vis;
+        m_bButtonsDirty = true;
+    }
+
     // render title
-    if (ENABLETITLE && (m_szLastTitle != PWINDOW->metadata().title() || m_bWindowSizeChanged || !m_pTextTex || m_pTextTex->m_texID == 0 || m_bTitleColorChanged)) {
+    if (ENABLETITLE && (m_szLastTitle != PWINDOW->metadata().title() || m_bWindowSizeChanged || !m_pTextTex || m_pTextTex->m_texID == 0 || m_bTitleColorChanged || visChanged)) {
         m_szLastTitle = PWINDOW->metadata().title();
         renderBarTitle(BARBUF, pMonitor->m_scale);
     }
@@ -936,7 +983,10 @@ void CHyprBar::renderPass(Render::CRenderContext& ctx, PHLMONITOR pMonitor, cons
         const auto ALIGN            = g_pGlobalState->config.barTextAlign->value();
 
         float      buttonSizes = BARBUTTONPADDING;
-        for (auto& b : g_pGlobalState->buttons) {
+        for (size_t idx : vis) {
+            if (idx >= g_pGlobalState->buttons.size())
+                continue;
+            auto& b = g_pGlobalState->buttons[idx];
             buttonSizes += b.size + BARBUTTONPADDING;
         }
 
