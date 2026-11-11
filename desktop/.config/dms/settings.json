@@ -772,11 +772,11 @@
   "notificationOverlayEnabled": false,
   "notificationIgnoreAppTimeout": false,
   "hyprlandGlowEnabled": false,
-  "hyprlandMotionBlurEnabled": false,
+  "hyprlandMotionBlurEnabled": true,
   "hyprlandGroupbarBlur": false,
   "hyprlandGroupbarTextPadding": 0,
   "hyprlandGroupbarDisableWhenOnly": false,
-  "hyprlandGroupbarMiddleClickClose": true,
+  "hyprlandGroupbarMiddleClickClose": false,
   "audioShowStreamDevices": false,
   "showSeconds": false,
   "showWeekNumber": false,
@@ -801,5 +801,7 @@
   "matugenSeedColor": "#ff0000",
   "matugenContrast": -0.74,
   "interfaceStyle": "expressive",
-  "density": "comfortable"
+  "density": "comfortable",
+  "hyprlandWobbleEnabled": false,
+  "hyprlandBlurProportional": false
 }
