@@ -74,3 +74,4 @@ hl.bind("SUPER + SHIFT + T", toggle_floating, { description = "Toggle floating" 
 hl.bind("F22", hl.dsp.send_shortcut({ mods = "CTRL + SHIFT", key = "G", window = "class:^(discord)$" }), { description = "Discord start streaming" })
 hl.bind("F23", hl.dsp.send_shortcut({ mods = "CTRL + SHIFT", key = "D", window = "class:^(discord)$" }), { description = "Discord toggle deafen" })
 hl.bind("F24", hl.dsp.send_shortcut({ mods = "CTRL + SHIFT", key = "M", window = "class:^(discord)$" }), { description = "Discord toggle mute" })
+hl.bind("CTRL + Control_L", hl.dsp.exec_cmd("hyprctl dispatch 'hl.dsp.send_shortcut({ mods = \"CTRL + SHIFT\", key = \"M\", window = \"class:^(discord)$\" })'"), { release = true, description = "Discord toggle mute" })
