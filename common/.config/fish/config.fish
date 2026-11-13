@@ -21,6 +21,7 @@ fish_add_path $HOME/.grok/bin
 
 # User local bin in PATH
 fish_add_path $HOME/.local/bin
+fish_add_path $HOME/.spicetify
 
 # Make run0 the default for sudo invocations
 alias sudo="run0"

@@ -21,6 +21,7 @@ hl.env("QT_QPA_PLATFORMTHEME", "gtk3")
 hl.env("QT_QPA_PLATFORMTHEME_QT6", "gtk3")
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 hl.env("TERMINAL", "ghostty")
+hl.env("BROWSER", "zen-browser")
 
 -------------------
 ---- AUTOSTART ----
