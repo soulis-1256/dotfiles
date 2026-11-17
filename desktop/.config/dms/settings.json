@@ -268,7 +268,8 @@
           "mediaStyle": "controls",
           "mediaAdaptiveWidthEnabled": true,
           "mediaShowCoverArt": true,
-          "overflowMode": "section"
+          "overflowMode": "section",
+          "mediaSmoothLyrics": false
         }
       ],
       "centerWidgets": [
@@ -803,5 +804,8 @@
   "interfaceStyle": "expressive",
   "density": "comfortable",
   "hyprlandWobbleEnabled": false,
-  "hyprlandBlurProportional": false
+  "hyprlandBlurProportional": false,
+  "mediaExcludePlayers": [
+    "zen"
+  ]
 }

@@ -45,7 +45,6 @@ local function alt_tab(back)
 	end
 	pcall(function()
 		hl.dispatch(hl.dsp.focus({ window = w }))
-		hl.dispatch(hl.dsp.window.bring_to_top({ window = w }))
 		hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = w }))
 	end)
 end
