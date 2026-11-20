@@ -22,20 +22,32 @@ From the repo root, on this desktop, after the desktop profile is installed:
 tools/openrgb-theme/enable.sh
 ```
 
-That links three paths and leaves them untracked:
+That links four paths and leaves them untracked:
 
 - `desktop/.config/matugen/dms/configs/openrgb.toml`
 - `desktop/.config/matugen/templates/openrgb.hex`
 - `~/.local/bin/openrgb-theme`
+- `~/.local/bin/openrgb-toggle`
 
 The toml points at `/home/soulis/.config/matugen/templates/openrgb.hex`. OpenRGB 1.1 has to be on `PATH`. The packaged `openrgb.service` stays disabled.
 
 Switch a scheme to try it. The next line in `~/.cache/openrgb-theme.log` shows the scheme hex and the hex that went to the lights.
 
-## Turn it off
+## Quick toggle (off / on)
+
+```sh
+openrgb-toggle          # toggle between off and theme-synced
+openrgb-toggle off      # turn lights off and pause theme sync
+openrgb-toggle on       # resume theme sync and restore cached scheme color
+openrgb-toggle status   # print current state and cached scheme hex
+```
+
+While off (`~/.local/state/openrgb-theme.off` exists), `openrgb.toml` still updates `~/.cache/openrgb-theme.hex` on scheme switches, and `openrgb-theme` logs the pause without touching hardware. Turning off sets static `000000` on the motherboard (preserving zone sizes) and GPU, and `Off` mode on the keyboard; memory stays untouched.
+
+## Turn it off (unlink hook)
 
 ```sh
 tools/openrgb-theme/disable.sh
 ```
 
-That removes those three links. The files in this directory stay in the repo.
+That removes those four links. The files in this directory stay in the repo.

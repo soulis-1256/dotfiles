@@ -4,14 +4,62 @@
 
 set -eu
 
-scheme=${1#\#}
-case $scheme in
-  [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
-  *)
-    printf 'openrgb-theme: expected RRGGBB, got %s\n' "${1-}" >&2
-    exit 1
-    ;;
-esac
+arg=${1-}
+mode=color
+
+if [ "$arg" = "off" ]; then
+  mode=off
+else
+  scheme=${arg#\#}
+  case $scheme in
+    [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
+    *)
+      printf 'openrgb-theme: expected RRGGBB or "off", got %s\n' "$arg" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+cache=${XDG_CACHE_HOME:-$HOME/.cache}
+state=${XDG_STATE_HOME:-$HOME/.local/state}
+off_flag="$state/openrgb-theme.off"
+
+mkdir -p "$cache"
+exec 9>"$cache/openrgb-theme.lock"
+flock 9
+
+note() {
+  printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >>"$cache/openrgb-theme.log"
+}
+
+# Never omit -d (which would apply to all controllers, including RAM).
+# Only address the motherboard, keyboard, and GPU explicitly.
+apply_lights() {
+  label=$1
+  color=$2
+  brightness=$3
+  shift 3
+
+  openrgb --noautoconnect \
+    -d 'B650 AORUS ELITE AX V2' -z 0 -sz 24 -z 1 -sz 48 -m static -c "$color" -b "$brightness" \
+    -d Blackwidow "$@"
+
+  if ! openrgb --noautoconnect -d 'Radeon RX 9060' -m static -c "$color" -b "$brightness"; then
+    note "gpu skipped for $label"
+    printf 'openrgb-theme: warning: GPU (Radeon RX 9060) failed to update (%s)\n' "$label" >&2
+  fi
+}
+
+if [ "$mode" = "off" ]; then
+  apply_lights off 000000 100 -m off
+  note "set off"
+  exit 0
+fi
+
+if [ -e "$off_flag" ]; then
+  note "paused (skipped $scheme)"
+  exit 0
+fi
 
 # Scheme colors are sRGB. These LEDs use linear levels, so the same bytes
 # come out pale. White stays white. Decode gamma before sending.
@@ -26,20 +74,5 @@ r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 print(f"{lin(r):02x}{lin(g):02x}{lin(b):02x}")
 ')
 
-cache=${XDG_CACHE_HOME:-$HOME/.cache}
-mkdir -p "$cache"
-exec 9>"$cache/openrgb-theme.lock"
-flock 9
-
-note() {
-  printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >>"$cache/openrgb-theme.log"
-}
-
-openrgb --noautoconnect \
-  -d 'B650 AORUS ELITE AX V2' -z 0 -sz 24 -z 1 -sz 48 -m static -c "$hex" -b 100 \
-  -d Blackwidow -m static -c "$hex" -b 100
-
-if ! openrgb --noautoconnect -d 'Radeon RX 9060' -m static -c "$hex" -b 100; then
-  note "gpu skipped for $hex"
-fi
+apply_lights "$hex" "$hex" 100 -m static -c "$hex" -b 100
 note "set $scheme -> $hex"

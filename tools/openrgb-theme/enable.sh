@@ -24,7 +24,8 @@ fi
 link "$repo/desktop/.config/matugen/templates/openrgb.hex" "$root/openrgb.hex"
 link "$repo/desktop/.config/matugen/dms/configs/openrgb.toml" "$root/openrgb.toml"
 link "${HOME}/.local/bin/openrgb-theme" "$root/openrgb-theme"
-chmod +x "$root/openrgb-theme"
+link "${HOME}/.local/bin/openrgb-toggle" "$root/openrgb-toggle"
+chmod +x "$root/openrgb-theme" "$root/openrgb-toggle"
 
 printf 'OpenRGB theme hook installed for this desktop.\n'
 printf 'Undo with %s/disable.sh\n' "$root"

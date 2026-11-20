@@ -18,6 +18,7 @@ drop() {
 drop "$repo/desktop/.config/matugen/templates/openrgb.hex"
 drop "$repo/desktop/.config/matugen/dms/configs/openrgb.toml"
 drop "${HOME}/.local/bin/openrgb-theme"
+drop "${HOME}/.local/bin/openrgb-toggle"
 rmdir "$repo/desktop/.config/matugen/dms/configs" 2>/dev/null || true
 rmdir "$repo/desktop/.config/matugen/dms" 2>/dev/null || true
 

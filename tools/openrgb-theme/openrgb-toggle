@@ -1,0 +1,116 @@
+#!/bin/sh
+# Quick toggle for desktop OpenRGB lights and Matugen theme sync.
+# Linked to ~/.local/bin/openrgb-toggle by tools/openrgb-theme/enable.sh.
+
+set -eu
+
+cache=${XDG_CACHE_HOME:-$HOME/.cache}
+state=${XDG_STATE_HOME:-$HOME/.local/state}
+off_flag="$state/openrgb-theme.off"
+hex_file="$cache/openrgb-theme.hex"
+
+self=$(readlink -f "$0")
+theme_cmd="$(dirname "$self")/openrgb-theme"
+
+usage() {
+  printf 'Usage: openrgb-toggle [toggle|on|off|status]\n' >&2
+}
+
+notify() {
+  if [ ! -t 1 ] && command -v notify-send >/dev/null 2>&1; then
+    notify-send -a "OpenRGB" -t 2500 "RGB Lights" "$1" >/dev/null 2>&1 || true
+  fi
+}
+
+read_cached_hex() {
+  [ -r "$hex_file" ] || return 1
+  hex=$(tr -d '[:space:]#' <"$hex_file")
+  case $hex in
+    [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+      printf '%s' "$hex"
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+turn_off() {
+  mkdir -p "$state"
+  was_off=0
+  [ -e "$off_flag" ] && was_off=1
+  : >"$off_flag"
+
+  if ! "$theme_cmd" off; then
+    [ "$was_off" -eq 0 ] && rm -f "$off_flag"
+    exit 1
+  fi
+
+  printf 'RGB off (theme sync paused)\n'
+  notify "Off (theme sync paused)"
+}
+
+turn_on() {
+  was_off=0
+  [ -e "$off_flag" ] && was_off=1
+  rm -f "$off_flag"
+  if hex=$(read_cached_hex); then
+    if ! "$theme_cmd" "$hex"; then
+      if [ "$was_off" -eq 1 ]; then
+        mkdir -p "$state"
+        : >"$off_flag"
+      fi
+      exit 1
+    fi
+    printf 'RGB on (restored #%s)\n' "$hex"
+    notify "On (restored #$hex)"
+  else
+    printf 'RGB theme sync resumed (no cached color in %s; switch a scheme in DMS to apply)\n' "$hex_file"
+    notify "Theme sync resumed"
+  fi
+}
+
+show_status() {
+  if [ -e "$off_flag" ]; then
+    mode=off
+  else
+    mode=on
+  fi
+
+  if hex=$(read_cached_hex); then
+    printf 'status: %s (cached scheme: #%s)\n' "$mode" "$hex"
+  else
+    printf 'status: %s (no cached scheme)\n' "$mode"
+  fi
+}
+
+action=${1:-toggle}
+if [ "$#" -gt 1 ]; then
+  usage
+  exit 1
+fi
+
+case $action in
+  toggle)
+    if [ -e "$off_flag" ]; then
+      turn_on
+    else
+      turn_off
+    fi
+    ;;
+  on)
+    turn_on
+    ;;
+  off)
+    turn_off
+    ;;
+  status)
+    show_status
+    ;;
+  -h|--help)
+    usage
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
