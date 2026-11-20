@@ -23,15 +23,20 @@ hl.window_rule({
 	no_dim = true,
 })
 
--- 3. Picture-in-Picture on Desktop (send to secondary portrait monitor DP-2 on Workspace 10, bottom position)
+-- 3. Picture-in-Picture on Desktop (send to secondary portrait monitor DP-2 on Workspace 10)
+-- Size and position are applied proportionally on window.open by fit_pip_window() in hyprland.lua.
 hl.window_rule({
 	match = { title = ".*[Pp]icture[- ][iI]n[- ][pP]icture.*" },
 	float = true,
 	pin = true,
-	size = "965 543",
-	move = "66 1247",
 	workspace = "10",
 })
+
+_G.pip_layout = {
+	max_w = 965,
+	max_h = 543, -- bump (e.g. 760) for taller portrait PiP while keeping 16:9 at 965x543
+	margin_bottom = 84, -- 1920 - 46 (bar) - 84 = 1790 bottom edge
+}
 
 -- 4. Pin all games to primary monitor DP-1 on Desktop
 hl.window_rule({

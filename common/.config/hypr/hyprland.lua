@@ -206,6 +206,47 @@ hl.on("window.fullscreen", function(w)
 		}))
 	end, { timeout = 1, type = "oneshot" })
 end)
+
+-- Fit Picture-in-Picture windows uniformly inside the profile's _G.pip_layout
+-- bounds so portrait videos keep their native content ratio without black bars.
+local function fit_pip_window(w)
+	local cfg = _G.pip_layout
+	if not cfg or not pip_window(w) then
+		return
+	end
+
+	local cw, ch = w.size and w.size.x or 0, w.size and w.size.y or 0
+	if cw <= 0 or ch <= 0 then
+		return
+	end
+
+	local scale = math.min(cfg.max_w / cw, cfg.max_h / ch)
+	local nw = math.max(1, math.floor(cw * scale + 0.5))
+	local nh = math.max(1, math.floor(ch * scale + 0.5))
+
+	hl.dispatch(hl.dsp.window.resize({ x = nw, y = nh, relative = false, window = w }))
+
+	if cfg.center then
+		hl.dispatch(hl.dsp.window.center({ window = w }))
+		return
+	end
+
+	local m = w.monitor
+	if not m then
+		return
+	end
+	local ms = (m.scale and m.scale > 0) and m.scale or 1
+	local mw, mh = m.width / ms, m.height / ms
+	if ((tonumber(m.transform) or 0) % 2) == 1 then
+		mw, mh = mh, mw
+	end
+	local res_b = (m.reserved and m.reserved.bottom) or 0
+	local x = math.floor(m.x + (mw - nw) / 2)
+	local y = math.floor(m.y + mh - res_b - (cfg.margin_bottom or 0) - nh)
+	hl.dispatch(hl.dsp.window.move({ x = x, y = y, relative = false, window = w }))
+end
+
+hl.on("window.open", fit_pip_window)
 hl.window_rule({ match = { class = "^(zoom)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.qbittorrent\\.qBittorrent|qbittorrent)$" }, float = true })
 hl.window_rule({
