@@ -293,7 +293,8 @@
           "mediaStyle": "controls",
           "mediaAdaptiveWidthEnabled": true,
           "mediaShowCoverArt": true,
-          "overflowMode": "section"
+          "overflowMode": "section",
+          "audioScrollMode": "volume"
         }
       ],
       "rightWidgets": [

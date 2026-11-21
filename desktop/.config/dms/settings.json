@@ -269,7 +269,8 @@
           "mediaAdaptiveWidthEnabled": true,
           "mediaShowCoverArt": true,
           "overflowMode": "section",
-          "mediaSmoothLyrics": false
+          "mediaSmoothLyrics": false,
+          "audioScrollMode": "volume"
         }
       ],
       "centerWidgets": [
@@ -553,7 +554,8 @@
         {
           "id": "music",
           "enabled": true,
-          "mediaSize": 2
+          "mediaSize": 2,
+          "audioScrollMode": "volume"
         }
       ],
       "centerWidgets": [

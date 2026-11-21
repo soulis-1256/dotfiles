@@ -90,10 +90,10 @@ BasePill {
             return;
 
         if (SettingsData.widgetOption("music", widgetData, "audioScrollMode") === "volume") {
+            wheelEvent.accepted = true;
+
             if (!usePlayerVolume)
                 return;
-
-            wheelEvent.accepted = true;
 
             const deltaY = wheelEvent.angleDelta.y;
             const isMouseWheelY = Math.abs(deltaY) >= 120 && (Math.abs(deltaY) % 120) === 0;
