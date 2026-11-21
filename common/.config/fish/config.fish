@@ -30,6 +30,11 @@ alias sudo="run0"
 set --export BUN_INSTALL "$HOME/.bun"
 set --export PATH $BUN_INSTALL/bin $PATH
 
+# Disable Ctrl+Z job suspend at the TTY level
+if status is-interactive
+    stty susp undef 2>/dev/null
+end
+
 # Source machine-specific local overrides & secrets if present (untracked by Git)
 if test -f ~/.config/fish/secrets.fish
     source ~/.config/fish/secrets.fish
